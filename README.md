@@ -1,4 +1,4 @@
 ConnectionRouter
 ================
 
-VTR 7.0 with a Connection Router algorithm
+The Connection Router algorithm implemented in the VTR 7.0 framework
