@@ -1,5 +1,22 @@
 /************ Defines and types shared by all route files ********************/
 
+/* Connection router * Added by Elias Vansteenkiste */
+struct s_con_heap
+{
+    int con_index;
+    int no_nodes_congested;
+};
+
+
+typedef struct
+{
+    int source;
+    unsigned short usage;
+}
+source_entry;
+
+/* Original structs */
+
 struct s_heap {
 	int index;
 	float cost;
@@ -39,6 +56,17 @@ typedef struct {
 	float backward_path_cost;
 	short prev_edge;
 	short target_flag;
+        
+        float acc_cost1;
+        float acc_cost2;
+        float acc_cost3;    
+        int max_size_source_list;
+        int num_cons;
+        struct s_source* source_list_head;
+        int entries_allocated;
+        source_entry* sources;
+        short usage;
+        float pres_cost_old;
 } t_rr_node_route_inf;
 
 /* Extra information about each rr_node needed only during routing (i.e.    *
@@ -114,4 +142,62 @@ void reserve_locally_used_opins(float pres_fac, boolean rip_up_local_opins,
 
 void free_chunk_memory_trace(void);
 
+/* Extra methods for the connection router * Added by Elias Vansteenkiste*/
+
+void pathfinder_update_cost_history(float pres_fac,
+			    float acc_fac);
+
+void pathfinder_update_cost_acc(float pres_fac, float acc_fac);
+
+struct s_trace * update_traceback_con(struct s_heap *hptr, int icon);
+
+struct s_trace * update_traceback_td_con(struct s_heap *hptr, int icon);
+
+void update_traceback_con_experimental(struct s_heap *hptr, int icon);
+
+float get_rr_cong_cost_con(int inode, int icon, float pres_fac);
+
+float get_rr_cong_cost_con_fast(int inode, float pres_fac);
+
+float get_rr_cong_cost_con_hashmap(int inode, int icon, float pres_fac);
+
+void free_traceback_con(int icon);
+
+void free_traceback_td_con(int icon);
+
+void free_trace_data(struct s_trace *tptr);
+
+boolean feasible_routing(void);
+
+boolean feasible_routing_debug(void);
+
+void add_con(int icon, float pres_fac);
+
+void rip_up_con(int icon, float pres_fac);
+
+void add_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac);
+
+void rip_up_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac);
+
+void add_con_hashmap(int icon, float pres_fac);
+
+void rip_up_con_hashmap(int icon, float pres_fac);
+
+s_node_entry* get_node_entry(s_node_hash_map* node_hash_map, int key);
+
+s_node_entry* add_node(s_node_hash_map* node_hash_map, int key);
+
+s_node_entry* remove_node(s_node_hash_map* node_hash_map, int key);
+
+s_rr_to_rg_node_entry* get_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, int key);
+
+s_rr_to_rg_node_entry* add_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key, t_rg_node* node);
+
+void increase_rr_to_rg_node_hash_map_size(s_rr_to_rg_node_hash_map* node_map);
+
+s_rr_to_rg_node_entry* remove_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key);
+
+void add_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac);
+
+void rip_up_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac);
 

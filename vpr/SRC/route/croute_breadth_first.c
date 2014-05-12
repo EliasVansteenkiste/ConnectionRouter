@@ -4,7 +4,8 @@
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
-#include "mst.h"
+#include "heapsort.h"
+//#include "mst.h"
 #include "route_export.h"
 #include "route_common.h"
 #include "route_breadth_first.h"
@@ -218,7 +219,7 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
             pres_fac *= router_opts.pres_fac_mult;
         }
 
-        pres_fac = min(pres_fac, HUGE_FLOAT / 1e5);
+        pres_fac = std::min(pres_fac, static_cast<float>(HUGE_POSITIVE_FLOAT / 1e5));
 
         pathfinder_update_cost(pres_fac, router_opts.acc_fac);
     }
@@ -228,6 +229,7 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
     return (FALSE);
 }
 
+boolean
 try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
         t_ivec ** clb_opins_used_locally,
         int width_fac) {
@@ -244,7 +246,7 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
     c0 = clock();
     /* Create Connection Array 
      * 1. Calculate the size of the Connection Array*/
-    int num_cons = 0;
+    num_cons = 0;
     for (inet = 0; inet < num_nets; inet++) {
         if (clb_net[inet].is_global == FALSE) { /* Skip global nets. */
             num_cons += clb_net[inet].num_sinks;
@@ -405,7 +407,7 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
             pres_fac *= router_opts.pres_fac_mult;
         }
 
-        pres_fac = min(pres_fac, HUGE_FLOAT / 1e5);
+        pres_fac = fmin(pres_fac, HUGE_POSITIVE_FLOAT / 1e5);
 
         pathfinder_update_cost(pres_fac, router_opts.acc_fac);
     }
@@ -488,7 +490,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //    heapsort(con_index, sorting_values, num_cons, 1);
     
     /*6. Allocate hashmaps per net*/
-    node_hash_maps = my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (s_node_hash_map*) my_calloc(num_nets, sizeof(s_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -595,7 +597,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
             pres_fac *= router_opts.pres_fac_mult;
         }
 
-        pres_fac = min(pres_fac, HUGE_FLOAT / 1e5);
+        pres_fac = fmin(pres_fac, HUGE_POSITIVE_FLOAT / 1e5);
 
         pathfinder_update_cost(pres_fac, router_opts.acc_fac);
     }
@@ -817,7 +819,7 @@ breadth_first_route_con(int icon, float bend_cost, float pres_fac, int itry) {
             rr_node_route_inf[inode].prev_edge =
                     current->prev_edge;
 
-            if (pcost > 0.99 * HUGE_FLOAT) /* First time touched. */
+            if (pcost > 0.99 * HUGE_POSITIVE_FLOAT) /* First time touched. */
                 add_to_mod_list(&rr_node_route_inf[inode].path_cost);
 
             breadth_first_expand_neighbours_con(inode, new_pcost,
@@ -890,7 +892,7 @@ breadth_first_route_con_fast(int icon, float bend_cost, float pres_fac, int itry
             rr_node_route_inf[inode].prev_edge =
                     current->prev_edge;
 
-            if (pcost > 0.99 * HUGE_FLOAT) /* First time touched. */
+            if (pcost > 0.99 * HUGE_POSITIVE_FLOAT) /* First time touched. */
                 add_to_mod_list(&rr_node_route_inf[inode].path_cost);
 
             breadth_first_expand_neighbours_con_fast(inode, new_pcost,

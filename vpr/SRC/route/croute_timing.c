@@ -300,7 +300,7 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
             pres_fac *= router_opts.pres_fac_mult;
 
             /* Avoid overflow for high iteration counts, even if acc_cost is big */
-            pres_fac = min(pres_fac, HUGE_FLOAT / 1e5);
+            pres_fac = std::min(pres_fac, static_cast<float>(HUGE_POSITIVE_FLOAT / 1e5));
 
             pathfinder_update_cost(pres_fac, router_opts.acc_fac);
         }

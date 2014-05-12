@@ -1048,5 +1048,86 @@ typedef struct s_vpr_setup {
 	t_power_opts PowerOpts;
 } t_vpr_setup;
 
+/* Connection router types */
+
+typedef struct s_con {
+    char *name;
+    int net;
+    int source;
+    int source_block;
+    //int source_block_port;
+    //int source_block_pin;
+    int sink_block;
+    //int sink_block_port;
+    //int sink_block_pin;
+    int target_node;
+    
+    float previous_total_path_cost;
+    float neighborhood;
+    int previous_total_shares;
+} s_con;
+
+typedef struct s_node_entry {
+    int node;
+    short usage;
+} s_node_entry;
+
+
+typedef struct s_node_hash_map{
+    s_node_entry** node_entries;
+    int size;
+    int no_entries;
+} s_node_hash_map;
+
+struct s_linked_rg_edge_ref
+{
+    struct s_rg_edge *edge;
+    struct s_linked_rg_edge_ref *next;
+};
+typedef struct s_linked_rg_edge_ref t_linked_rg_edge_ref;
+
+struct s_rg_edge
+{
+	struct s_rg_node *child;
+    union{
+		struct s_rg_node *parent;
+		struct s_rg_edge *next;
+    }u;
+
+    short iswitch;
+    short usage;
+};
+typedef struct s_rg_edge t_rg_edge;
+
+struct s_rg_node
+{
+	t_linked_rg_edge_ref *child_list;
+	union{
+		t_linked_rg_edge_ref *parent_list;
+	    struct s_rg_node *next;
+	}u;
+    int no_parents;
+    int inode;
+    short re_expand;
+    short visited;
+    float C_downstream;
+    float R_upstream;
+    float Tdel;
+};
+typedef struct s_rg_node t_rg_node;
+
+typedef struct s_rr_to_rg_node_entry {
+    int rr_node;
+    short usage;
+    t_rg_node* rg_node;
+} s_rr_to_rg_node_entry;
+
+typedef struct s_rr_to_rg_node_hash_map{
+	s_rr_to_rg_node_entry** node_entries;
+    int size;
+    int no_entries;
+} s_rr_to_rg_node_hash_map;
+
+
 #endif
 

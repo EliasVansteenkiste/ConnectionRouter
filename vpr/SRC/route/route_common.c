@@ -1290,4 +1290,431 @@ void free_chunk_memory_trace(void) {
 	}
 }
 
+/** Methods for s_node_hash_maps * Added by Elias Vansteenkiste */
+s_node_entry* get_node_entry(s_node_hash_map* map, int key){
+    int node_hash_map_size = map->size;
+    int hashfvalue = key % node_hash_map_size;
+    s_node_entry* node_entry_ptr = map->node_entries[hashfvalue];
+    if(node_entry_ptr == NULL) return NULL;
+    else{
+        if(key == node_entry_ptr->node) return node_entry_ptr;
+        int i;
+        for(i=1;i<node_hash_map_size;i++){
+            int idx = (hashfvalue+i)%node_hash_map_size;
+            s_node_entry* current_node_entry = map->node_entries[idx];
+            if(current_node_entry ==  NULL) return NULL;
+            else if(key == current_node_entry->node) return current_node_entry;
+        }
+        printf("Warning in get_node_entry: Looped over every hashmap entry, hashmap seems to be full, which is not possible");
+        return NULL;
+        
+    }
+}
+
+s_node_entry* add_node(s_node_hash_map* map, int key){
+    int node_hash_map_size = map->size;
+//    printf("Print Hash Table\n");
+//    int i;
+//    for(i=0;i<node_hash_map_size;i++){
+//        if(node_hash_map->node_entries[i]!=NULL)printf("\t%d - Node: %d, usage: %d\n",i,node_hash_map->node_entries[i]->node,node_hash_map->node_entries[i]->usage);
+//    }
+    int hashfvalue = key % node_hash_map_size;
+    if(map->node_entries[hashfvalue] == NULL){
+        if((map->no_entries+1)*1.0/map->size<0.35){
+            //Add node
+            s_node_entry* node_entry_ptr = alloc_node_entry();
+            node_entry_ptr->node = key;
+            node_entry_ptr->usage = 1;
+            map->node_entries[hashfvalue] = node_entry_ptr;
+            map->no_entries++;
+            return node_entry_ptr;
+        }else{
+            increase_hashmap_size(map);
+            return add_node(map,key);
+        }
+    }else{
+        if(key == map->node_entries[hashfvalue]->node){
+            map->node_entries[hashfvalue]->usage++;
+            return map->node_entries[hashfvalue];
+        }else{
+            int i, idx;
+            for(i=1;i<node_hash_map_size;i++){
+                idx = (hashfvalue+i)%node_hash_map_size;
+                if(map->node_entries[idx] ==  NULL){
+                    if((map->no_entries+1)*1.0/map->size<0.35){
+                        //Add node
+                        s_node_entry* node_entry_ptr = alloc_node_entry();
+                        node_entry_ptr->node = key;
+                        node_entry_ptr->usage = 1;
+                        map->node_entries[idx] = node_entry_ptr;
+                        map->no_entries++;
+                        return node_entry_ptr;
+                    }else{
+                        increase_hashmap_size(map);
+                        return add_node(map,key);
+                    }
+                }else if(key == map->node_entries[idx]->node){
+                    map->node_entries[idx]->usage++;
+                    return map->node_entries[idx];
+                }
+            }
+            printf("Warning in add_node: Looped over every hashmap entry, hashmap seems to be full, which is not possible");
+            return NULL;
+        }
+    }
+
+}
+
+static void add_node_entry(s_node_hash_map* map, s_node_entry* node_entry_ptr){
+    int key = node_entry_ptr->node;
+    int value = node_entry_ptr->usage;
+    int node_hash_map_size = map->size;
+    int hashfvalue = key % node_hash_map_size;
+    if(map->node_entries[hashfvalue] == NULL){
+        map->node_entries[hashfvalue] = node_entry_ptr;
+        map->no_entries+= value;
+        return;
+    }else{
+        if(key == map->node_entries[hashfvalue]->node){
+            printf("Error in add_node_entry: entry with same key already present in hashmap\n");
+            exit(2);
+        }else{
+            int i, idx;
+            for(i=1;i<node_hash_map_size;i++){
+                idx = (hashfvalue+i)%node_hash_map_size;
+                if(map->node_entries[idx] ==  NULL){
+                    map->node_entries[idx] = node_entry_ptr;
+                    map->no_entries+= value;
+                    return;
+                }else if(key == map->node_entries[idx]->node){
+                    printf("Error in add_node_entry: entry with same key already present in hashmap\n");
+                    exit(2);
+                }
+            }
+            printf("Error in in add_node_entry: Looped over every hashmap entry, hashmap seems to be full, which is not possible.\n");
+            exit(2);
+        }
+    }
+}
+
+void increase_hashmap_size(s_node_hash_map* node_hash_map){
+    int oldsize = node_hash_map->size;
+    int newsize = oldsize*2;
+    node_hash_map->size = newsize;
+    int old_no_entries = node_hash_map->no_entries;
+    node_hash_map->no_entries = 0;
+    s_node_entry** old_hashtable = node_hash_map->node_entries;
+    node_hash_map->node_entries = my_calloc(newsize,sizeof(s_node_entry*));
+    int i, no_entries=0;    
+    for(i=0;i<oldsize&&no_entries<old_no_entries;i++){
+        if(old_hashtable[i]!=NULL){
+            add_node_entry(node_hash_map,old_hashtable[i]);
+            no_entries++;
+        }
+    }
+    free(old_hashtable);
+}
+
+s_node_entry* remove_node(s_node_hash_map* map, int key){
+    int map_size = map->size;
+    int hashfvalue = key % map_size;
+    if(map->node_entries[hashfvalue] == NULL){
+        printf("Error in remove_node: no node entry found.");
+        exit(2);
+    }else{
+        if(key == map->node_entries[hashfvalue]->node){
+            if(map->node_entries[hashfvalue]->usage==1){
+                //free(map->node_entries[hashfvalue]);
+                map->node_entries[hashfvalue] = NULL;
+                map->no_entries--;
+                //move following entries up if legal
+                int i, idx;
+                for(i=1;i<map->no_entries+1;i++){
+                    idx = (hashfvalue + i) % map_size;
+                    if(map->node_entries[idx] == NULL) break;
+                    else{
+                        int hfv = map->node_entries[idx]->node % map_size;
+                        if(hfv == idx) continue;
+                        else{
+                            s_node_entry* temp = map->node_entries[idx];
+                            map->node_entries[idx] = NULL;
+                            add_node_entry(map,temp);
+                        }
+                    }
+                }
+                return NULL;
+            }else{
+                map->node_entries[hashfvalue]->usage--;
+                return map->node_entries[hashfvalue];
+            }
+        }else{
+            int i, idx;
+            for(i=1;i<map_size;i++){
+                idx = (hashfvalue+i)%map_size;
+                if(map->node_entries[idx] ==  NULL){
+                    printf("Error in remove_node: no node entry found.");
+                    exit(2);
+                }else if(key == map->node_entries[idx]->node){
+                    if(map->node_entries[idx]->usage==1){
+                        //free(map->node_entries[idx]);
+                        map->node_entries[idx]=NULL;
+                        map->no_entries--;
+                        //move following entries up if legal
+                        int i, loc;
+                        for(i=1;i<map->no_entries;i++){
+                            loc = (idx + i) % map_size;
+                            if(map->node_entries[loc] == NULL) break;
+                            else{
+                                int hfv = map->node_entries[loc]->node % map_size;
+                                if(hfv == loc) continue;
+                                else{
+                                    s_node_entry* temp = map->node_entries[loc];
+                                    map->node_entries[loc] = NULL;
+                                    add_node_entry(map,temp);
+                                }
+                            }
+                        }
+                        return NULL;
+                    }else{
+                        map->node_entries[idx]->usage--;
+                        return map->node_entries[idx];
+                    }
+                }
+            }
+            printf("Warning in remove_node: Looped over every hashmap entry, hashmap seems to be full, which is not possible");
+            return NULL;
+        }
+    }
+}
+
+static struct s_node_entry* alloc_node_entry(void) {
+    if (available_node_entries == 0) {
+        top = (struct s_node_entry *) my_malloc(NCHUNK *
+                sizeof (struct s_node_entry));
+        available_node_entries = NCHUNK;
+    }
+    
+    struct s_node_entry* ret_ptr = top;
+    top = top+1;
+    available_node_entries--;
+
+    return ret_ptr;
+}
+
+/* Methods for s_rr_to_rg_node_hash_map */
+s_rr_to_rg_node_entry* get_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, int key){
+    int map_size = map->size;
+    int hashfvalue = key % map_size;
+    s_rr_to_rg_node_entry* node_entry_ptr = map->node_entries[hashfvalue];
+    if(node_entry_ptr == NULL) return NULL;
+    else{
+        if(key == node_entry_ptr->rr_node) return node_entry_ptr;
+        int i;
+        for(i=1;i<map_size;i++){
+            int idx = (hashfvalue+i)%map_size;
+            s_rr_to_rg_node_entry* current_node_entry = map->node_entries[idx];
+            if(current_node_entry ==  NULL) return NULL;
+            else if(key == current_node_entry->rr_node) return current_node_entry;
+        }
+        printf("Warning in get_node_entry: Looped over every hashmap entry, hashmap seems to be full, which is not possible");
+        return NULL;
+
+    }
+}
+
+s_rr_to_rg_node_entry* add_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key, t_rg_node* node){
+    int node_hash_map_size = map->size;
+//    printf("Print Hash Table\n");
+//    int i;
+//    for(i=0;i<node_hash_map_size;i++){
+//        if(node_hash_map->node_entries[i]!=NULL)printf("\t%d - Node: %d, usage: %d\n",i,node_hash_map->node_entries[i]->node,node_hash_map->node_entries[i]->usage);
+//    }
+    int hashfvalue = key % node_hash_map_size;
+    if(map->node_entries[hashfvalue] == NULL){
+        if((map->no_entries+1)*1.0/map->size<0.35){
+            //Add node
+        	s_rr_to_rg_node_entry* node_entry_ptr = alloc_rr_to_rg_node_entry();
+            node_entry_ptr->rr_node = key;
+            node_entry_ptr->rg_node = node;
+            node_entry_ptr->usage = 1;
+            map->node_entries[hashfvalue] = node_entry_ptr;
+            map->no_entries++;
+            return node_entry_ptr;
+        }else{
+        	increase_rr_to_rg_node_hash_map_size(map);
+            return add_rr_to_rg_node(map,key,node);
+        }
+    }else{
+        if(key == map->node_entries[hashfvalue]->rr_node){
+            map->node_entries[hashfvalue]->usage++;
+            return map->node_entries[hashfvalue];
+        }else{
+            int i, idx;
+            for(i=1;i<node_hash_map_size;i++){
+                idx = (hashfvalue+i)%node_hash_map_size;
+                if(map->node_entries[idx] ==  NULL){
+                    if((map->no_entries+1)*1.0/map->size<0.35){
+                        //Add node
+                    	s_rr_to_rg_node_entry* node_entry_ptr = alloc_rr_to_rg_node_entry();
+                        node_entry_ptr->rr_node = key;
+                        node_entry_ptr->rg_node = node;
+                        node_entry_ptr->usage = 1;
+                        map->node_entries[idx] = node_entry_ptr;
+                        map->no_entries++;
+                        return node_entry_ptr;
+                    }else{
+                    	increase_rr_to_rg_node_hash_map_size(map);
+                        return add_rr_to_rg_node(map,key,node);
+                    }
+                }else if(key == map->node_entries[idx]->rr_node){
+                    map->node_entries[idx]->usage++;
+                    return map->node_entries[idx];
+                }
+            }
+            printf("Warning in add_node: Looped over every hashmap entry, hashmap seems to be full, which is not possible");
+            return NULL;
+        }
+    }
+
+}
+
+static void add_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, s_rr_to_rg_node_entry* node_entry_ptr){
+    int key = node_entry_ptr->rr_node;
+    int value = node_entry_ptr->usage;
+    int node_hash_map_size = map->size;
+    int hashfvalue = key % node_hash_map_size;
+    if(map->node_entries[hashfvalue] == NULL){
+        map->node_entries[hashfvalue] = node_entry_ptr;
+        map->no_entries+= value;
+        return;
+    }else{
+        if(key == map->node_entries[hashfvalue]->rr_node){
+            printf("Error in add_node_entry: entry with same key already present in hashmap\n");
+            exit(2);
+        }else{
+            int i, idx;
+            for(i=1;i<node_hash_map_size;i++){
+                idx = (hashfvalue+i)%node_hash_map_size;
+                if(map->node_entries[idx] ==  NULL){
+                    map->node_entries[idx] = node_entry_ptr;
+                    map->no_entries+= value;
+                    return;
+                }else if(key == map->node_entries[idx]->rr_node){
+                    printf("Error in add_node_entry: entry with same key already present in hashmap\n");
+                    exit(2);
+                }
+            }
+            printf("Error in in add_node_entry: Looped over every hashmap entry, hashmap seems to be full, which is not possible.\n");
+            exit(2);
+        }
+    }
+}
+
+void increase_rr_to_rg_node_hash_map_size(s_rr_to_rg_node_hash_map* map){
+//	printf("increase hashmap size\n");
+    int oldsize = map->size;
+    int newsize = oldsize*2;
+    map->size = newsize;
+    int old_no_entries = map->no_entries;
+    map->no_entries = 0;
+    s_rr_to_rg_node_entry** old_hashtable = map->node_entries;
+    map->node_entries = my_calloc(newsize,sizeof(s_rr_to_rg_node_entry*));
+    int i, no_entries=0;
+    for(i=0;i<oldsize&&no_entries<old_no_entries;i++){
+        if(old_hashtable[i]!=NULL){
+        	add_rr_to_rg_node_entry(map,old_hashtable[i]);
+            no_entries++;
+        }
+    }
+    free(old_hashtable);
+}
+
+s_rr_to_rg_node_entry* remove_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key){
+    int map_size = map->size;
+    int hashfvalue = key % map_size;
+    if(map->node_entries[hashfvalue] == NULL){
+        printf("Error in remove_node: no node entry found.");
+        exit(2);
+    }else{
+        if(key == map->node_entries[hashfvalue]->rr_node){
+            if(map->node_entries[hashfvalue]->usage==1){
+                //free(node_hash_map->node_entries[hashfvalue]);
+                map->node_entries[hashfvalue] = NULL;
+                map->no_entries--;
+                //move following entries up if legal
+                int i, idx;
+                for(i=1;i<map->no_entries+1;i++){
+                    idx = (hashfvalue + i) % map_size;
+                    if(map->node_entries[idx] == NULL) break;
+                    else{
+                        int hfv = map->node_entries[idx]->rr_node % map_size;
+                        if(hfv == idx) continue;
+                        else{
+                        	s_rr_to_rg_node_entry* temp = map->node_entries[idx];
+                            map->node_entries[idx] = NULL;
+                            add_rr_to_rg_node_entry(map,temp);
+                        }
+                    }
+                }
+                return NULL;
+            }else{
+                map->node_entries[hashfvalue]->usage--;
+                return map->node_entries[hashfvalue];
+            }
+        }else{
+            int i, idx;
+            for(i=1;i<map_size;i++){
+                idx = (hashfvalue+i)%map_size;
+                if(map->node_entries[idx] ==  NULL){
+                    printf("Error in remove_node: no node entry found.");
+                    exit(2);
+                }else if(key == map->node_entries[idx]->rr_node){
+                    if(map->node_entries[idx]->usage==1){
+                        //free(node_hash_map->node_entries[idx]);
+                        map->node_entries[idx]=NULL;
+                        map->no_entries--;
+                        //move following entries up if legal
+                        int i, loc;
+                        for(i=1;i<map->no_entries;i++){
+                            loc = (idx + i) % map_size;
+                            if(map->node_entries[loc] == NULL) break;
+                            else{
+                                int hfv = map->node_entries[loc]->rr_node % map_size;
+                                if(hfv == loc) continue;
+                                else{
+                                	s_rr_to_rg_node_entry* temp = map->node_entries[loc];
+                                    map->node_entries[loc] = NULL;
+                                    add_rr_to_rg_node_entry(map,temp);
+                                }
+                            }
+                        }
+                        return NULL;
+                    }else{
+                        map->node_entries[idx]->usage--;
+                        return map->node_entries[idx];
+                    }
+                }
+            }
+            printf("Warning in remove_node: Looped over every hashmap entry, hashmap seems to be full, which is not possible");
+            return NULL;
+        }
+    }
+}
+
+static s_rr_to_rg_node_entry* alloc_rr_to_rg_node_entry(void) {
+    if (available_rr_to_rg_node_entries == 0) {
+    	rr_to_rg_top = (struct s_rr_to_rg_node_entry *) my_malloc(NCHUNK *
+                sizeof (struct s_rr_to_rg_node_entry));
+        available_rr_to_rg_node_entries = NCHUNK;
+    }
+
+    struct s_rr_to_rg_node_entry* ret_ptr = rr_to_rg_top;
+    rr_to_rg_top = rr_to_rg_top+1;
+    available_rr_to_rg_node_entries--;
+
+    ret_ptr->rg_node = NULL;
+
+    return ret_ptr;
+}
+
 

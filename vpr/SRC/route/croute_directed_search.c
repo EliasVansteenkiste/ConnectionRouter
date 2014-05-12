@@ -5,7 +5,7 @@
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
-#include "mst.h"
+//#include "mst.h"
 #include "route_export.h"
 #include "route_common.h"
 #include "route_tree_timing.h"
@@ -280,7 +280,7 @@ try_conr_ds_route(struct s_router_opts router_opts,
         } else {
             pres_fac *= router_opts.pres_fac_mult;
             /* Avoid overflow for high iteration counts, even if acc_cost is big */
-            pres_fac = min(pres_fac, HUGE_FLOAT / 1e5);
+	    pres_fac = std::min(pres_fac, static_cast<float>(HUGE_POSITIVE_FLOAT / 1e5));
             pathfinder_update_cost(pres_fac, router_opts.acc_fac);
         }
         cb = clock();
@@ -788,7 +788,7 @@ try_conr_ds_route_fast(struct s_router_opts router_opts,
         } else {
             pres_fac *= router_opts.pres_fac_mult;
             /* Avoid overflow for high iteration counts, even if acc_cost is big */
-            pres_fac = min(pres_fac, HUGE_FLOAT / 1e5);
+            pres_fac = std::min(pres_fac, static_cast<float>(HUGE_POSITIVE_FLOAT / 1e5));
             pathfinder_update_cost_acc(pres_fac, router_opts.acc_fac);
         }
         //fflush(stdout);
@@ -1005,7 +1005,7 @@ try_conr_ds_route_history(struct s_router_opts router_opts,
         } else {
             pres_fac *= router_opts.pres_fac_mult;
             /* Avoid overflow for high iteration counts, even if acc_cost is big */
-            pres_fac = min(pres_fac, HUGE_FLOAT / 1e5);
+            pres_fac = std::min(pres_fac, static_cast<float>(HUGE_POSITIVE_FLOAT / 1e5));
             pathfinder_update_cost_acc(pres_fac, router_opts.acc_fac);
         }
         //fflush(stdout);
@@ -1148,8 +1148,8 @@ ds_route_con(int icon, float bend_cost, float pres_fac, float astar_fac) {
         old_total_path_cost = rr_node_route_inf[inode].path_cost;
         new_total_path_cost = current->cost;
          
-        if (old_total_path_cost > 0.99 * HUGE_FLOAT){ /* First time touched. */
-                old_back_path_cost = HUGE_FLOAT;
+        if (old_total_path_cost > 0.99 * HUGE_POSITIVE_FLOAT){ /* First time touched. */
+                old_back_path_cost = HUGE_POSITIVE_FLOAT;
         }else{
                 old_back_path_cost = rr_node_route_inf[inode].backward_path_cost;
         }
@@ -1171,7 +1171,7 @@ ds_route_con(int icon, float bend_cost, float pres_fac, float astar_fac) {
             rr_node_route_inf[inode].backward_path_cost = new_back_path_cost;
 
 
-            if (old_total_path_cost > 0.99 * HUGE_FLOAT) /* First time touched. */
+            if (old_total_path_cost > 0.99 * HUGE_POSITIVE_FLOAT) /* First time touched. */
                 add_to_mod_list(&rr_node_route_inf[inode].path_cost);
             
             //no_nodes_expanded++;
@@ -1244,8 +1244,8 @@ ds_route_con_fast(int icon, float bend_cost, float pres_fac, float astar_fac) {
         old_total_path_cost = rr_node_route_inf[inode].path_cost;
         new_total_path_cost = current->cost;
          
-        if (old_total_path_cost > 0.99 * HUGE_FLOAT){ /* First time touched. */
-                old_back_path_cost = HUGE_FLOAT;
+        if (old_total_path_cost > 0.99 * HUGE_POSITIVE_FLOAT){ /* First time touched. */
+                old_back_path_cost = HUGE_POSITIVE_FLOAT;
         }else{
                 old_back_path_cost = rr_node_route_inf[inode].backward_path_cost;
         }
@@ -1267,7 +1267,7 @@ ds_route_con_fast(int icon, float bend_cost, float pres_fac, float astar_fac) {
             rr_node_route_inf[inode].backward_path_cost = new_back_path_cost;
 
 
-            if (old_total_path_cost > 0.99 * HUGE_FLOAT) /* First time touched. */
+            if (old_total_path_cost > 0.99 * HUGE_POSITIVE_FLOAT) /* First time touched. */
                 add_to_mod_list(&rr_node_route_inf[inode].path_cost);
             
             //no_nodes_expanded++;
@@ -1319,10 +1319,8 @@ add_route_tree_to_heap(t_rt_node * rt_node,
         R_upstream = rt_node->R_upstream;
         tot_cost =
                 backward_path_cost +
-                astar_fac * get_timing_driven_expected_cost(inode,
-                target_node,
-                target_criticality,
-                R_upstream);
+                astar_fac * get_conr_ds_fast_expected_cost(inode,
+                target_node);
         node_to_heap(inode, tot_cost, NO_PREVIOUS, NO_PREVIOUS,
                 backward_path_cost, R_upstream);
     }
@@ -1334,45 +1332,6 @@ add_route_tree_to_heap(t_rt_node * rt_node,
         add_route_tree_to_heap(child_node, target_node,
                 target_criticality, astar_fac);
         linked_rt_edge = linked_rt_edge->next;
-    }
-}
-
-static float
-get_conr_ds_expected_cost(int inode,
-        int target_node,
-        int fanout) {
-
-    /* Determines the expected cost (due to both delay and resouce cost) to reach *
-     * the target node from inode.  It doesn't include the cost of inode --       *
-     * that's already in the "known" path_cost.                                   */
-
-    t_rr_type rr_type;
-    int cost_index, ortho_cost_index, num_segs_same_dir, num_segs_ortho_dir;
-    float expected_cost, cong_cost, Tdel;
-
-    rr_type = rr_node[inode].type;
-
-    if (rr_type == CHANX || rr_type == CHANY) {
-        num_segs_same_dir = get_expected_segs_to_target(inode, target_node,
-                &num_segs_ortho_dir);
-        cost_index = rr_node[inode].cost_index;
-        ortho_cost_index = rr_indexed_data[cost_index].ortho_cost_index;
-
-        cong_cost =
-                num_segs_same_dir * rr_indexed_data[cost_index].base_cost / fanout +
-                num_segs_ortho_dir * rr_indexed_data[ortho_cost_index].base_cost / fanout;
-        cong_cost +=
-                rr_indexed_data[IPIN_COST_INDEX].base_cost +
-                rr_indexed_data[SINK_COST_INDEX].base_cost;
-
-        expected_cost = cong_cost;
-        return (expected_cost);
-    }
-    else if (rr_type == IPIN) { /* Change if you're allowing route-throughs */
-        return (rr_indexed_data[SINK_COST_INDEX].base_cost);
-    }
-    else { /* Change this if you want to investigate route-throughs */
-        return (0.);
     }
 }
 
@@ -1654,7 +1613,7 @@ static int mark_node_expansion_by_bin(int inet, int target_node, t_rt_node * rt_
     rlim = ceil(sqrt((float) area / (float) clb_net[inet].num_sinks));
     if (rt_node == NULL || rt_node->u.child_list == NULL) {
         /* If unknown traceback, set radius of bin to be size of chip */
-        rlim = max(nx + 2, ny + 2);
+        rlim = std::max(nx + 2, ny + 2);
         return rlim;
     }
 
@@ -1679,7 +1638,7 @@ static int mark_node_expansion_by_bin(int inet, int target_node, t_rt_node * rt_
         }
 
         if (success == FALSE) {
-            if (rlim > max(nx + 2, ny + 2)) {
+            if (rlim > std::max(nx + 2, ny + 2)) {
                 printf(ERRTAG "VPR internal error, net %s has paths that are not found in traceback\n", clb_net[inet].name);
                 exit(1);
             }
