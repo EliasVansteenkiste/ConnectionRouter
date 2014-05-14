@@ -510,6 +510,8 @@ typedef struct s_net {
 	boolean is_global;
 	boolean is_const_gen;
 	t_net_power * net_power;
+        /* index of the first connection in the net * Added by Elias Vansteenkiste */
+        int con;
 } t_net;
 
 /* s_grid_tile is the minimum tile of the fpga                         

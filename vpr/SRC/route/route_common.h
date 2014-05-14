@@ -171,6 +171,10 @@ boolean feasible_routing(void);
 
 boolean feasible_routing_debug(void);
 
+boolean feasible_routing_rco(void);
+
+boolean feasible_routing_conr_rco(void);
+
 void add_con(int icon, float pres_fac);
 
 void rip_up_con(int icon, float pres_fac);

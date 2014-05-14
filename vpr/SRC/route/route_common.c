@@ -1717,4 +1717,142 @@ static s_rr_to_rg_node_entry* alloc_rr_to_rg_node_entry(void) {
     return ret_ptr;
 }
 
+boolean
+feasible_routing_rco(void) {
 
+    /* This routine checks to see if this is a resource-feasible routing.      *
+     * That is, are all rr_node capacity limitations respected?  It assumes    *
+     * that the occupancy arrays are up to date when it is called.             */
+
+    int inet;
+    int congestedNets = 0;
+    
+    struct s_trace* it;
+        
+    boolean feasible = TRUE;
+    
+    for(inet=0; inet<num_nets;inet++){
+        congested_cons[inet] = FALSE;
+        it = trace_head[inet];
+        while(it!=NULL && !congested_cons[inet]){
+            short occ = rr_node[it->index].occ;
+            if (occ > 0) {
+                if (occ > rr_node[it->index].capacity) {
+                    congested_cons[inet] = TRUE;
+                    feasible = FALSE;
+                }
+            }
+            it = it->next;
+        }
+    }
+    
+    for(inet=0; inet<num_nets;inet++){
+      if(congested_cons[inet])congestedNets++;  
+    }
+    printf("Overuse: %d of the %d nets congested.\n", congestedNets, num_nets);
+    return feasible;
+}
+//
+//boolean
+//feasible_routing_conr_rco(void) {
+//
+//    /* This routine checks to see if this is a resource-feasible routing.      *
+//     * That is, are all rr_node capacity limitations respected?  It assumes    *
+//     * that the occupancy arrays are up to date when it is called.             */
+//
+//    int icon;
+//    int congestedCons = 0;
+//    
+//    struct s_trace* it;
+//        
+//    boolean feasible = TRUE;
+//    
+//    for(icon=0; icon<num_cons;icon++){
+//        congested[icon] = FALSE;
+//        it = trace_head_con[icon];
+//        while(it!=NULL && !congested[icon]){
+//            short occ = rr_node[it->index].occ;
+//            if (occ > 0) {
+//                if (occ > rr_node[it->index].capacity) {
+//                    congested[icon] = TRUE;
+//                    feasible = FALSE;
+//                }
+//            }
+//            it = it->next;
+//        }
+//    }
+//    
+//    for(icon=0; icon<num_cons;icon++){
+//      if(congested[icon])congestedCons++;  
+//    }
+//    printf("Overuse: %d of the %d cons congested.\n", congestedCons, num_cons);
+//    return feasible;
+//}
+
+boolean
+feasible_routing_conr_rco(void){//(t_parents* parents, boolean* parent_of_congested_node, int itry) {
+
+    /* This routine checks to see if this is a resource-feasible routing.      *
+     * That is, are all rr_node capacity limitations respected?  It assumes    *
+     * that the occupancy arrays are up to date when it is called.             */
+
+    int icon, inode, parent, inet;
+    int congestedCons = 0;
+    int overuse = 0;
+    
+    struct s_trace* it;
+        
+    boolean feasible = TRUE;
+//    if(itry>0){
+//        for(inode=0; inode<num_rr_nodes; inode++){
+//            parent_of_congested_node[inode] = FALSE;
+//            if (rr_node[inode].occ > rr_node[inode].capacity) {
+//                overuse++;
+//                for(parent=0;parent<parents[inode].num_parents;parent++){
+//                    parent_of_congested_node[parent] =  TRUE;
+//                }
+//            }
+//        }
+//    }
+    for(inet=0; inet<num_nets;inet++){
+        congested_nets[inet]=FALSE;
+    }
+    
+    for(icon=0; icon<num_cons;icon++){
+        boolean congested = FALSE;
+        it = trace_head_con[icon];
+        while(it!=NULL && !congested){
+            short occ = rr_node[it->index].occ;
+            if (occ > 0) {
+                if (occ > rr_node[it->index].capacity) {
+                    congested = TRUE;
+                    feasible = FALSE;
+                    congested_nets[cons[icon].net] = TRUE;
+                    break;
+                }
+            }
+            it = it->next;
+        }
+        
+        if(congested){
+            congestedCons++;
+            no_its_not_congested_con[icon]=0;
+        }else{
+            no_its_not_congested_con[icon]++;
+        }
+    }
+    
+    for(inet=0; inet<num_nets;inet++){
+        if(congested_nets[inet]){
+            no_its_not_congested_net[inet]=0;
+        }else{
+            no_its_not_congested_net[inet]++;
+        }
+    }
+    
+
+
+    printf("Overuse: %d of the %d cons congested.\n", congestedCons, num_cons);
+    //if(itry>0) printf("Overuse: %d of the %d nodes congested.\n", overuse, num_rr_nodes);
+    return feasible;
+}

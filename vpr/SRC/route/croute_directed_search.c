@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
-//#include <sys/types.h>
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
@@ -153,7 +152,7 @@ try_conr_ds_route(struct s_router_opts router_opts,
 //    heapsort(con_index, sorting_values, num_cons, 1);
     
     /*6. Allocate hashmaps per net*/
-    node_hash_maps = my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (s_node_hash_map*) my_calloc(num_nets, sizeof(s_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -397,7 +396,7 @@ try_conr_ds_route_fast(struct s_router_opts router_opts,
     
     /*6. Allocate hashmaps per net*/
     printf("Allocating node hash maps for each net\n");
-    node_hash_maps = my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (s_node_hash_map*) my_calloc(num_nets, sizeof(s_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -878,7 +877,7 @@ try_conr_ds_route_history(struct s_router_opts router_opts,
 //    heapsort(con_index, sorting_values, num_cons, 1);
     
     /*6. Allocate hashmaps per net*/
-    node_hash_maps = my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (s_node_hash_map*) my_calloc(num_nets, sizeof(s_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
