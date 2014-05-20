@@ -5,7 +5,7 @@
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
-#include "mst.h"
+//#include "mst.h"
 #include "route_export.h"
 #include "route_common.h"
 #include "route_tree_timing.h"
@@ -15,7 +15,7 @@
 #include "net_delay.h"
 #include "stats.h"
 
-/******************** Subroutines local to route_timing.c ********************/;
+/******************** Subroutines local to route_timing.c ********************/
 
 static int get_expected_segs_to_target(int inode,
         int target_node,
@@ -130,7 +130,7 @@ try_conr_ds_route_heap(struct s_router_opts router_opts,
     
     //allocate_data_structures();
     /*6. Allocate hashmaps per net*/
-    node_hash_maps = my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (s_node_hash_map *) my_calloc(num_nets, sizeof(s_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -256,7 +256,7 @@ try_conr_ds_route_heap(struct s_router_opts router_opts,
         } else {
             pres_fac *= router_opts.pres_fac_mult;
             /* Avoid overflow for high iteration counts, even if acc_cost is big */
-            pres_fac = min(pres_fac, HUGE_FLOAT / 1e5);
+            pres_fac = std::min(pres_fac, static_cast<float>(HUGE_POSITIVE_FLOAT / 1e5));
             pathfinder_update_cost(pres_fac, router_opts.acc_fac);
         }
         //fflush(stdout);
@@ -352,8 +352,8 @@ route_con(int icon, s_node_hash_map* node_hash_map, float bend_cost, float pres_
         old_total_path_cost = rr_node_route_inf[inode].path_cost;
         new_total_path_cost = current->cost;
          
-        if (old_total_path_cost > 0.99 * HUGE_FLOAT){ /* First time touched. */
-                old_back_path_cost = HUGE_FLOAT;
+        if (old_total_path_cost > 0.99 * HUGE_POSITIVE_FLOAT){ /* First time touched. */
+                old_back_path_cost = HUGE_POSITIVE_FLOAT;
         }else{
                 old_back_path_cost = rr_node_route_inf[inode].backward_path_cost;
         }
@@ -375,7 +375,7 @@ route_con(int icon, s_node_hash_map* node_hash_map, float bend_cost, float pres_
             rr_node_route_inf[inode].backward_path_cost = new_back_path_cost;
 
 
-            if (old_total_path_cost > 0.99 * HUGE_FLOAT) /* First time touched. */
+            if (old_total_path_cost > 0.99 * HUGE_POSITIVE_FLOAT) /* First time touched. */
                 add_to_mod_list(&rr_node_route_inf[inode].path_cost);
             
             //no_nodes_expanded++;

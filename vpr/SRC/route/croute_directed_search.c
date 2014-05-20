@@ -462,7 +462,7 @@ try_conr_ds_route_fast(struct s_router_opts router_opts,
 //    }
 //    printf("number of integers allocated: \n",totalIntegersAllocated);
     
-    boolean bb_contains_congested_node = FALSE;
+    bool bb_contains_congested_node = FALSE;
     
 //    printf("Start building parent data structure...\n");
 //    t_parents* parents = (t_parents*) calloc(num_rr_nodes,sizeof(t_parents));
@@ -498,7 +498,7 @@ try_conr_ds_route_fast(struct s_router_opts router_opts,
             inet = cons[icon].net;
             s_node_hash_map* node_hash_map = &node_hash_maps[inet];
             
-            boolean ripupandreroute = FALSE;
+            bool ripupandreroute = FALSE;
             float path_cost = 0.0;
             int total_shares = 0;
             float neighborhood = 0.0;

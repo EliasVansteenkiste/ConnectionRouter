@@ -5,7 +5,7 @@
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
-#include "mst.h"
+//#include "mst.h"
 #include "route_export.h"
 #include "route_common.h"
 #include "croute_tree_timing.h"
@@ -115,8 +115,8 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
     s_rr_to_rg_node_hash_map* node_map = NULL;
    
 
-    sinks = my_malloc(sizeof (float) * num_nets);
-    net_index = my_malloc(sizeof (int) * num_nets);
+    sinks = (float*) my_malloc(sizeof (float) * num_nets);
+    net_index = (int*) my_malloc(sizeof (int) * num_nets);
     for (i = 0; i < num_nets; i++) {
         sinks[i] = clb_net[i].num_sinks;
         net_index[i] = i;
@@ -174,7 +174,7 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
 
     /*6. Allocate hashmaps per net*/
     printf("Allocate hashmaps per net\n");
-    node_maps = my_calloc(num_nets, sizeof(s_rr_to_rg_node_hash_map));
+    node_maps = (s_rr_to_rg_node_hash_map*) my_calloc(num_nets, sizeof(s_rr_to_rg_node_hash_map));
 
     /* First do one routing iteration ignoring congestion and marking all sinks  *
      * on each net as critical to get reasonable net delay estimates.            */
@@ -396,9 +396,9 @@ timing_driven_route_con(int icon,
     fanout = clb_net[net].num_sinks;
 
     
-    con_crit = max(max_criticality - (con_slack / T_crit), 0.);
+    con_crit = std::max(max_criticality - (con_slack / T_crit), 0.);
     con_crit = pow(con_crit, criticality_exp);
-    con_crit = min(con_crit, max_criticality);
+    con_crit = std::min(con_crit, max_criticality);
 
     /* Update base costs according to fanout */
     update_rr_base_costs(net);
@@ -421,8 +421,8 @@ timing_driven_route_con(int icon,
         old_total_path_cost = rr_node_route_inf[inode].path_cost;
         new_total_path_cost = current->cost;
          
-        if (old_total_path_cost > 0.99 * HUGE_FLOAT){ /* First time touched. */
-                old_back_path_cost = HUGE_FLOAT;
+        if (old_total_path_cost > 0.99 * HUGE_POSITIVE_FLOAT){ /* First time touched. */
+                old_back_path_cost = HUGE_POSITIVE_FLOAT;
         }else{
                 old_back_path_cost = rr_node_route_inf[inode].backward_path_cost;
         }
@@ -443,7 +443,7 @@ timing_driven_route_con(int icon,
             rr_node_route_inf[inode].path_cost = new_total_path_cost;
             rr_node_route_inf[inode].backward_path_cost = new_back_path_cost;
 
-            if (old_total_path_cost > 0.99 * HUGE_FLOAT) /* First time touched. */
+            if (old_total_path_cost > 0.99 * HUGE_POSITIVE_FLOAT) /* First time touched. */
                 add_to_mod_list(&rr_node_route_inf[inode].path_cost);
             
             timing_driven_expand_neighbours_con(current,
@@ -811,7 +811,7 @@ static int mark_node_expansion_by_bin(int inet, int target_node, t_rg_node * rg_
     rlim = ceil(sqrt((float) area / (float) clb_net[inet].num_sinks));
     if (rg_node == NULL || rg_node->child_list == NULL) {
         /* If unknown traceback, set radius of bin to be size of chip */
-        rlim = max(nx + 2, ny + 2);
+        rlim = std::max(nx + 2, ny + 2);
         return rlim;
     }
 
@@ -836,7 +836,7 @@ static int mark_node_expansion_by_bin(int inet, int target_node, t_rg_node * rg_
         }
 
         if (success == FALSE) {
-            if (rlim > max(nx + 2, ny + 2)) {
+            if (rlim > std::max(nx + 2, ny + 2)) {
                 printf(ERRTAG "VPR internal error, net %s has paths that are not found in traceback\n", clb_net[inet].name);
                 exit(1);
             }
