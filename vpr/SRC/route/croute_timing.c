@@ -1,11 +1,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
-//#include <sys/types.h>
+#include <assert.h>
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
-//#include "mst.h"
 #include "route_export.h"
 #include "route_common.h"
 #include "croute_tree_timing.h"
@@ -15,6 +14,7 @@
 #include "path_delay2.h"
 #include "net_delay.h"
 #include "stats.h"
+#include "ReadOptions.h"
 
 /******************** Subroutines local to route_timing.c ********************/
 
@@ -89,27 +89,25 @@ static void rip_up_con_td(int con, int net, s_rr_to_rg_node_hash_map* node_map, 
 
 boolean
 try_timing_driven_route_conr(struct s_router_opts router_opts,
-        float **net_slack,
         float **net_delay,
-        t_ivec ** clb_opins_used_locally) {
+        t_slack * slacks,
+        t_ivec ** clb_opins_used_locally,
+        boolean timing_analysis_enabled) {
 
     /* Timing-driven connection-based routing algorithm.  The timing graph (includes net_slack)   *
      * must have already been allocated, and net_delay must have been allocated. *
      * Returns TRUE if the routing succeeds, FALSE otherwise.                    */
     
     
-    int itry, inet, icon, net, ipin, i, j;
+    int itry, inet, icon, net, ipin, i, j, bends, segments, wirelength, total_wirelength, available_wirelength;
     boolean success, is_routable, rip_up_local_opins;
-    float T_crit, pres_fac;
+    float T_crit, pres_fac, critical_path_delay, init_timing_criticality_val;
+
 
     float *sinks;
     int *net_index;
-
-    int bends;
-    int wirelength, total_wirelength, available_wirelength;
-    int segments;
     
-    clock_t c0, c1, c2, c3, c4, ca, cb;
+    clock_t c0, c1, c2, c3, c4, ca, cb, begin,end;
     double t_ripup = 0.0, t_route = 0.0, t_add = 0.0;
     float secs = 0.0;
     s_rr_to_rg_node_hash_map* node_map = NULL;
@@ -172,38 +170,47 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
     printf("Allocate timing driven route structs.\n");
     alloc_timing_driven_route_structs();
 
-    /*6. Allocate hashmaps per net*/
     printf("Allocate hashmaps per net\n");
     node_maps = (s_rr_to_rg_node_hash_map*) my_calloc(num_nets, sizeof(s_rr_to_rg_node_hash_map));
-
-    /* First do one routing iteration ignoring congestion and marking all sinks  *
-     * on each net as critical to get reasonable net delay estimates.            */
-    for (inet = 0; inet < num_nets; inet++) {
-        rg_roots[inet] = init_graph_to_source(inet, rg_sinks, &node_maps[inet]);
-        if (clb_net[inet].is_global == FALSE) {
-            for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++)
-                net_slack[inet][ipin] = 0.;
-        } else { /* Set delay of global signals to zero. */
-            for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++)
-                net_delay[inet][ipin] = 0.;
-        }
-    }
- 
-    T_crit = 1.;
-    pres_fac = router_opts.first_iter_pres_fac; /* Typically 0 -> ignore cong. */
-    
-
-
+  
     trace_head_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
     trace_tail_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
     
     back_trace_head_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
     back_trace_tail_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
 
+    if (timing_analysis_enabled) {
+            init_timing_criticality_val = 1.;
+    } else {
+            init_timing_criticality_val = 0.;
+    }
+     
+    for (inet = 0; inet < num_nets; inet++) {
+        rg_roots[inet] = init_graph_to_source(inet, rg_sinks, &node_maps[inet]);
+        if (clb_net[inet].is_global == FALSE) {
+                for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++)
+                        slacks->timing_criticality[inet][ipin] = init_timing_criticality_val;
+#ifdef PATH_COUNTING
+                        slacks->path_criticality[inet][ipin] = init_timing_criticality_val;
+#endif		
+        } else { 
+                /* Set delay of global signals to zero. Non-global net 
+                delays are set by update_net_delays_from_route_tree() 
+                inside timing_driven_route_net(), which is only called
+                for non-global nets. */
+                for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++) {
+                        net_delay[inet][ipin] = 0.;
+                }
+        }
+    }
+    
+    pres_fac = router_opts.first_iter_pres_fac; /* Typically 0 -> ignore cong. */
+    
     for (itry = 1; itry <= router_opts.max_router_iterations; itry++) {
-        printf("Routing iteration: %d ...\n", itry);
-        
-        
+	begin = clock();
+	vpr_printf(TIO_MESSAGE_INFO, "\n");
+        vpr_printf(TIO_MESSAGE_INFO, "Routing iteration: %d\n", itry);
+                
         for (i = 0; i < num_cons; i++) {
             icon = i;
 //            icon = con_index[i];
@@ -223,16 +230,17 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
                     router_opts.criticality_exp,
                     router_opts.astar_fac,
                     router_opts.bend_cost,
-                    net_slack[net][icon - clb_net[net].con+1],
-                    T_crit,
                     net_delay[net],
+                    slacks,
                     node_map);
 
 
             /* Impossible to route? (disconnected rr_graph) */
             if (!is_routable) {
-                printf("Routing failed.\n");
+		vpr_printf(TIO_MESSAGE_INFO, "Routing failed.\n");
                 free_timing_driven_route_structs_td();
+                free(net_index);
+                free(sinks);
                 return (FALSE);
             }
             
@@ -242,6 +250,8 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
         /* Make sure any CLB OPINs used up by subblocks being hooked directly     *
          * to them are reserved for that purpose.                                 */
 
+        /* TODO migrate early exit code from route_timing.c to here*/
+        
         if (itry == 1)
             rip_up_local_opins = FALSE;
         else
@@ -305,18 +315,50 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
             pathfinder_update_cost(pres_fac, router_opts.acc_fac);
         }
 
-        /* Update slack values by doing another timing analysis.                 *
-         * Timing_driven_route_net updated the net delay values.                 */
-        //Has to change? Can be simplified?
-        load_timing_graph_net_delays(net_delay);
-        //Has to change? No Can be simplified? Marginally
-        T_crit = load_net_slack(net_slack, 0);
-        printf("T_crit: %g.\n", T_crit);
+        if (timing_analysis_enabled) {		
+                /* Update slack values by doing another timing analysis.                 *
+                 * Timing_driven_route_net updated the net delay values.                 */
+
+                load_timing_graph_net_delays(net_delay);
+
+#ifdef HACK_LUT_PIN_SWAPPING
+                do_timing_analysis(slacks, FALSE, TRUE, FALSE);
+#else
+                do_timing_analysis(slacks, FALSE, FALSE, FALSE);
+#endif
+
+                /* Print critical path delay - convert to nanoseconds. */
+                critical_path_delay = get_critical_path_delay();
+                vpr_printf(TIO_MESSAGE_INFO, "Critical path: %g ns\n", critical_path_delay);
+        } else {
+                /* If timing analysis is not enabled, make sure that the criticalities and the 	*
+                 * net_delays stay as 0 so that wirelength can be optimized. 			*/
+
+                for (inet = 0; inet < num_nets; inet++) {
+                        for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++) {
+                                slacks->timing_criticality[inet][ipin] = 0.;
+#ifdef PATH_COUNTING 		
+                                slacks->path_criticality[inet][ipin] = 0.; 		
+#endif
+                                net_delay[inet][ipin] = 0.;
+                        }
+                }
+        }
+
+        end = clock();
+        #ifdef CLOCKS_PER_SEC
+                vpr_printf(TIO_MESSAGE_INFO, "Routing iteration took %g seconds.\n", (float)(end - begin) / CLOCKS_PER_SEC);
+        #else
+                vpr_printf(TIO_MESSAGE_INFO, "Routing iteration took %g seconds.\n", (float)(end - begin) / CLK_PER_SEC);
+        #endif
+
         fflush(stdout);
     }
 
-    printf("Routing failed.\n");
-    free_timing_driven_route_structs_td();
+    vpr_printf(TIO_MESSAGE_INFO, "Routing failed.\n");
+    free_timing_driven_route_structs_td());
+    free(net_index);
+    free(sinks);
     return (FALSE);
 }
 
@@ -361,7 +403,7 @@ get_max_pins_per_net(void) {
     for (inet = 0; inet < num_nets; inet++) {
         if (clb_net[inet].is_global == FALSE) {
             max_pins_per_net =
-                    max(max_pins_per_net, (clb_net[inet].num_sinks + 1));
+                    std::max(max_pins_per_net, (clb_net[inet].num_sinks + 1));
         }
     }
 
@@ -919,30 +961,30 @@ timing_driven_check_net_delays(float **net_delay) {
 }
 
 
-static void
-compute_con_slacks(float **con_slack)
-{
-
-/* Puts the slack of each source-sink pair of block pins in net_slack.     */
-
-    int inet, iedge, inode, to_node, num_edges, first_con;
-    t_tedge *tedge;
-    float T_arr, Tdel, T_req;
-
-    for(inet = 0; inet < num_nets; inet++){
-        inode = net_to_driver_tnode[inet];
-	T_arr = tnode[inode].T_arr;
-	num_edges = tnode[inode].num_edges;
-	tedge = tnode[inode].out_edges;
-        first_con = clb_net[inet].con;
-        for(iedge = 0; iedge < num_edges; iedge++){
-            to_node = tedge[iedge].to_node;
-            Tdel = tedge[iedge].Tdel;
-            T_req = tnode[to_node].T_req;
-            *con_slack[first_con+iedge] = T_req - T_arr - Tdel;
-        }
-    }
-}
+//static void
+//compute_con_slacks(float **con_slack)
+//{
+//
+///* Puts the slack of each source-sink pair of block pins in net_slack.     */
+//
+//    int inet, iedge, inode, to_node, num_edges, first_con;
+//    t_tedge *tedge;
+//    float T_arr, Tdel, T_req;
+//
+//    for(inet = 0; inet < num_nets; inet++){
+//        inode = net_to_driver_tnode[inet];
+//	T_arr = tnode[inode].T_arr;
+//	num_edges = tnode[inode].num_edges;
+//	tedge = tnode[inode].out_edges;
+//        first_con = clb_net[inet].con;
+//        for(iedge = 0; iedge < num_edges; iedge++){
+//            to_node = tedge[iedge].to_node;
+//            Tdel = tedge[iedge].Tdel;
+//            T_req = tnode[to_node].T_req;
+//            *con_slack[first_con+iedge] = T_req - T_arr - Tdel;
+//        }
+//    }
+//}
 
 static void
 update_net_delays_from_route_tree_conr(float *net_delays, int inet)
