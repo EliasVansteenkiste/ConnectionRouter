@@ -40,6 +40,13 @@ static struct s_trace *trace_free_head = NULL;
 /* For keeping track of the sudo malloc memory for the trace*/
 static t_chunk trace_ch = {NULL, 0, NULL};
 
+struct s_source* source_free_head = NULL;
+struct s_node_entry* top = NULL;
+struct s_rr_to_rg_node_entry* rr_to_rg_top = NULL;
+int available_node_entries = 0;
+int available_rr_to_rg_node_entries = 0;
+
+
 #ifdef DEBUG
 static int num_trace_allocated = 0; /* To watch for memory leaks. */
 static int num_heap_allocated = 0;
@@ -50,6 +57,8 @@ static struct s_linked_f_pointer *rr_modified_head = NULL;
 static struct s_linked_f_pointer *linked_f_pointer_free_head = NULL;
 
 static t_chunk linked_f_pointer_ch = {NULL, 0, NULL};
+
+#define NCHUNK 200		/* # of various structs malloced at a time. */
 
 /*  The numbering relation between the channels and clbs is:				*
  *																	        *
@@ -93,6 +102,13 @@ static struct s_linked_f_pointer *alloc_linked_f_pointer(void);
 static t_ivec **alloc_and_load_clb_opins_used_locally(void);
 static void adjust_one_rr_occ_and_pcost(int inode, int add_or_sub,
 		float pres_fac);
+
+
+static struct s_node_entry* alloc_node_entry(void);
+static void add_node_entry(s_node_hash_map* map, s_node_entry* node_entry_ptr);
+static void add_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, s_rr_to_rg_node_entry* node_entry_ptr);
+static s_rr_to_rg_node_entry* alloc_rr_to_rg_node_entry(void);
+void increase_hashmap_size(s_node_hash_map* node_hash_map);
 
 /************************** Subroutine definitions ***************************/
 
@@ -1056,7 +1072,7 @@ alloc_trace_data(void) {
 	return (temp_ptr);
 }
 
-static void free_trace_data(struct s_trace *tptr) {
+void free_trace_data(struct s_trace *tptr) {
 
 	/* Puts the traceback structure pointed to by tptr on the free list. */
 
@@ -1404,7 +1420,7 @@ void increase_hashmap_size(s_node_hash_map* node_hash_map){
     int old_no_entries = node_hash_map->no_entries;
     node_hash_map->no_entries = 0;
     s_node_entry** old_hashtable = node_hash_map->node_entries;
-    node_hash_map->node_entries = my_calloc(newsize,sizeof(s_node_entry*));
+    node_hash_map->node_entries = (s_node_entry**) my_calloc(newsize,sizeof(s_node_entry*));
     int i, no_entries=0;    
     for(i=0;i<oldsize&&no_entries<old_no_entries;i++){
         if(old_hashtable[i]!=NULL){
@@ -1618,7 +1634,7 @@ void increase_rr_to_rg_node_hash_map_size(s_rr_to_rg_node_hash_map* map){
     int old_no_entries = map->no_entries;
     map->no_entries = 0;
     s_rr_to_rg_node_entry** old_hashtable = map->node_entries;
-    map->node_entries = my_calloc(newsize,sizeof(s_rr_to_rg_node_entry*));
+    map->node_entries = (s_rr_to_rg_node_entry**) my_calloc(newsize,sizeof(s_rr_to_rg_node_entry*));
     int i, no_entries=0;
     for(i=0;i<oldsize&&no_entries<old_no_entries;i++){
         if(old_hashtable[i]!=NULL){
@@ -1663,7 +1679,7 @@ s_rr_to_rg_node_entry* remove_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int k
             }
         }else{
             int i, idx;
-            for(i=1;i<map_size;i++){
+            for(int i=1;i<map_size;i++){
                 idx = (hashfvalue+i)%map_size;
                 if(map->node_entries[idx] ==  NULL){
                     printf("Error in remove_node: no node entry found.");
@@ -1798,7 +1814,7 @@ feasible_routing_conr_rco(void){//(t_parents* parents, boolean* parent_of_conges
 
     int icon, inode, parent, inet;
     int congestedCons = 0;
-    int overuse = 0;
+//    int overuse = 0;
     
     struct s_trace* it;
         

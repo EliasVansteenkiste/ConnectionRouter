@@ -165,8 +165,6 @@ void free_traceback_con(int icon);
 
 void free_traceback_td_con(int icon);
 
-void free_trace_data(struct s_trace *tptr);
-
 boolean feasible_routing(void);
 
 boolean feasible_routing_debug(void);
