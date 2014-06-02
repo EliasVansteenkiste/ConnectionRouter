@@ -53,12 +53,12 @@ void read_place(INP const char *place_file, INP const char *arch_file,
 	if (0 != strcmp(tokens[2], arch_file)) {
 		vpr_printf(TIO_MESSAGE_ERROR, "'%s' - Architecture file that generated placement (%s) does not match current architecture file (%s).\n", 
 				place_file, tokens[2], arch_file);
-		exit(1);
+		//exit(1);
 	}
 	if (0 != strcmp(tokens[5], net_file)) {
 		vpr_printf(TIO_MESSAGE_ERROR, "'%s' - Netlist file that generated placement (%s) does not match current netlist file (%s).\n", 
 				place_file, tokens[5], net_file);
-		exit(1);
+		//exit(1);
 	}
 	free(*tokens);
 	free(tokens);
