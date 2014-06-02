@@ -21,8 +21,6 @@ static int get_expected_segs_to_target(int inode,
         int target_node,
         int *num_segs_ortho_dir_ptr);
 
-static void con_to_net_old();
-
 static void con_to_net();
 
 static boolean route_con(int icon,
