@@ -175,8 +175,17 @@ static void ShowRouterOpts(INP struct s_router_opts RouterOpts) {
 		case BREADTH_FIRST:
 			vpr_printf(TIO_MESSAGE_INFO, "BREADTH_FIRST\n");
 			break;
+		case BREADTH_FIRST_CONR:
+			vpr_printf(TIO_MESSAGE_INFO, "BREADTH_FIRST_CONR\n");
+			break;
 		case TIMING_DRIVEN:
 			vpr_printf(TIO_MESSAGE_INFO, "TIMING_DRIVEN\n");
+			break;
+		case TIMING_DRIVEN_CONR:
+			vpr_printf(TIO_MESSAGE_INFO, "TIMING_DRIVEN_CONR\n");
+			break;
+		case DIRECTED_SEARCH_CONR:
+			vpr_printf(TIO_MESSAGE_INFO, "DIRECTED_SEARCH_CONR\n");
 			break;
 		case NO_TIMING:
 			vpr_printf(TIO_MESSAGE_INFO, "NO_TIMING\n");
@@ -216,7 +225,7 @@ static void ShowRouterOpts(INP struct s_router_opts RouterOpts) {
 		vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.pres_fac_mult: %f\n", RouterOpts.pres_fac_mult);
 		vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.max_router_iterations: %d\n", RouterOpts.max_router_iterations);
 
-		if (TIMING_DRIVEN == RouterOpts.router_algorithm) {
+		if ((TIMING_DRIVEN == RouterOpts.router_algorithm)||(TIMING_DRIVEN_CONR == RouterOpts.router_algorithm)) {
 			vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.astar_fac: %f\n", RouterOpts.astar_fac);
 			vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.criticality_exp: %f\n", RouterOpts.criticality_exp);
 			vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.max_criticality: %f\n", RouterOpts.max_criticality);
@@ -229,8 +238,17 @@ static void ShowRouterOpts(INP struct s_router_opts RouterOpts) {
 		case BREADTH_FIRST:
 			vpr_printf(TIO_MESSAGE_INFO, "BREADTH_FIRST\n");
 			break;
+		case BREADTH_FIRST_CONR:
+			vpr_printf(TIO_MESSAGE_INFO, "BREADTH_FIRST_CONR\n");
+			break;
 		case TIMING_DRIVEN:
 			vpr_printf(TIO_MESSAGE_INFO, "TIMING_DRIVEN\n");
+			break;
+		case TIMING_DRIVEN_CONR:
+			vpr_printf(TIO_MESSAGE_INFO, "TIMING_DRIVEN_CONR\n");
+			break;
+		case DIRECTED_SEARCH_CONR:
+			vpr_printf(TIO_MESSAGE_INFO, "DIRECTED_SEARCH_CONR\n");
 			break;
 		case NO_TIMING:
 			vpr_printf(TIO_MESSAGE_INFO, "NO_TIMING\n");
@@ -268,7 +286,7 @@ static void ShowRouterOpts(INP struct s_router_opts RouterOpts) {
 		vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.initial_pres_fac: %f\n", RouterOpts.initial_pres_fac);
 		vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.pres_fac_mult: %f\n", RouterOpts.pres_fac_mult);
 		vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.max_router_iterations: %d\n", RouterOpts.max_router_iterations);
-		if (TIMING_DRIVEN == RouterOpts.router_algorithm) {
+		if ((TIMING_DRIVEN == RouterOpts.router_algorithm)||(TIMING_DRIVEN_CONR == RouterOpts.router_algorithm)) {
 			vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.astar_fac: %f\n", RouterOpts.astar_fac);
 			vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.criticality_exp: %f\n", RouterOpts.criticality_exp);
 			vpr_printf(TIO_MESSAGE_INFO, "RouterOpts.max_criticality: %f\n", RouterOpts.max_criticality);

@@ -73,7 +73,7 @@ unsigned long no_nodes_expanded;
 /************************ Subroutine definitions *****************************/
 
 boolean
-try_conr_ds_route(struct s_router_opts router_opts,
+try_directed_search_route_conr(struct s_router_opts router_opts,
         t_ivec ** clb_opins_used_locally) {
 
     int itry, inet, icon, ipin, i;

@@ -11,6 +11,8 @@
 #include "route_tree_timing.h"
 #include "route_timing.h"
 #include "route_breadth_first.h"
+#include "croute_breadth_first.h"
+#include "croute_directed_search.h"
 #include "place_and_route.h"
 #include "rr_graph.h"
 #include "read_xml_arch_file.h"
@@ -40,6 +42,20 @@ static struct s_trace *trace_free_head = NULL;
 /* For keeping track of the sudo malloc memory for the trace*/
 static t_chunk trace_ch = {NULL, 0, NULL};
 
+
+/* Connection router data and experimental stuff*/
+int num_cons = 0;
+s_con* cons = NULL;
+s_node_hash_map* node_hash_maps = NULL;
+s_rr_to_rg_node_hash_map* node_maps = NULL;
+boolean* congested_cons = NULL;
+boolean* congested_nets = NULL;
+boolean* bb_cotains_congested_node = NULL;
+int** cons_with_node_in_bb = NULL;
+int* no_its_not_congested_con = NULL;
+int* no_its_not_congested_net = NULL;
+int* no_its_pathcost_unchanged = NULL;
+
 struct s_source* source_free_head = NULL;
 struct s_node_entry* top = NULL;
 struct s_rr_to_rg_node_entry* rr_to_rg_top = NULL;
@@ -49,6 +65,7 @@ int available_rr_to_rg_node_entries = 0;
 
 #ifdef DEBUG
 static int num_trace_allocated = 0; /* To watch for memory leaks. */
+static int num_source_allocated = 0; /* To watch for memory leaks. */
 static int num_heap_allocated = 0;
 static int num_linked_f_pointer_allocated = 0;
 #endif
@@ -109,6 +126,7 @@ static void add_node_entry(s_node_hash_map* map, s_node_entry* node_entry_ptr);
 static void add_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, s_rr_to_rg_node_entry* node_entry_ptr);
 static s_rr_to_rg_node_entry* alloc_rr_to_rg_node_entry(void);
 void increase_hashmap_size(s_node_hash_map* node_hash_map);
+static struct s_source* alloc_source_data(void);
 
 /************************** Subroutine definitions ***************************/
 
@@ -299,6 +317,18 @@ boolean try_route(int width_fac, struct s_router_opts router_opts,
 		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: BREADTH_FIRST.\n");
 		success = try_breadth_first_route(router_opts, clb_opins_used_locally,
 				width_fac);
+	} else if (router_opts.router_algorithm == BREADTH_FIRST_CONR) {
+		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: BREADTH_FIRST_CONR.\n");
+		success = try_breadth_first_route_conr(router_opts, clb_opins_used_locally,
+				width_fac);
+	} else if (router_opts.router_algorithm == DIRECTED_SEARCH_CONR) {
+		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: DIRECTED_SEARCH_CONR.\n");
+		success = try_directed_search_route_conr(router_opts, clb_opins_used_locally);
+//	} else if (router_opts.router_algorithm == TIMING_DRIVEN_CONR) {
+//		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: TIMING_DRIVEN_CONR.\n");
+//		assert(router_opts.route_type != GLOBAL);
+//		success = try_timing_driven_route_conr(router_opts, net_delay, slacks,
+//			clb_opins_used_locally,timing_inf.timing_analysis_enabled);
 	} else { /* TIMING_DRIVEN route */
 		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: TIMING_DRIVEN.\n");
 		assert(router_opts.route_type != GLOBAL);
@@ -1517,7 +1547,7 @@ static struct s_node_entry* alloc_node_entry(void) {
     return ret_ptr;
 }
 
-/* Methods for s_rr_to_rg_node_hash_map */
+/* Methods for s_rr_to_rg_node_hash_map * Added by Elias Vansteenkiste */
 s_rr_to_rg_node_entry* get_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, int key){
     int map_size = map->size;
     int hashfvalue = key % map_size;
@@ -1733,8 +1763,635 @@ static s_rr_to_rg_node_entry* alloc_rr_to_rg_node_entry(void) {
     return ret_ptr;
 }
 
-boolean
-feasible_routing_rco(void) {
+static void free_source_data(struct s_source* sptr) {
+
+    /* Puts the traceback structure pointed to by tptr on the free list. */
+
+    sptr->next = source_free_head;
+    source_free_head = sptr;
+}
+
+void rip_up_con(int icon, float pres_fac) {
+    struct s_trace *route_segment_start = trace_head_con[icon];
+    int source = cons[icon].source;
+    int inode, occ, capacity;
+    struct s_trace* tptr = route_segment_start;
+    if (tptr == NULL) /* No routing yet. */
+        return;
+    for (;;) {
+        inode = tptr->index;
+        /*Check if node is already used by source*/
+        int source_usage = 0;
+        struct s_source* current_element = rr_node_route_inf[inode].source_list_head;
+        struct s_source* prev_element = NULL;
+//        struct s_linked_vptr* current_element = rr_node_route_inf[inode].source_list_head;
+//        struct s_linked_vptr* prev_element = NULL;
+        if (current_element != NULL) {
+            for (;;) {
+//                source_entry* se = (source_entry*) current_element->data_vptr;
+//                if (se->source == source) {
+                if(current_element->source == source){
+                    source_usage = current_element->usage;
+                    break;
+                }
+                if (current_element->next == NULL) {
+                    break;
+                } else {
+                    prev_element = current_element;
+                    current_element = current_element->next;
+                }
+            }
+        } else {
+            printf("Error in pathfinder_rip_up: current element is null.\n");
+        }
+        if (source_usage == 0) {
+            printf("Error while ripping up connection %d in node %d (type: %d, cap %d): source was not present", icon,inode, rr_node[inode].type, rr_node[inode].capacity);
+            exit(10);
+        } else {
+            /*Capacity and pres_cost need to be adapted*/
+            if (source_usage == 1) {
+                /*remove source from the source list*/
+                if (prev_element != NULL) {
+                    prev_element->next = current_element->next;
+                } else {
+                    rr_node_route_inf[inode].source_list_head = current_element->next;
+                }
+                rr_node_route_inf[inode].num_cons--;
+//                free(current_element->data_vptr);
+//                free(current_element);
+                free_source_data(current_element);
+                occ = rr_node[inode].occ - 1;
+                rr_node[inode].occ = occ;
+            } else {
+                //source_entry* se = (source_entry*) current_element->data_vptr;
+                //se->usage--;
+                current_element->usage--;
+                occ = rr_node[inode].occ;
+            }
+            capacity = rr_node[inode].capacity;
+            if (occ < capacity) {
+                rr_node_route_inf[inode].pres_cost = 1.;
+            } else {
+                rr_node_route_inf[inode].pres_cost =
+                        1. + (occ + 1 - capacity) * pres_fac;
+            }
+        }
+
+        if (rr_node[inode].type == SINK) {
+            tptr = tptr->next; /* Skip next segment. */
+            if (tptr == NULL)
+                break;
+        }
+
+        tptr = tptr->next;
+
+    } /* End while loop -- did an entire traceback. */
+}
+
+void rip_up_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac) {
+    struct s_trace* tptr = trace_head_con[icon];
+    int inode, occupancy, capacity;
+    if (tptr != NULL){
+        for (;;) {
+            inode = tptr->index;
+            s_node_entry* node_entry = remove_node(node_hash_map,inode);
+            if(node_entry == NULL){
+                occupancy = rr_node[inode].occ -1;
+            }else{
+                occupancy = rr_node[inode].occ;
+            }
+            rr_node[inode].occ = occupancy;
+            capacity = rr_node[inode].capacity;
+            if (occupancy < capacity) {
+                rr_node_route_inf[inode].pres_cost = 1.;
+            } else {
+                rr_node_route_inf[inode].pres_cost =
+                        1. + (occupancy + 1 - capacity) * pres_fac;
+            }
+            if (rr_node[inode].type == SINK) {
+                if (tptr->next == NULL) {
+                    trace_tail_con[icon] = tptr;
+                    break;
+                } else {
+                    tptr = tptr->next;
+                }
+            }
+            tptr = tptr->next;
+        } /* End while loop -- did an entire traceback. */
+    }
+    /*Load in usages*/
+//    int inet = cons[icon].net
+//    int first_icon = clb_net[inet].con;
+//    int i;
+//    for(i=0;i<clb_net[inet].num_sinks];i++){
+//        tptr = trace_head_con[first_icon+i];
+//
+//    }
+    int it = 0, node_entries_visited = 0;
+    for (; it < node_hash_map->size && node_entries_visited < node_hash_map->no_entries; it++) {
+        if (node_hash_map->node_entries[it] != NULL) {
+            int node = node_hash_map->node_entries[it]->node;
+            int usage = node_hash_map->node_entries[it]->usage;
+            rr_node_route_inf[node].usage = usage;
+            int occ = rr_node[node].occ;
+            int cap = rr_node[node].capacity;
+            float pres_cost;
+            if (occ < cap) {
+                pres_cost = 1.;
+            } else {
+                pres_cost = 1. + (occ - cap) * pres_fac;
+            }
+            rr_node_route_inf[node_hash_map->node_entries[it]->node].pres_cost_old = rr_node_route_inf[node_hash_map->node_entries[it]->node].pres_cost;
+            rr_node_route_inf[node].pres_cost = pres_cost / (usage + 1);
+            rr_node_route_inf[node].usage = usage;
+            node_entries_visited++;
+        }
+    }
+}
+
+void add_con(int icon, float pres_fac) {
+    struct s_trace *route_segment_start = trace_head_con[icon];
+    int source = cons[icon].source;
+    int inode;
+    struct s_trace* tptr = route_segment_start;
+    
+    if (tptr == NULL) {/* No routing yet. */
+        printf("no routing in route segment.\n");
+        exit(10);
+    }
+    for (;;) {
+        inode = tptr->index;
+        /*Check if node is already used by source*/
+        boolean source_found = FALSE;
+        struct s_source* current_element;
+        struct s_source* prev_element = NULL;
+//        struct s_linked_vptr* current_element;
+//        struct s_linked_vptr* prev_element = NULL;
+        int old_capacity = rr_node[inode].occ;
+        if (old_capacity > 0) {
+            current_element = rr_node_route_inf[inode].source_list_head;
+            if (current_element != NULL) {
+                for (;;) {
+//                  source_entry* so = (source_entry*) current_element->data_vptr;
+//                    if (so->source == source) {
+                    if(current_element->source == source){
+                        source_found = TRUE;
+                        break;
+                    }
+                    if (current_element->next == NULL) {
+                        break;
+                    } else {
+                        prev_element = current_element;
+                        current_element = current_element->next;
+                    }
+                }
+            }
+        }
+        if (source_found) {
+//          source_entry* se = (source_entry*) current_element->data_vptr;
+            current_element->usage++;
+        } else {
+            /*Add source to source Array*/
+//          source_entry* se = (source_entry*) my_malloc(sizeof (source_entry));
+//          se->source = source;
+//          se->usage = 1;
+            struct s_source* ssptr = alloc_source_data();
+            ssptr->source = source;
+            ssptr->usage = 1;
+            ssptr->next = rr_node_route_inf[inode].source_list_head;
+            rr_node_route_inf[inode].source_list_head = ssptr;
+            rr_node_route_inf[inode].num_cons++;
+//          if (rr_node_route_inf[inode].size_source_list > rr_node_route_inf[inode].max_size_source_list)rr_node_route_inf[inode].max_size_source_list = rr_node_route_inf[inode].size_source_list;
+            /*Adapt occupation field and calculate present congestion factor*/
+            int occ = rr_node[inode].occ + 1;
+            int capacity = rr_node[inode].capacity;
+            rr_node[inode].occ = occ;
+            if (occ < capacity) {
+                rr_node_route_inf[inode].pres_cost = 1.;
+            } else {
+                rr_node_route_inf[inode].pres_cost =
+                        1. + (occ + 1 - capacity) * pres_fac;
+            }
+        }
+
+        if (rr_node[inode].type == SINK) {
+            if (tptr->next == NULL) {
+                trace_tail_con[icon] = tptr;
+                break;
+            } else {
+                tptr = tptr->next;
+            }
+        }
+        tptr = tptr->next;
+    } /* End while loop -- did an entire traceback. */
+}
+
+static struct s_source* alloc_source_data(void) {
+
+    int i;
+    struct s_source *temp_ptr;
+
+    if (source_free_head == NULL) { /* No elements on the free list */
+        source_free_head = (struct s_source *) my_malloc(NCHUNK *
+                sizeof (struct
+                s_source));
+
+        /* If I want to free this memory, I have to store the original pointer *
+         * somewhere.  Not worthwhile right now -- if you need more memory     *
+         * for post-routing stages, look into it.                              */
+
+        for (i = 0; i < NCHUNK - 1; i++)
+            (source_free_head + i)->next = source_free_head + i + 1;
+        (source_free_head + NCHUNK - 1)->next = NULL;
+    }
+    temp_ptr = source_free_head;
+    source_free_head = source_free_head->next;
+#ifdef DEBUG
+    num_source_allocated++;
+#endif
+    return (temp_ptr);
+}
+
+void add_con_fast(int icon, s_node_hash_map* node_hash_map , float pres_fac) {
+    struct s_trace* route_segment_start = trace_head_con[icon];
+    struct s_trace* tptr;
+    int inode;
+    
+    if (route_segment_start == NULL) {/* No routing yet. */
+        printf("Error in add_con_fast: no routing in route segment.\n");
+        exit(10);
+    }
+ 
+#ifdef DEBUG
+    boolean usage_increases = FALSE;
+    int previous_usage =  -1;
+#endif
+    //printf("Path found: ");
+    for (tptr = route_segment_start;;) {
+        inode = tptr->index;
+        //printf("inode %d, ",inode);
+#ifdef DEBUG
+        if(previous_usage != -1 && rr_node_route_inf[inode].usage > previous_usage){
+            usage_increases = TRUE;
+        }
+        previous_usage = rr_node_route_inf[inode].usage;
+#endif
+        if (rr_node[inode].type == SINK) {
+            if (tptr->next == NULL) {
+                break;
+            } else {
+                tptr = tptr->next;
+            }
+        }
+        tptr = tptr->next;
+    } /* End while loop -- did an entire traceback. */
+    //printf("\n");
+#ifdef DEBUG
+    if(usage_increases){
+            //printf("Warning: usage goes up again, loops are induced in the routing graph!\n");
+            printf("#%d#",icon);
+    }  
+#endif
+    
+    
+    /*Load out usages*/
+    int it=0, node_entries_visited=0;
+    for(;it<node_hash_map->size&&node_entries_visited<node_hash_map->no_entries;it++){
+        if(node_hash_map->node_entries[it]!=NULL){
+            rr_node_route_inf[node_hash_map->node_entries[it]->node].usage = 0;
+            rr_node_route_inf[node_hash_map->node_entries[it]->node].pres_cost = rr_node_route_inf[node_hash_map->node_entries[it]->node].pres_cost_old;   
+            node_entries_visited++;
+        }
+    }
+    if(node_hash_map->node_entries==NULL){
+        int no_trace_elements=0;
+        tptr = route_segment_start;
+        while(tptr->next != NULL) {
+            no_trace_elements++;
+            tptr = tptr->next;
+        }
+        int size = (int) pow(2,ceil(log2(no_trace_elements*clb_net[cons[icon].net].num_sinks*4)));
+        node_hash_map->no_entries = 0;
+        node_hash_map->size = size;
+        node_hash_map->node_entries = (s_node_entry**) my_calloc(size,sizeof(s_node_entry*));
+    }
+    
+    
+    
+    for (tptr = route_segment_start;;) {
+        inode = tptr->index;
+        s_node_entry* node_entry = add_node(node_hash_map,inode);
+        int occupancy;
+        if(rr_node[inode].occ>0 && node_entry->usage>1){
+            occupancy = rr_node[inode].occ;
+        }else{
+            occupancy = rr_node[inode].occ + 1;
+        }
+        rr_node[inode].occ = occupancy; 
+        int capacity = rr_node[inode].capacity;   
+        if (occupancy < capacity) {
+            rr_node_route_inf[inode].pres_cost = 1.;
+        } else {
+            rr_node_route_inf[inode].pres_cost =
+                    1. + (occupancy + 1 - capacity) * pres_fac;
+        }
+        if (rr_node[inode].type == SINK) {
+            if (tptr->next == NULL) {
+                trace_tail_con[icon] = tptr;
+                break;
+            } else {
+                tptr = tptr->next;
+            }
+        }
+        tptr = tptr->next;
+    } /* End while loop -- did an entire traceback. */
+ 
+}
+
+float get_rr_cong_cost_con(int inode, int icon, float pres_fac) {
+
+    /* Returns the *congestion* cost of using this rr_node. */
+    float cost, pres_cost;
+
+    /*Check if node is already used by a connection with the same source*/
+//    struct s_linked_vptr* source_list_it = rr_node_route_inf[inode].source_list_head;
+    struct s_source* source_list_it = rr_node_route_inf[inode].source_list_head;
+    boolean source_found = FALSE;
+    if (rr_node[inode].occ > 0 && source_list_it != NULL) {
+        for (;;) {
+//            source_entry* se = (source_entry *) source_list_it->data_vptr;
+//            if (se->source == cons[icon].source) {
+            if(source_list_it->source == cons[icon].source){
+                source_found = TRUE;
+                break;
+            }
+            if (source_list_it->next == NULL) {
+                break;
+            } else {
+                source_list_it = source_list_it->next;
+            }
+        }
+    }
+    if (source_found) {
+//        source_entry* se = (source_entry *) source_list_it->data_vptr;
+//        float usage = 1. + se->usage;
+        float usage = 1. + source_list_it->usage;
+        int occ = rr_node[inode].occ;
+        int cap = rr_node[inode].capacity;
+        float pres_cost;
+        if (occ < cap) {
+            pres_cost = 1.;
+        } else {
+            pres_cost = 1. + (occ - cap) * pres_fac;
+        }
+        cost = rr_indexed_data[rr_node[inode].cost_index].base_cost *
+                rr_node_route_inf[inode].acc_cost *
+                pres_cost /
+                usage;
+    } else {
+        
+        cost = rr_indexed_data[rr_node[inode].cost_index].base_cost *
+                rr_node_route_inf[inode].acc_cost *
+                rr_node_route_inf[inode].pres_cost;
+    }
+    
+    return (cost);
+}
+
+void free_traceback_con(int icon) {
+
+    /* Puts the entire traceback (old routing) for this  connection on the free list *
+     * and sets the trace_head and trace_tail pointers for the connection to NULL.            */
+
+    /*Old implemntation
+    struct s_trace *tptr, *tempptr;
+    tptr = trace_head_con[icon];
+    
+    while (tptr != NULL) {
+        tempptr = tptr->next;
+        free_trace_data(tptr);
+        tptr = tempptr;
+    }
+
+    trace_head_con[icon] = NULL;
+    trace_tail_con[icon] = NULL;*/
+    if(trace_head_con[icon] != NULL){
+		trace_tail_con[icon]->next = trace_free_head;
+		trace_free_head = trace_head_con[icon];
+
+		#ifdef DEBUG
+		/*The number of trace elements per trace has to be kept to make this work*
+		num_trace_allocated -= num_trace_elements_con[icon];
+		num_trace_elements_con[icon] = 0;
+		 */
+		#endif
+
+		trace_head_con[icon] = NULL;
+		trace_tail_con[icon] = NULL;
+    }
+}
+
+
+struct s_trace * update_traceback_con(struct s_heap *hptr, int icon) {
+
+    /* This routine adds the most recently finished wire segment to the         *
+     * traceback linked list.  The first connection starts with the net SOURCE  *
+     * and begins at the structure pointed to by trace_head[inet]. Each         *
+     * connection ends with a SINK.  After each SINK, the next connection       *
+     * begins (if the net has more than 2 pins).  The first element after the   *
+     * SINK gives the routing node on a previous piece of the routing, which is *
+     * the link from the existing net to this new piece of the net.             *
+     * In each traceback I start at the end of a path and trace back through    *
+     * its predecessors to the beginning.  I have stored information on the     *
+     * predecesser of each node to make traceback easy -- this sacrificies some *
+     * memory for easier code maintenance.  This routine returns a pointer to   *
+     * the first "new" node in the traceback (node not previously in trace).    */
+
+    struct s_trace *tptr, *prevptr;
+    int inode, old_inode;
+    short iedge;
+
+#ifdef DEBUG
+    t_rr_type rr_type;
+#endif
+
+    inode = hptr->index;
+
+#ifdef DEBUG
+    rr_type = rr_node[inode].type;
+    if (rr_type != SINK) {
+        printf("Error in update_traceback_con.  Expected type = SINK (%d).\n",
+                SINK);
+        printf("Got type = %d while tracing back connection %d.\n", rr_type,
+                icon);
+        exit(1);
+    }
+#endif
+
+    tptr = alloc_trace_data(); /* SINK on the end of the connection */
+    tptr->index = inode;
+    tptr->iswitch = OPEN;
+    tptr->next = NULL;
+    trace_tail_con[icon] = tptr; /* This will become the new tail at the end */
+    /* of the routine.                          */
+
+    /* Now do it's predecessor. */
+
+    inode = hptr->u.prev_node;
+    iedge = hptr->prev_edge;
+
+    while (inode != NO_PREVIOUS) {
+        prevptr = alloc_trace_data();
+        prevptr->index = inode;
+        prevptr->iswitch = rr_node[inode].switches[iedge];
+        prevptr->next = tptr;
+        tptr = prevptr;
+        
+        iedge = rr_node_route_inf[inode].prev_edge;
+        old_inode = inode;
+        inode = rr_node_route_inf[inode].prev_node;  
+    }
+    trace_head_con[icon] = tptr;
+    return tptr;
+}
+
+
+void update_traceback_con_experimental(struct s_heap *hptr,
+        int icon) {
+
+    /* This routine adds the most recently finished wire segment to the         *
+     * traceback linked list.  The first connection starts with the net SOURCE  *
+     * and begins at the structure pointed to by trace_head[inet]. Each         *
+     * connection ends with a SINK.  After each SINK, the next connection       *
+     * begins (if the net has more than 2 pins).  The first element after the   *
+     * SINK gives the routing node on a previous piece of the routing, which is *
+     * the link from the existing net to this new piece of the net.             *
+     * In each traceback I start at the end of a path and trace back through    *
+     * its predecessors to the beginning.  I have stored information on the     *
+     * predecesser of each node to make traceback easy -- this sacrificies some *
+     * memory for easier code maintenance.  This routine returns a pointer to   *
+     * the first "new" node in the traceback (node not previously in trace).    */
+
+    struct s_trace *tptr, *prevptr;
+    int inode, old_inode;
+    short iedge;
+
+#ifdef DEBUG
+    t_rr_type rr_type;
+#endif
+
+    inode = hptr->index;
+
+#ifdef DEBUG
+    rr_type = rr_node[inode].type;
+    if (rr_type != SINK) {
+        printf("Error in update_traceback_con.  Expected type = SINK (%d).\n",
+                SINK);
+        printf("Got type = %d while tracing back connection %d.\n", rr_type,
+                icon);
+        exit(1);
+    }
+#endif
+
+    tptr = alloc_trace_data(); /* SINK on the end of the connection */
+    tptr->index = inode;
+    tptr->iswitch = OPEN;
+    tptr->next = NULL;
+    trace_tail_con[icon] = tptr; /* This will become the new tail at the end */
+    /* of the routine.                          */
+
+    /* Now do it's predecessor. */
+
+    inode = hptr->u.prev_node;
+    iedge = hptr->prev_edge;
+    
+    float new_path_cost = rr_node_route_inf[inode].path_cost;
+    if((cons[icon].previous_total_path_cost - new_path_cost)<0.0001){
+        no_its_pathcost_unchanged[icon]++;
+    }else{
+        no_its_pathcost_unchanged[icon] = 0;
+    }
+    cons[icon].previous_total_path_cost = new_path_cost;
+    cons[icon].previous_total_shares = 0;
+    
+    float neighborhood = 0.0;
+
+    while (inode != NO_PREVIOUS) {
+        prevptr = alloc_trace_data();
+        prevptr->index = inode;
+        prevptr->iswitch = rr_node[inode].switches[iedge];
+        prevptr->next = tptr;
+        tptr = prevptr;
+        
+//        short edge;
+//        int neighbor;
+//        if(rr_node_route_inf[inode].prev_node != NO_PREVIOUS){
+//            for (edge = 0; edge < rr_node[inode].num_edges; edge++) { 
+//                neighbor = rr_node[inode].edges[edge];
+//                if(neighbor != old_inode){
+//                    //neighborhood += rr_node_route_inf[neighbor].acc_cost;
+//                        //neighborhood += (rr_node[neighbor].occ*1.0/(1+rr_node_route_inf[neighbor].usage));
+//                        //if(icon==2000)printf("\tnbh += %f\n",(rr_node[neighbor].occ*1.0/(1+rr_node_route_inf[neighbor].usage)));
+//                }
+//            }
+//        }
+        //if(rr_node[inode].type>2) cons[icon].previous_total_shares += (1+rr_node_route_inf[inode].usage);
+        iedge = rr_node_route_inf[inode].prev_edge;
+        old_inode = inode;
+        inode = rr_node_route_inf[inode].prev_node;  
+    }
+//    cons[icon].neighborhood = neighborhood;
+    
+//    printf("trace_head_con %d: %d",icon,tptr);
+    trace_head_con[icon] = tptr;
+}
+
+boolean feasible_routing_debug(void) {
+
+    /* This routine checks to see if this is a resource-feasible routing.      *
+     * That is, are all rr_node capacity limitations respected?  It assumes    *
+     * that the occupancy arrays are up to date when it is called.             */
+
+    int inode;
+
+    //	for(inode = 0; inode < num_rr_nodes; inode++) {
+    //		if(rr_node[inode].occ > rr_node[inode].capacity) {
+    //			return (FALSE);
+    //		}
+    //	}
+    //    return (TRUE);
+
+    boolean feasible = TRUE;
+
+    int congested = 0;
+    int total_overuse = 0;
+//    int maxSize = 0;
+//    int sumOfMaxSizes = 0;
+    int nrOfUsedRNs = 0;
+    for (inode = 0; inode < num_rr_nodes; inode++) {
+        int occ = rr_node[inode].occ;
+        if (occ > 0) {
+            //int mSize = rr_node_route_inf[inode].max_size_source_list;
+            nrOfUsedRNs++;
+            //sumOfMaxSizes += mSize;
+            //if (mSize > maxSize) maxSize = mSize;
+            if (occ > rr_node[inode].capacity) {
+                //printf("node %d, type %d, occ %d,cap %d\n",inode,rr_node[inode].type,occ,rr_node[inode].capacity);
+                feasible = FALSE;
+                congested++;
+                total_overuse += (occ - rr_node[inode].capacity);
+            }
+        }
+    }
+
+    printf("\nOveruse: %d of the %d used route (total rns in rrg %d) nodes are congested (total overuse of %d nodes).\n", congested, nrOfUsedRNs, num_rr_nodes, total_overuse);
+    //float avgMSize = 1. * sumOfMaxSizes / nrOfUsedRNs;
+    //printf("Max of Max Sizes: %d, Avg of Max Sizes: %f\n", maxSize, avgMSize);
+    return feasible;
+}
+
+
+boolean feasible_routing_rco(void) {
 
     /* This routine checks to see if this is a resource-feasible routing.      *
      * That is, are all rr_node capacity limitations respected?  It assumes    *
@@ -1805,8 +2462,7 @@ feasible_routing_rco(void) {
 //    return feasible;
 //}
 
-boolean
-feasible_routing_conr_rco(void){//(t_parents* parents, boolean* parent_of_congested_node, int itry) {
+boolean feasible_routing_conr_rco(void){//(t_parents* parents, boolean* parent_of_congested_node, int itry) {
 
     /* This routine checks to see if this is a resource-feasible routing.      *
      * That is, are all rr_node capacity limitations respected?  It assumes    *
@@ -1871,4 +2527,39 @@ feasible_routing_conr_rco(void){//(t_parents* parents, boolean* parent_of_conges
     printf("Overuse: %d of the %d cons congested.\n", congestedCons, num_cons);
     //if(itry>0) printf("Overuse: %d of the %d nodes congested.\n", overuse, num_rr_nodes);
     return feasible;
+}
+
+void pathfinder_update_cost_acc(float pres_fac,
+        float acc_fac) {
+
+    /* This routine recomputes the pres_cost and acc_cost of each routing        *
+     * resource for the pathfinder algorithm after all nets have been routed.    *
+     * It updates the accumulated cost to by adding in the number of extra       *
+     * signals sharing a resource right now (i.e. after each complete iteration) *
+     * times acc_fac.  It also updates pres_cost, since pres_fac may have        *
+     * changed.  THIS ROUTINE ASSUMES THE OCCUPANCY VALUES IN RR_NODE ARE UP TO  *
+     * DATE.                                                                     */
+
+    int inode, occ, capacity;
+
+    for (inode = 0; inode < num_rr_nodes; inode++) {
+        occ = rr_node[inode].occ;
+        capacity = rr_node[inode].capacity;
+
+        if (occ > capacity) {
+            //rr_node_route_inf[inode].acc_cost += (occ - capacity) * acc_fac;
+            rr_node_route_inf[inode].acc_cost = acc_fac*(occ - capacity) +  1.00*(rr_node_route_inf[inode].acc_cost);
+            //rr_node_route_inf[inode].acc_cost = (occ - capacity)*1.0/capacity + 0.9*(rr_node_route_inf[inode].acc_cost) ;
+            rr_node_route_inf[inode].pres_cost =
+                    1. + (occ + 1 - capacity) * pres_fac;
+        }            /* If occ == capacity, we don't need to increase acc_cost, but a change    *
+             * in pres_fac could have made it necessary to recompute the cost anyway.  */
+
+        else if (occ == capacity) {
+            rr_node_route_inf[inode].pres_cost = 1. + pres_fac;
+            //rr_node_route_inf[inode].acc_cost = 1.00*(rr_node_route_inf[inode].acc_cost) ;
+        }else{
+            //rr_node_route_inf[inode].acc_cost = (occ - capacity)*1.0/capacity + 0.9*(rr_node_route_inf[inode].acc_cost) ;
+        }
+    }
 }

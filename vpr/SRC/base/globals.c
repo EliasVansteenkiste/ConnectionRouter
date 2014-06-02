@@ -64,6 +64,11 @@ struct s_grid_tile **grid = NULL; /* [0..(nx+1)][0..(ny+1)] Physical block list 
 struct s_trace **trace_head = NULL; /* [0..(num_nets-1)] */
 struct s_trace **trace_tail = NULL; /* [0..(num_nets-1)] */
 
+struct s_trace **trace_head_con = NULL;	/* [0..(num_cons-1)] */
+struct s_trace **trace_tail_con = NULL;	/* [0..(num_cons-1)] */
+struct s_trace **back_trace_head_con = NULL;	/* [0..(num_cons-1)] */
+struct s_trace **back_trace_tail_con = NULL;	/* [0..(num_cons-1)] */
+
 /******** Structures defining the FPGA routing architecture ********/
 
 int num_rr_nodes = 0;

@@ -16,7 +16,7 @@ void CheckSetup(INP enum e_operation Operation,
 	int Tmp;
 
 	if ((GLOBAL == RouterOpts.route_type)
-			&& (TIMING_DRIVEN == RouterOpts.router_algorithm)) {
+			&& ((TIMING_DRIVEN == RouterOpts.router_algorithm)||(TIMING_DRIVEN_CONR == RouterOpts.router_algorithm))) {
 
 		vpr_printf(TIO_MESSAGE_ERROR, "The global router does not support timing-drvien routing.\n");
 		exit(1);
@@ -46,7 +46,7 @@ void CheckSetup(INP enum e_operation Operation,
 	}
 
 	if (RouterOpts.doRouting) {
-		if ((TIMING_DRIVEN == RouterOpts.router_algorithm)
+		if (((TIMING_DRIVEN == RouterOpts.router_algorithm)||(TIMING_DRIVEN_CONR == RouterOpts.router_algorithm))
 				&& (FALSE == Timing.timing_analysis_enabled)) {
 			vpr_printf(TIO_MESSAGE_ERROR, "Cannot perform timing-driven routing when timing analysis is disabled.\n");
 			exit(1);

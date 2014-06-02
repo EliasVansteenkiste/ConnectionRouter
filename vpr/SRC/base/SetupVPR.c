@@ -410,6 +410,12 @@ static void SetupRouterOpts(INP t_options Options, INP boolean TimingEnabled,
 	RouterOpts->base_cost_type = DELAY_NORMALIZED; /* DEFAULT */
 	if (BREADTH_FIRST == RouterOpts->router_algorithm) {
 		RouterOpts->base_cost_type = DEMAND_ONLY; /* DEFAULT */
+	}	
+        if (BREADTH_FIRST_CONR == RouterOpts->router_algorithm) {
+		RouterOpts->base_cost_type = DEMAND_ONLY; /* DEFAULT */
+	}        
+        if (DIRECTED_SEARCH_CONR == RouterOpts->router_algorithm) {
+		RouterOpts->base_cost_type = DEMAND_ONLY; /* DEFAULT */
 	}
 	if (NO_TIMING == RouterOpts->router_algorithm) {
 		RouterOpts->base_cost_type = DEMAND_ONLY; /* DEFAULT */
@@ -422,6 +428,9 @@ static void SetupRouterOpts(INP t_options Options, INP boolean TimingEnabled,
 	RouterOpts->first_iter_pres_fac = 0.5; /* DEFAULT */
 	if (BREADTH_FIRST == RouterOpts->router_algorithm) {
 		RouterOpts->first_iter_pres_fac = 0.0; /* DEFAULT */
+	}	
+        if (BREADTH_FIRST_CONR == RouterOpts->router_algorithm) {
+		RouterOpts->first_iter_pres_fac = 0.0; /* DEFAULT */
 	}
 	if (NO_TIMING == RouterOpts->router_algorithm || Options.Count[OT_FAST]) {
 		RouterOpts->first_iter_pres_fac = 10000.0; /* DEFAULT */
@@ -433,6 +442,9 @@ static void SetupRouterOpts(INP t_options Options, INP boolean TimingEnabled,
 	/* Depends on RouterOpts->router_algorithm */
 	RouterOpts->acc_fac = 1.0;
 	if (BREADTH_FIRST == RouterOpts->router_algorithm) {
+		RouterOpts->acc_fac = 0.2;
+	}
+        if (BREADTH_FIRST_CONR == RouterOpts->router_algorithm) {
 		RouterOpts->acc_fac = 0.2;
 	}
 	if (Options.Count[OT_ACC_FAC]) {

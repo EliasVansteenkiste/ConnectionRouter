@@ -100,11 +100,12 @@ extern int *chan_width_x, *chan_width_y; /* numerical form */
 /* [0..num_nets-1] of linked list start pointers.  Defines the routing.  */
 extern struct s_trace **trace_head, **trace_tail;
 
+extern struct s_trace **trace_head_con;
+extern struct s_trace **trace_tail_con;
+extern struct s_trace **back_trace_head_con;	
+extern struct s_trace **back_trace_tail_con;	
+
 /* Structures to define the routing architecture of the FPGA.           */
-extern struct s_trace **trace_head_con = NULL;	/* [0..(num_cons-1)] */
-extern struct s_trace **trace_tail_con = NULL;	/* [0..(num_cons-1)] */
-extern struct s_trace **back_trace_head_con = NULL;	/* [0..(num_cons-1)] */
-extern struct s_trace **back_trace_tail_con = NULL;	/* [0..(num_cons-1)] */
 extern int num_rr_nodes;
 extern t_rr_node *rr_node; /* [0..num_rr_nodes-1]          */
 extern int num_rr_indexed_data;
@@ -113,19 +114,6 @@ extern t_ivec ***rr_node_indices;
 extern int **net_rr_terminals; /* [0..num_nets-1][0..num_pins-1] */
 extern struct s_switch_inf *switch_inf; /* [0..det_routing_arch.num_switch-1] */
 extern int **rr_blk_source; /* [0..num_blocks-1][0..num_class-1] */
-
-/* Connection router data and experimental stuff*/
-extern int num_cons = 0;
-extern s_con* cons = NULL;
-extern s_node_hash_map* node_hash_maps = NULL;
-extern s_rr_to_rg_node_hash_map* node_maps = NULL;
-extern boolean* congested_cons = NULL;
-extern boolean* congested_nets = NULL;
-extern boolean* bb_cotains_congested_node = NULL;
-extern int** cons_with_node_in_bb;
-extern int* no_its_not_congested_con;
-extern int* no_its_not_congested_net;
-extern int* no_its_pathcost_unchanged;
 
 /* the head pointers of structures that are "freed" and used constantly */
 /*struct s_heap *g_heap_free_head;

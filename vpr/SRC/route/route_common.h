@@ -7,6 +7,12 @@ struct s_con_heap
     int no_nodes_congested;
 };
 
+struct s_source {
+    int source;
+    int usage;
+    struct s_source* next;
+    
+};
 
 typedef struct
 {
@@ -92,6 +98,19 @@ typedef struct {
 
 extern t_rr_node_route_inf *rr_node_route_inf; /* [0..num_rr_nodes-1] */
 extern struct s_bb *route_bb; /* [0..num_nets-1]     */
+
+/* Connection router data and experimental stuff*/
+extern int num_cons;
+extern s_con* cons;
+extern s_node_hash_map* node_hash_maps;
+extern s_rr_to_rg_node_hash_map* node_maps;
+extern boolean* congested_cons;
+extern boolean* congested_nets;
+extern boolean* bb_cotains_congested_node;
+extern int** cons_with_node_in_bb;
+extern int* no_its_not_congested_con;
+extern int* no_its_not_congested_net;
+extern int* no_its_pathcost_unchanged;
 
 /******* Subroutines in route_common used only by other router modules ******/
 

@@ -808,11 +808,20 @@ ReadRouterAlgorithm(INP char **Args, OUTP enum e_router_algorithm *Algo) {
 	case OT_BREADTH_FIRST:
 		*Algo = BREADTH_FIRST;
 		break;
+	case OT_BREADTH_FIRST_CONR:
+		*Algo = BREADTH_FIRST_CONR;
+		break;
 	case OT_NO_TIMING:
 		*Algo = NO_TIMING;
 		break;
 	case OT_TIMING_DRIVEN:
 		*Algo = TIMING_DRIVEN;
+		break;
+	case OT_TIMING_DRIVEN_CONR:
+		*Algo = TIMING_DRIVEN_CONR;
+		break;
+	case OT_DIRECTED_SEARCH_CONR:
+		*Algo = DIRECTED_SEARCH_CONR;
 		break;
 	default:
 		Error(*PrevArgs);
