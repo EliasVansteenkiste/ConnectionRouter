@@ -303,7 +303,7 @@ init_graph_to_source(int inet, t_rg_node** rg_sinks, s_rr_to_rg_node_hash_map* n
         int size = 32;
         node_map->no_entries = 0;
         node_map->size = size;
-        node_map->node_entries = my_calloc(size,sizeof(s_node_entry*));
+        node_map->node_entries = (s_rr_to_rg_node_entry**) my_calloc(size,sizeof(s_rr_to_rg_node_entry*));
     }
 
     rg_root = alloc_rg_node();

@@ -10,6 +10,7 @@
 #include "route_common.h"
 #include "route_tree_timing.h"
 #include "route_timing.h"
+#include "croute_timing.h"
 #include "route_breadth_first.h"
 #include "croute_breadth_first.h"
 #include "croute_directed_search.h"
@@ -324,11 +325,11 @@ boolean try_route(int width_fac, struct s_router_opts router_opts,
 	} else if (router_opts.router_algorithm == DIRECTED_SEARCH_CONR) {
 		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: DIRECTED_SEARCH_CONR.\n");
 		success = try_directed_search_route_conr(router_opts, clb_opins_used_locally);
-//	} else if (router_opts.router_algorithm == TIMING_DRIVEN_CONR) {
-//		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: TIMING_DRIVEN_CONR.\n");
-//		assert(router_opts.route_type != GLOBAL);
-//		success = try_timing_driven_route_conr(router_opts, net_delay, slacks,
-//			clb_opins_used_locally,timing_inf.timing_analysis_enabled);
+	} else if (router_opts.router_algorithm == TIMING_DRIVEN_CONR) {
+		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: TIMING_DRIVEN_CONR.\n");
+		assert(router_opts.route_type != GLOBAL);
+		success = try_timing_driven_route_conr(router_opts, net_delay, slacks,
+			clb_opins_used_locally,timing_inf.timing_analysis_enabled);
 	} else { /* TIMING_DRIVEN route */
 		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: TIMING_DRIVEN.\n");
 		assert(router_opts.route_type != GLOBAL);
@@ -2563,3 +2564,106 @@ void pathfinder_update_cost_acc(float pres_fac,
         }
     }
 }
+
+
+void free_traceback_td_con(int icon) {
+
+    /* Puts the entire traceback (old routing) for this  connection on the free list *
+     * and sets the trace_head and trace_tail pointers for the connection to NULL.            */
+    
+    if(trace_head_con[icon]!=NULL){
+        trace_tail_con[icon]->next = trace_free_head;
+        back_trace_tail_con[icon]->next = trace_head_con[icon];
+        trace_free_head = back_trace_head_con[icon];
+    }
+    
+    #ifdef DEBUG
+    /*The number of trace elements per trace has to be kept to make this work*
+    num_trace_allocated -= num_trace_elements_con[icon];
+    num_trace_elements_con[icon] = 0;
+     */
+    #endif
+
+    trace_head_con[icon] = NULL;
+    trace_tail_con[icon] = NULL;
+    back_trace_head_con[icon] = NULL;
+    back_trace_tail_con[icon] = NULL;
+    
+}
+
+struct s_trace * update_traceback_td_con(struct s_heap *hptr, int icon) {
+
+    /* This routine adds the most recently finished wire segment to the         *
+     * traceback linked list.  The first connection starts with the net SOURCE  *
+     * and begins at the structure pointed to by trace_head[inet]. Each         *
+     * connection ends with a SINK.  After each SINK, the next connection       *
+     * begins (if the net has more than 2 pins).  The first element after the   *
+     * SINK gives the routing node on a previous piece of the routing, which is *
+     * the link from the existing net to this new piece of the net.             *
+     * In each traceback I start at the end of a path and trace back through    *
+     * its predecessors to the beginning.  I have stored information on the     *
+     * predecesser of each node to make traceback easy -- this sacrificies some *
+     * memory for easier code maintenance.  This routine returns a pointer to   *
+     * the first "new" node in the traceback (node not previously in trace).    */
+
+    struct s_trace *tptr, *prevptr, *btptr, *next_btptr;
+    int inode, old_inode;
+    short iedge;
+
+#ifdef DEBUG
+    t_rr_type rr_type;
+#endif
+
+    inode = hptr->index;
+
+#ifdef DEBUG
+    rr_type = rr_node[inode].type;
+    if (rr_type != SINK) {
+        printf("Error in update_traceback_con.  Expected type = SINK (%d).\n",
+                SINK);
+        printf("Got type = %d while tracing back connection %d.\n", rr_type,
+                icon);
+        exit(1);
+    }
+#endif
+
+    tptr = alloc_trace_data(); /* SINK on the end of the connection */
+    tptr->index = inode;
+//    printf("%d\t%d\n",inode,rr_node[inode].type);
+    tptr->iswitch = OPEN;
+    tptr->next = NULL;
+    trace_tail_con[icon] = tptr; /* This will become the new tail at the end */
+    /* of the routine.*/
+    
+    btptr = alloc_trace_data(); /* SINK on the end of the connection */
+    btptr->index = inode;
+    back_trace_head_con[icon] = btptr;
+    
+    /* Now do it's predecessor. */
+    inode = hptr->u.prev_node;
+    iedge = hptr->prev_edge;
+
+    while (inode != NO_PREVIOUS) {
+        //printf("%d\t%d\n",inode,rr_node[inode].type);
+        prevptr = alloc_trace_data();
+        prevptr->index = inode;
+        prevptr->iswitch = rr_node[inode].switches[iedge];
+        prevptr->next = tptr;
+        tptr = prevptr;
+        
+        next_btptr = alloc_trace_data();
+        next_btptr->index = inode;
+        btptr->iswitch = rr_node[inode].switches[iedge];
+        btptr->next = next_btptr;
+        btptr = next_btptr;
+        
+        iedge = rr_node_route_inf[inode].prev_edge;
+        old_inode = inode;
+        inode = rr_node_route_inf[inode].prev_node;  
+    }
+    trace_head_con[icon] = tptr;
+    back_trace_tail_con[icon] = btptr;
+    btptr->next = NULL;
+    return tptr;
+}
+

@@ -1125,7 +1125,7 @@ typedef struct s_rr_to_rg_node_entry {
 } s_rr_to_rg_node_entry;
 
 typedef struct s_rr_to_rg_node_hash_map{
-	s_rr_to_rg_node_entry** node_entries;
+    s_rr_to_rg_node_entry** node_entries;
     int size;
     int no_entries;
 } s_rr_to_rg_node_hash_map;
