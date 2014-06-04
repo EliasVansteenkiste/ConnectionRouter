@@ -577,7 +577,10 @@ static int add_net_to_hash(INOUTP struct s_hash **nhash, INP char *net_name,
 	}
 	return hash_value->index;
 }
-
+/* Function countPorts:
+ * 	This function parses the <port> blocks in the input,output and global category in order to count
+ * 	the number of ports in each category.
+ */
 void countPorts(ezxml_t Cur,const char **Prop,t_pb* pb,int *in_port,int *out_port,int *clock_port)
 {
 	int i, found;
@@ -613,6 +616,42 @@ void countPorts(ezxml_t Cur,const char **Prop,t_pb* pb,int *in_port,int *out_por
 		exit(1);
 	}
 }
+
+/* Function errorCheckPins:
+ * 	This function does an error checking on the connections that reach and leave a block so
+ * 	to be sure that they do not exceed the available number of pins
+ */
+void errorCheckPins(const char *Prop, ezxml_t Cur, char **pins, int num_tokens, ezxml_t Parent, t_pb* pb, int in_port, int out_port,int clock_port)
+{
+	if (0 == strcmp(Parent->name, "inputs")) {
+		if (num_tokens != pb->pb_graph_node->num_input_pins[in_port]) {
+			vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Incorrect # pins %d found for port %s for pb %s[%d].\n",
+					Cur->line, num_tokens, Prop,
+					pb->pb_graph_node->pb_type->name,
+					pb->pb_graph_node->placement_index);
+			exit(1);
+		}
+	} else if (0 == strcmp(Parent->name, "outputs")) {
+		if (num_tokens
+				!= pb->pb_graph_node->num_output_pins[out_port]) {
+			vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Incorrect # pins %d found for port %s for pb %s[%d].\n",
+					Cur->line, num_tokens, Prop,
+					pb->pb_graph_node->pb_type->name,
+					pb->pb_graph_node->placement_index);
+			exit(1);
+		}
+	} else {
+		if (num_tokens
+				!= pb->pb_graph_node->num_clock_pins[clock_port]) {
+			vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Incorrect # pins %d found for port %s for pb %s[%d].\n",
+					Cur->line, num_tokens, Prop,
+					pb->pb_graph_node->pb_type->name,
+					pb->pb_graph_node->placement_index);
+			exit(1);
+		}
+	}
+}
+
 static void processPortsAndConn(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 		t_rr_node *rr_graph, INOUTP t_pb** rr_node_to_pb_mapping, INP struct s_hash **vpack_net_hash) {
 
@@ -631,38 +670,13 @@ static void processPortsAndConn(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 	while (Cur) {
 		if (0 == strcmp(Cur->name, "port")) {
 			CheckElement(Cur, "port");
-
+			/* This is a function that counts the number of the ports for input,output and global */
 			countPorts(Cur,&Prop,pb,&in_port,&out_port,&clock_port);
 
 			pins = GetNodeTokens(Cur);
 			num_tokens = CountTokens(pins);
-			if (0 == strcmp(Parent->name, "inputs")) {
-				if (num_tokens != pb->pb_graph_node->num_input_pins[in_port]) {
-					vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Incorrect # pins %d found for port %s for pb %s[%d].\n",
-							Cur->line, num_tokens, Prop,
-							pb->pb_graph_node->pb_type->name,
-							pb->pb_graph_node->placement_index);
-					exit(1);
-				}
-			} else if (0 == strcmp(Parent->name, "outputs")) {
-				if (num_tokens
-						!= pb->pb_graph_node->num_output_pins[out_port]) {
-					vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Incorrect # pins %d found for port %s for pb %s[%d].\n",
-							Cur->line, num_tokens, Prop,
-							pb->pb_graph_node->pb_type->name,
-							pb->pb_graph_node->placement_index);
-					exit(1);
-				}
-			} else {
-				if (num_tokens
-						!= pb->pb_graph_node->num_clock_pins[clock_port]) {
-					vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Incorrect # pins %d found for port %s for pb %s[%d].\n",
-							Cur->line, num_tokens, Prop,
-							pb->pb_graph_node->pb_type->name,
-							pb->pb_graph_node->placement_index);
-					exit(1);
-				}
-			}
+			errorCheckPins(Prop,Cur, pins,num_tokens, Parent,pb, in_port,  out_port, clock_port);
+
 			if (0 == strcmp(Parent->name, "inputs")
 					|| 0 == strcmp(Parent->name, "clocks")) {
 				if (pb->parent_pb == NULL) {
