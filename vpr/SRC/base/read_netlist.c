@@ -345,6 +345,9 @@ static void processPb(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 
 	Cur = FindElement(Parent, "inputs", TRUE);
 	processPorts(Cur, pb, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
+	/* Apart from the processing of the ports we will add a processing for a new type that
+	 * will allow more than one input wire from more than one pin.
+	 */
 	FreeNode(Cur);
 	Cur = FindElement(Parent, "outputs", TRUE);
 	processPorts(Cur, pb, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
