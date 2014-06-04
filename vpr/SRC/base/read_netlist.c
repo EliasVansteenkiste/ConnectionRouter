@@ -22,7 +22,7 @@
 #include "token.h"
 #include "rr_graph.h"
 
-static void processPorts(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
+static void processPortsAndConn(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 		INOUTP t_rr_node *rr_graph, INOUTP t_pb** rr_node_to_pb_mapping, INP struct s_hash **vpack_net_hash);
 
 static void processPb(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
@@ -344,16 +344,13 @@ static void processPb(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 	struct s_hash *temp_hash;
 
 	Cur = FindElement(Parent, "inputs", TRUE);
-	processPorts(Cur, pb, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
-	/* Apart from the processing of the ports we will add a processing for a new type that
-	 * will allow more than one input wire from more than one pin.
-	 */
+	processPortsAndConn(Cur, pb, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
 	FreeNode(Cur);
 	Cur = FindElement(Parent, "outputs", TRUE);
-	processPorts(Cur, pb, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
+	processPortsAndConn(Cur, pb, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
 	FreeNode(Cur);
 	Cur = FindElement(Parent, "clocks", TRUE);
-	processPorts(Cur, pb, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
+	processPortsAndConn(Cur, pb, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
 	FreeNode(Cur);
 
 	pb_type = pb->pb_graph_node->pb_type;
@@ -581,7 +578,42 @@ static int add_net_to_hash(INOUTP struct s_hash **nhash, INP char *net_name,
 	return hash_value->index;
 }
 
-static void processPorts(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
+void countPorts(ezxml_t Cur,const char **Prop,t_pb* pb,int *in_port,int *out_port,int *clock_port)
+{
+	int i, found;
+
+	*Prop = FindProperty(Cur, "name", TRUE);
+	ezxml_set_attr(Cur, "name", NULL);
+
+	*in_port = *out_port = *clock_port = 0;
+	found = FALSE;
+	for (i = 0; i < pb->pb_graph_node->pb_type->num_ports; i++) {
+		if (0 == strcmp(pb->pb_graph_node->pb_type->ports[i].name,*Prop)) {
+			found = TRUE;
+			break;
+		}
+		if (pb->pb_graph_node->pb_type->ports[i].is_clock
+				&& pb->pb_graph_node->pb_type->ports[i].type
+						== IN_PORT) {
+			(*clock_port)++;
+		} else if (!pb->pb_graph_node->pb_type->ports[i].is_clock
+				&& pb->pb_graph_node->pb_type->ports[i].type
+						== IN_PORT) {
+			(*in_port)++;
+		} else {
+			assert(
+					pb->pb_graph_node->pb_type->ports[i].type == OUT_PORT);
+			(*out_port)++;
+		}
+	}
+	if (!found) {
+		vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Unknown port %s for pb %s[%d].\n",
+				Cur->line, *Prop, pb->pb_graph_node->pb_type->name,
+				pb->pb_graph_node->placement_index);
+		exit(1);
+	}
+}
+static void processPortsAndConn(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 		t_rr_node *rr_graph, INOUTP t_pb** rr_node_to_pb_mapping, INP struct s_hash **vpack_net_hash) {
 
 	int i, j, in_port, out_port, clock_port, num_tokens;
@@ -600,38 +632,7 @@ static void processPorts(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 		if (0 == strcmp(Cur->name, "port")) {
 			CheckElement(Cur, "port");
 
-			Prop = FindProperty(Cur, "name", TRUE);
-			ezxml_set_attr(Cur, "name", NULL);
-
-			in_port = out_port = clock_port = 0;
-			found = FALSE;
-			for (i = 0; i < pb->pb_graph_node->pb_type->num_ports; i++) {
-				if (0
-						== strcmp(pb->pb_graph_node->pb_type->ports[i].name,
-								Prop)) {
-					found = TRUE;
-					break;
-				}
-				if (pb->pb_graph_node->pb_type->ports[i].is_clock
-						&& pb->pb_graph_node->pb_type->ports[i].type
-								== IN_PORT) {
-					clock_port++;
-				} else if (!pb->pb_graph_node->pb_type->ports[i].is_clock
-						&& pb->pb_graph_node->pb_type->ports[i].type
-								== IN_PORT) {
-					in_port++;
-				} else {
-					assert(
-							pb->pb_graph_node->pb_type->ports[i].type == OUT_PORT);
-					out_port++;
-				}
-			}
-			if (!found) {
-				vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Unknown port %s for pb %s[%d].\n",
-						Cur->line, Prop, pb->pb_graph_node->pb_type->name,
-						pb->pb_graph_node->placement_index);
-				exit(1);
-			}
+			countPorts(Cur,&Prop,pb,&in_port,&out_port,&clock_port);
 
 			pins = GetNodeTokens(Cur);
 			num_tokens = CountTokens(pins);
