@@ -590,6 +590,7 @@ void countPorts(ezxml_t Cur,const char **Prop,t_pb* pb,int *in_port,int *out_por
 
 	*in_port = *out_port = *clock_port = 0;
 	found = FALSE;
+
 	for (i = 0; i < pb->pb_graph_node->pb_type->num_ports; i++) {
 		if (0 == strcmp(pb->pb_graph_node->pb_type->ports[i].name,*Prop)) {
 			found = TRUE;
@@ -652,7 +653,7 @@ void errorCheckPins(const char *Prop, ezxml_t Cur, char **pins, int num_tokens, 
 	}
 }
 
-void find_a_name_to_put(ezxml_t Cur, INOUTP ezxml_t Parent, INOUTP t_pb* pb, int num_tokens, int in_port, int out_port,int clock_port,
+void place_connections_ports(ezxml_t Cur, INOUTP ezxml_t Parent, INOUTP t_pb* pb, int num_tokens, int in_port, int out_port,int clock_port,
 						char **pins, t_rr_node *rr_graph,INOUTP t_pb** rr_node_to_pb_mapping,INP struct s_hash **vpack_net_hash)
 {
 	int i,j;
@@ -662,7 +663,6 @@ void find_a_name_to_put(ezxml_t Cur, INOUTP ezxml_t Parent, INOUTP t_pb* pb, int
 	int *num_ptrs, num_sets;
 	t_pb_graph_pin *** pin_node;
 	boolean found;
-
 
 	if (0 == strcmp(Parent->name, "inputs")
 			|| 0 == strcmp(Parent->name, "clocks")) {
@@ -675,6 +675,7 @@ void find_a_name_to_put(ezxml_t Cur, INOUTP ezxml_t Parent, INOUTP t_pb* pb, int
 				}else
 					rr_node_index =
 							pb->pb_graph_node->clock_pins[clock_port][i].pin_count_in_cluster;
+				printf("rr_node_index: %d\n",rr_node_index);
 				if (strcmp(pins[i], "open") != 0) {
 					temp_hash = get_hash_entry(vpack_net_hash, pins[i]);
 					if (temp_hash == NULL) {
@@ -797,13 +798,171 @@ void find_a_name_to_put(ezxml_t Cur, INOUTP ezxml_t Parent, INOUTP t_pb* pb, int
 
 }
 
+void place_connections_con(ezxml_t Cur, INOUTP ezxml_t Parent, INOUTP t_pb* pb, int in_port, int out_port,int clock_port,
+						char *source,char* sink, t_rr_node *rr_graph,INOUTP t_pb** rr_node_to_pb_mapping,INP struct s_hash **vpack_net_hash)
+{
+	int i,j;
+	int rr_node_index;
+	struct s_hash *temp_hash;
+	char *port_name, *interconnect_name;
+	int *num_ptrs, num_sets;
+	t_pb_graph_pin *** pin_node;
+	boolean found;
+	int num_of_con = 2;
+	char *pins;
+
+	if (0 == strcmp(Parent->name, "inputs")) {
+		if (pb->parent_pb == NULL) {
+
+			printf("We have to find out what are we going to do with this one\n");
+			/* top-level, connections are nets to route
+			if (0 == strcmp(Parent->name, "inputs")){
+				rr_node_index =
+						pb->pb_graph_node->input_pins[in_port][i].pin_count_in_cluster;
+			}else
+				rr_node_index =
+						pb->pb_graph_node->clock_pins[clock_port][i].pin_count_in_cluster;
+
+
+			/*if (strcmp(pins[i], "open") != 0) {
+				temp_hash = get_hash_entry(vpack_net_hash, pins[i]);
+				if (temp_hash == NULL) {
+					vpr_printf(TIO_MESSAGE_ERROR, ".blif and .net do not match, unknown net %s found in .net file.\n.", pins[i]);
+				}
+				rr_graph[rr_node_index].net_num = temp_hash->index;
+			}
+			rr_node_to_pb_mapping[rr_node_index] = pb;
+			*/
+		} else {
+			pins = source;
+			for(i = 0; i < num_of_con /* In general case it should be 2*/; i++){
+				/* We make the convention that the source and the sink can not be open of course */
+				if (0 == strcmp(source, "open")) {
+					continue;
+				}
+				interconnect_name = strstr(pins, "->");
+				*interconnect_name = '\0';
+				interconnect_name += 2;
+				port_name = pins;
+				pin_node =
+						alloc_and_load_port_pin_ptrs_from_string(
+								pb->pb_graph_node->pb_type->parent_mode->interconnect[0].line_num,
+								pb->pb_graph_node->parent_pb_graph_node,
+								pb->pb_graph_node->parent_pb_graph_node->child_pb_graph_nodes[pb->parent_pb->mode],
+								port_name, &num_ptrs, &num_sets, TRUE,
+								TRUE);
+				assert(num_sets == 1 && num_ptrs[0] == 1);
+				if (0 == strcmp(Parent->name, "inputs"))
+					rr_node_index =
+							pb->pb_graph_node->input_pins[in_port][i].pin_count_in_cluster;
+				else
+					rr_node_index =
+							pb->pb_graph_node->clock_pins[clock_port][i].pin_count_in_cluster;
+				rr_graph[rr_node_index].prev_node =
+						pin_node[0][0]->pin_count_in_cluster;
+				rr_node_to_pb_mapping[rr_node_index] = pb;
+				found = FALSE;
+				for (j = 0; j < pin_node[0][0]->num_output_edges; j++) {
+					if (0
+							== strcmp(interconnect_name,
+									pin_node[0][0]->output_edges[j]->interconnect->name)) {
+						found = TRUE;
+						break;
+					}
+				}
+				for (j = 0; j < num_sets; j++) {
+					free(pin_node[j]);
+				}
+				free(pin_node);
+				free(num_ptrs);
+				if (!found) {
+					vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Unknown interconnect %s connecting to pin %s.\n",
+							Cur->line, interconnect_name, port_name);
+					exit(1);
+				}
+				pins = sink;
+			}
+		}
+	}
+
+	if (0 == strcmp(Parent->name, "outputs")) {
+		if (pb->pb_graph_node->pb_type->num_modes == 0) {
+			/* primitives are drivers of nets */
+			pins = source;
+			for (i = 0; i < num_of_con; i++) {
+				rr_node_index =
+						pb->pb_graph_node->output_pins[out_port][i].pin_count_in_cluster;
+				if (strcmp(pins, "open") != 0) {
+					temp_hash = get_hash_entry(vpack_net_hash, pins);
+					if (temp_hash == NULL) {
+						vpr_printf(TIO_MESSAGE_ERROR, ".blif and .net do not match, unknown net %s found in .net file.\n", pins);
+					}
+					rr_graph[rr_node_index].net_num = temp_hash->index;
+				}
+				rr_node_to_pb_mapping[rr_node_index] = pb;
+				pins = sink;
+			}
+		} else {
+			pins = source;
+			for (i = 0; i < num_of_con; i++) {
+				if (0 == strcmp(pins, "open")) {
+					continue;
+				}
+				interconnect_name = strstr(pins, "->");
+				*interconnect_name = '\0';
+				interconnect_name += 2;
+				port_name = pins;
+				pin_node =
+						alloc_and_load_port_pin_ptrs_from_string(
+								pb->pb_graph_node->pb_type->modes[pb->mode].interconnect->line_num,
+								pb->pb_graph_node,
+								pb->pb_graph_node->child_pb_graph_nodes[pb->mode],
+								port_name, &num_ptrs, &num_sets, TRUE,
+								TRUE);
+				assert(num_sets == 1 && num_ptrs[0] == 1);
+				rr_node_index =
+						pb->pb_graph_node->output_pins[out_port][i].pin_count_in_cluster;
+				rr_graph[rr_node_index].prev_node =
+						pin_node[0][0]->pin_count_in_cluster;
+				rr_node_to_pb_mapping[rr_node_index] = pb;
+				found = FALSE;
+				for (j = 0; j < pin_node[0][0]->num_output_edges; j++) {
+					if (0
+							== strcmp(interconnect_name,
+									pin_node[0][0]->output_edges[j]->interconnect->name)) {
+						found = TRUE;
+						break;
+					}
+				}
+				for (j = 0; j < num_sets; j++) {
+					free(pin_node[j]);
+				}
+				free(pin_node);
+				free(num_ptrs);
+				if (!found) {
+					vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Unknown interconnect %s connecting to pin %s.\n",
+							Cur->line, interconnect_name, port_name);
+					exit(1);
+				}
+				interconnect_name -= 2;
+				*interconnect_name = '-';
+
+				pins = sink;
+			}
+		}
+	}
+
+}
+
 static void processPortsAndConn(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 		t_rr_node *rr_graph, INOUTP t_pb** rr_node_to_pb_mapping, INP struct s_hash **vpack_net_hash) {
 
 	int in_port, out_port, clock_port, num_tokens;
-	ezxml_t Cur, Prev;
-	const char *Prop;
+	ezxml_t Cur, Prev, Con;
+	const char *Prop, *condition;
 	char **pins;
+	t_token condition_tokens;
+	int i;
 
 	Cur = Parent->child;
 	while (Cur) {
@@ -816,14 +975,70 @@ static void processPortsAndConn(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 			num_tokens = CountTokens(pins);
 			errorCheckPins(Prop,Cur, pins,num_tokens, Parent,pb, in_port,  out_port, clock_port);
 
-			find_a_name_to_put(Cur, Parent, pb, num_tokens, in_port, out_port,clock_port, pins, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
+			place_connections_ports(Cur, Parent, pb, num_tokens, in_port, out_port,clock_port, pins, rr_graph, rr_node_to_pb_mapping, vpack_net_hash);
 
 			FreeTokens(&pins);
 
 			Prev = Cur;
 			Cur = Cur->next;
 			FreeNode(Prev);
-		} else {
+		}else if(0 == strcmp(Cur->name, "con")){
+			boolean sourceFound = FALSE;
+			boolean sinkFound = FALSE;
+			boolean conditionFound = FALSE;
+			char **source,**sink,**condition;
+
+			CheckElement(Cur, "con");
+			i = 0;
+
+			countPorts(Cur,&Prop,pb,&in_port,&out_port,&clock_port);
+			/* TODO: Do we need an error control? */
+			Con = Cur->child;
+			while (Con) {
+				if (0 == strcmp(Con->name, "source")) {
+					CheckElement(Con, "source");
+					/* process the source */
+					sourceFound = TRUE;
+					source = GetNodeTokens(Con);
+					num_tokens = CountTokens(source); /* Generally it should be just one source node */
+					if(num_tokens > 1){
+						vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] More than one sources \n");
+						//exit(0);
+					}
+					Prev = Con;
+					Con = Con->next;
+					FreeNode(Prev);
+					i++;
+				} else if((0 == strcmp(Con->name, "sink"))){
+					CheckElement(Con, "sink");
+					sinkFound = TRUE;
+					sink = GetNodeTokens(Con);
+					num_tokens = CountTokens(sink); /* Generally it should be just one sink node */
+					if(num_tokens > 1){
+						vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] More than one sources \n");
+						//exit(0);
+					}
+					Prev = Con;
+					Con = Con->next;
+					FreeNode(Prev);
+					i++;
+				}else if((0 == strcmp(Con->name, "condition"))){
+					CheckElement(Con, "condition");
+					conditionFound = TRUE;
+
+					Prev = Con;
+					Con = Con->next;
+					FreeNode(Prev);
+					i++;
+				}else{
+					Con = Con->next;
+				}
+
+			}
+			Prev = Con;
+			Con = Con->next;
+			FreeNode(Prev);
+		}else {
 			Cur = Cur->next;
 		}
 	}
