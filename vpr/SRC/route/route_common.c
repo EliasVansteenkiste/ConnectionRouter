@@ -850,6 +850,20 @@ void alloc_and_load_rr_node_route_structs(void) {
 		rr_node_route_inf[inode].acc_cost = 1.;
 		rr_node_route_inf[inode].path_cost = HUGE_POSITIVE_FLOAT;
 		rr_node_route_inf[inode].target_flag = 0;
+
+        rr_node_route_inf[inode].acc_cost1 = 0.;
+        rr_node_route_inf[inode].acc_cost2 = 0.;
+        rr_node_route_inf[inode].acc_cost3 = 0.;
+
+        rr_node_route_inf[inode].max_size_source_list = 0;
+        rr_node_route_inf[inode].num_cons = 0;
+        rr_node_route_inf[inode].source_list_head = NULL;
+
+        rr_node_route_inf[inode].entries_allocated = 0;
+        rr_node_route_inf[inode].sources = NULL;
+
+        rr_node_route_inf[inode].usage = 0;
+
 	}
 }
 

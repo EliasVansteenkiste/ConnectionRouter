@@ -50,7 +50,7 @@ static int get_expected_segs_to_target(int inode,
         int target_node,
         int *num_segs_ortho_dir_ptr);
 
-static void update_rr_base_costs(int inet);
+static void update_rr_base_costs(int inet, float largest_criticality) ;
 
 static void timing_driven_check_net_delays(float **net_delay);
 
@@ -112,7 +112,7 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
     float secs = 0.0;
     s_rr_to_rg_node_hash_map* node_map = NULL;
    
-
+    
     sinks = (float*) my_malloc(sizeof (float) * num_nets);
     net_index = (int*) my_malloc(sizeof (int) * num_nets);
     for (i = 0; i < num_nets; i++) {
@@ -148,7 +148,11 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
                 cons[icon].net = net;
                 cons[icon].source = net_rr_terminals[net][0];
                 cons[icon].source_block = clb_net[net].node_block[0];
+                cons[icon].source_block_pin = clb_net[net].node_block_pin[0];
+                //cons[icon].source_block_port = clb_net[net].node_block_port[0];
                 cons[icon].sink_block = clb_net[net].node_block[isink + 1];
+                cons[icon].sink_block_pin = clb_net[net].node_block_pin[isink + 1];
+                //cons[icon].sink_block_port = clb_net[net].node_block_port[isink + 1];
                 cons[icon].target_node = net_rr_terminals[net][isink + 1];
                 icon++;
 
@@ -184,7 +188,6 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
     } else {
             init_timing_criticality_val = 0.;
     }
-     
     for (inet = 0; inet < num_nets; inet++) {
         rg_roots[inet] = init_graph_to_source(inet, rg_sinks, &node_maps[inet]);
         if (clb_net[inet].is_global == FALSE) {
@@ -237,7 +240,7 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
 
             /* Impossible to route? (disconnected rr_graph) */
             if (!is_routable) {
-		vpr_printf(TIO_MESSAGE_INFO, "Routing failed.\n");
+            	vpr_printf(TIO_MESSAGE_INFO, "Routing failed.\n");
                 free_timing_driven_route_structs_td();
                 free(net_index);
                 free(sinks);
@@ -467,7 +470,7 @@ timing_driven_route_con(int icon,
     }
 
     /* Update base costs according to fanout */
-    update_rr_base_costs(net);
+    update_rr_base_costs(net, largest_criticality);
 
     highfanout_rlim = mark_node_expansion_by_bin(net, target_node, rg_roots[net]);
 
@@ -483,6 +486,7 @@ timing_driven_route_con(int icon,
     
     inode = current->index;
 
+    //printf("icon %d, con_crit %f\n",icon,con_crit);
     while (inode != target_node) {
         old_total_path_cost = rr_node_route_inf[inode].path_cost;
         new_total_path_cost = current->cost;
@@ -829,29 +833,28 @@ get_expected_segs_to_target(int inode,
     return (num_segs_same_dir);
 }
 
-static void
-update_rr_base_costs(int inet) {
+static void update_rr_base_costs(int inet, float largest_criticality) {
 
-    /* Changes the base costs of different types of rr_nodes according to the  *
-     * criticality, fanout, etc. of the current net being routed (inet).       */
+	/* Changes the base costs of different types of rr_nodes according to the  *
+	 * criticality, fanout, etc. of the current net being routed (inet).       */
 
-    float fanout, factor;
-    int index;
+	float fanout, factor;
+	int index;
 
-    fanout = clb_net[inet].num_sinks;
+	fanout = clb_net[inet].num_sinks;
 
-    /* Other reasonable values for factor include fanout and 1 */
-    factor = sqrt(fanout);
+	/* Other reasonable values for factor include fanout and 1 */
+	factor = sqrt(fanout);
 
-    for (index = CHANX_COST_INDEX_START; index < num_rr_indexed_data; index++) {
-        if (rr_indexed_data[index].T_quadratic > 0.) { /* pass transistor */
-            rr_indexed_data[index].base_cost =
-                    rr_indexed_data[index].saved_base_cost * factor;
-        } else {
-            rr_indexed_data[index].base_cost =
-                    rr_indexed_data[index].saved_base_cost;
-        }
-    }
+	for (index = CHANX_COST_INDEX_START; index < num_rr_indexed_data; index++) {
+		if (rr_indexed_data[index].T_quadratic > 0.) { /* pass transistor */
+			rr_indexed_data[index].base_cost =
+					rr_indexed_data[index].saved_base_cost * factor;
+		} else {
+			rr_indexed_data[index].base_cost =
+					rr_indexed_data[index].saved_base_cost;
+		}
+	}
 }
 
 /* Nets that have high fanout can take a very long time to route.  Each sink should be routed contained within a bin instead of the entire bounding box to speed things up */
@@ -1071,7 +1074,7 @@ static void add_con_td(int con, int net, float *net_delay, s_rr_to_rg_node_hash_
     //printf("Path found: ");
     for (tptr = route_segment_start;;) {
         inode = tptr->index;
-        //printf("%d (%d) -> ",inode,rr_node[inode].type);
+        //printf("%d (%d) (%d) -> ",inode,rr_node[inode].type, rr_node_route_inf[inode].usage);
 #ifdef DEBUG
         if(previous_usage != -1 && rr_node_route_inf[inode].usage > previous_usage){
             usage_increases = TRUE;
