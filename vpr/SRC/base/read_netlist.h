@@ -8,6 +8,12 @@
 #ifndef READ_NETLIST_H
 #define READ_NETLIST_H
 
+typedef struct {
+	char *source;
+	char *sink;
+	char *condition;
+}t_con;
+
 void read_netlist(INP const char *net_file, 
 		INP const t_arch *arch,
 		OUTP int *L_num_blocks, 

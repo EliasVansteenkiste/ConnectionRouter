@@ -64,66 +64,32 @@ static void mark_constant_generators_rec(INP t_pb *pb, INP t_rr_node *rr_graph,
 
 void readCon(ezxml_t *Cur,char **source,char **sink,char **condition)
 {
-	boolean sourceFound = FALSE;
-	boolean sinkFound = FALSE;
-	boolean conditionFound = FALSE;
 	ezxml_t Con,Prev;
 	int i;
-
-
-	CheckElement(*Cur, "con");
+	char **sourceTemp,**sinkTemp,**conditionTemp;
 	i = 0;
 	int num_tokens;
-	/* TODO: Do we need an error control? */
-	Con = (*Cur)->child;
-	while (Con) {
-		if (0 == strcmp(Con->name, "source")) {
-			CheckElement(Con, "source");
-			/* process the source */
-			sourceFound = TRUE;
-			source = GetNodeTokens(Con);
-			num_tokens = CountTokens(source); /* Generally it should be just one source node */
-			if(num_tokens > 1){
-				vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] More than one sources \n");
-				//exit(0);
-			}
-			Prev = Con;
-			Con = Con->next;
-			FreeNode(Prev);
-			i++;
-		} else if((0 == strcmp(Con->name, "sink"))){
-			CheckElement(Con, "sink");
-			sinkFound = TRUE;
-			sink = GetNodeTokens(Con);
-			num_tokens = CountTokens(sink); /* Generally it should be just one sink node */
-			if(num_tokens > 1){
-				vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] More than one sources \n");
-				//exit(0);
-			}
-			Prev = Con;
-			Con = Con->next;
-			FreeNode(Prev);
-			i++;
-		}else if((0 == strcmp(Con->name, "condition"))){
-			CheckElement(Con, "condition");
-			conditionFound = TRUE;
 
-			Prev = Con;
-			Con = Con->next;
-			FreeNode(Prev);
-			i++;
-		}else{
-			Con = Con->next;
-		}
-
+	Con = FindElement(*Cur, "source", TRUE);
+	sourceTemp = GetNodeTokens(Con);
+	*source = strdup(*sourceTemp);
+	FreeNode(Con);
+	printf("source: %s\n",source[0]);
+	Con = FindElement(*Cur, "sink", TRUE);
+	sinkTemp = GetNodeTokens(Con);
+	*sink = strdup(*sinkTemp);
+	FreeNode(Con);
+	printf("sink: %s\n",*sink);
+	Con = FindElement(*Cur, "condition", FALSE);
+	if(Con != NULL)
+	{
+		conditionTemp = GetNodeTokens(Con);
+		*condition = strdup(*conditionTemp);
+		FreeNode(Con);
+		printf("condition: %s\n",*condition);
 	}
-}
 
-typedef struct {
-	char *source;
-	char *sink;
-	char *condition;
-}t_con;
+}
 
 /**
  * Initializes the block_list with info from a netlist 
@@ -239,16 +205,17 @@ void read_netlist(INP const char *net_file, INP const t_arch *arch,
 
 	int conCount;
 	t_con* connections;
-	conCount = CountChildren(Top, "block", 1);
-	connections = (struct t_con *) my_calloc(bcount, sizeof(t_con));
+	conCount = CountChildren(Top, "con", 1);
+	connections = (t_con *) my_calloc(bcount, sizeof(t_con));
 
-	/* Prcoess netlist */
+	/* Process netlist */
 	Cur = Top->child;
 	i = 0;
 	while (Cur) {
 		if(0 == strcmp(Cur->name, "con")){
+			CheckElement(Cur, "con");
 			readCon(&Cur,&connections[i].source,&connections[i].sink,&connections[i].condition);
-
+			printf("%s %s\n",connections[i].source,connections[i].sink);
 			if(connections[i].source == NULL || connections[i].sink == NULL)	{
 				vpr_printf(TIO_MESSAGE_ERROR, "reading <con> type failed. Missing either source, sink or both\n");
 				break;
