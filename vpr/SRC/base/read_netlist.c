@@ -64,11 +64,10 @@ static void mark_constant_generators_rec(INP t_pb *pb, INP t_rr_node *rr_graph,
 
 void readCon(ezxml_t *Cur,char **source,char **sink,char **condition)
 {
-	ezxml_t Con,Prev;
+	ezxml_t Con;
 	int i;
 	char **sourceTemp,**sinkTemp,**conditionTemp;
 	i = 0;
-	int num_tokens;
 
 	Con = FindElement(*Cur, "source", TRUE);
 	sourceTemp = GetNodeTokens(Con);
@@ -199,16 +198,15 @@ void read_netlist(INP const char *net_file, INP const t_arch *arch,
 	assert(i == bcount);
 	assert(num_primitives == num_logical_blocks);
 
-	char *source = NULL,
-		 *sink = NULL,
-		 *condition = NULL;
-
 	int conCount;
 	t_con* connections;
 	conCount = CountChildren(Top, "con", 1);
 	connections = (t_con *) my_calloc(bcount, sizeof(t_con));
 
-	/* Process netlist */
+	/* Process netlist in order to read the <con>*/
+	/* TODO: We have to include error control that will check if there is a
+	 * connection between two sinks or two sources
+	 */
 	Cur = Top->child;
 	i = 0;
 	while (Cur) {
@@ -863,171 +861,13 @@ void place_connections_ports(ezxml_t Cur, INOUTP ezxml_t Parent, INOUTP t_pb* pb
 
 }
 
-void place_connections_con(ezxml_t Cur, INOUTP ezxml_t Parent, INOUTP t_pb* pb, int in_port, int out_port,int clock_port,
-						char *source,char* sink, t_rr_node *rr_graph,INOUTP t_pb** rr_node_to_pb_mapping,INP struct s_hash **vpack_net_hash)
-{
-	int i,j;
-	int rr_node_index;
-	struct s_hash *temp_hash;
-	char *port_name, *interconnect_name;
-	int *num_ptrs, num_sets;
-	t_pb_graph_pin *** pin_node;
-	boolean found;
-	int num_of_con = 2;
-	char *pins;
-
-	if (0 == strcmp(Parent->name, "inputs")) {
-		if (pb->parent_pb == NULL) {
-
-			printf("We have to find out what are we going to do with this one\n");
-			/* top-level, connections are nets to route
-			if (0 == strcmp(Parent->name, "inputs")){
-				rr_node_index =
-						pb->pb_graph_node->input_pins[in_port][i].pin_count_in_cluster;
-			}else
-				rr_node_index =
-						pb->pb_graph_node->clock_pins[clock_port][i].pin_count_in_cluster;
-
-
-			/*if (strcmp(pins[i], "open") != 0) {
-				temp_hash = get_hash_entry(vpack_net_hash, pins[i]);
-				if (temp_hash == NULL) {
-					vpr_printf(TIO_MESSAGE_ERROR, ".blif and .net do not match, unknown net %s found in .net file.\n.", pins[i]);
-				}
-				rr_graph[rr_node_index].net_num = temp_hash->index;
-			}
-			rr_node_to_pb_mapping[rr_node_index] = pb;
-			*/
-		} else {
-			pins = source;
-			for(i = 0; i < num_of_con /* In general case it should be 2*/; i++){
-				/* We make the convention that the source and the sink can not be open of course */
-				if (0 == strcmp(source, "open")) {
-					continue;
-				}
-				interconnect_name = strstr(pins, "->");
-				*interconnect_name = '\0';
-				interconnect_name += 2;
-				port_name = pins;
-				pin_node =
-						alloc_and_load_port_pin_ptrs_from_string(
-								pb->pb_graph_node->pb_type->parent_mode->interconnect[0].line_num,
-								pb->pb_graph_node->parent_pb_graph_node,
-								pb->pb_graph_node->parent_pb_graph_node->child_pb_graph_nodes[pb->parent_pb->mode],
-								port_name, &num_ptrs, &num_sets, TRUE,
-								TRUE);
-				assert(num_sets == 1 && num_ptrs[0] == 1);
-				if (0 == strcmp(Parent->name, "inputs"))
-					rr_node_index =
-							pb->pb_graph_node->input_pins[in_port][i].pin_count_in_cluster;
-				else
-					rr_node_index =
-							pb->pb_graph_node->clock_pins[clock_port][i].pin_count_in_cluster;
-				rr_graph[rr_node_index].prev_node =
-						pin_node[0][0]->pin_count_in_cluster;
-				rr_node_to_pb_mapping[rr_node_index] = pb;
-				found = FALSE;
-				for (j = 0; j < pin_node[0][0]->num_output_edges; j++) {
-					if (0
-							== strcmp(interconnect_name,
-									pin_node[0][0]->output_edges[j]->interconnect->name)) {
-						found = TRUE;
-						break;
-					}
-				}
-				for (j = 0; j < num_sets; j++) {
-					free(pin_node[j]);
-				}
-				free(pin_node);
-				free(num_ptrs);
-				if (!found) {
-					vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Unknown interconnect %s connecting to pin %s.\n",
-							Cur->line, interconnect_name, port_name);
-					exit(1);
-				}
-				pins = sink;
-			}
-		}
-	}
-
-	if (0 == strcmp(Parent->name, "outputs")) {
-		if (pb->pb_graph_node->pb_type->num_modes == 0) {
-			/* primitives are drivers of nets */
-			pins = source;
-			for (i = 0; i < num_of_con; i++) {
-				rr_node_index =
-						pb->pb_graph_node->output_pins[out_port][i].pin_count_in_cluster;
-				if (strcmp(pins, "open") != 0) {
-					temp_hash = get_hash_entry(vpack_net_hash, pins);
-					if (temp_hash == NULL) {
-						vpr_printf(TIO_MESSAGE_ERROR, ".blif and .net do not match, unknown net %s found in .net file.\n", pins);
-					}
-					rr_graph[rr_node_index].net_num = temp_hash->index;
-				}
-				rr_node_to_pb_mapping[rr_node_index] = pb;
-				pins = sink;
-			}
-		} else {
-			pins = source;
-			for (i = 0; i < num_of_con; i++) {
-				if (0 == strcmp(pins, "open")) {
-					continue;
-				}
-				interconnect_name = strstr(pins, "->");
-				*interconnect_name = '\0';
-				interconnect_name += 2;
-				port_name = pins;
-				pin_node =
-						alloc_and_load_port_pin_ptrs_from_string(
-								pb->pb_graph_node->pb_type->modes[pb->mode].interconnect->line_num,
-								pb->pb_graph_node,
-								pb->pb_graph_node->child_pb_graph_nodes[pb->mode],
-								port_name, &num_ptrs, &num_sets, TRUE,
-								TRUE);
-				assert(num_sets == 1 && num_ptrs[0] == 1);
-				rr_node_index =
-						pb->pb_graph_node->output_pins[out_port][i].pin_count_in_cluster;
-				rr_graph[rr_node_index].prev_node =
-						pin_node[0][0]->pin_count_in_cluster;
-				rr_node_to_pb_mapping[rr_node_index] = pb;
-				found = FALSE;
-				for (j = 0; j < pin_node[0][0]->num_output_edges; j++) {
-					if (0
-							== strcmp(interconnect_name,
-									pin_node[0][0]->output_edges[j]->interconnect->name)) {
-						found = TRUE;
-						break;
-					}
-				}
-				for (j = 0; j < num_sets; j++) {
-					free(pin_node[j]);
-				}
-				free(pin_node);
-				free(num_ptrs);
-				if (!found) {
-					vpr_printf(TIO_MESSAGE_ERROR, "[Line %d] Unknown interconnect %s connecting to pin %s.\n",
-							Cur->line, interconnect_name, port_name);
-					exit(1);
-				}
-				interconnect_name -= 2;
-				*interconnect_name = '-';
-
-				pins = sink;
-			}
-		}
-	}
-
-}
-
 static void processPorts(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 		t_rr_node *rr_graph, INOUTP t_pb** rr_node_to_pb_mapping, INP struct s_hash **vpack_net_hash) {
 
 	int in_port, out_port, clock_port, num_tokens;
-	ezxml_t Cur, Prev, Con;
-	const char *Prop, *condition;
+	ezxml_t Cur, Prev;
+	const char *Prop;
 	char **pins;
-	t_token condition_tokens;
-	int i;
 
 	Cur = Parent->child;
 	while (Cur) {
@@ -1051,6 +891,29 @@ static void processPorts(INOUTP ezxml_t Parent, INOUTP t_pb* pb,
 			Cur = Cur->next;
 		}
 	}
+}
+void writeToDebugFile(char *info,int last)
+{
+	static FILE* file = NULL;
+	static int open_file = 0;
+
+	if(!open_file)
+	{
+		file = fopen("debug_file","w");
+		if(file == NULL)
+		{
+			fprintf(stderr,"Failed to open the debug file\n");
+		}
+		open_file = 1;
+	}
+	fprintf(file,"%s",info);
+
+	if(last)
+	{
+		if(fclose(file))
+			printf("file did not close succesfuly\n");
+	}
+
 }
 
 /**  
@@ -1087,11 +950,21 @@ static void load_external_nets_and_cb(INP int L_num_blocks,
 		/* First determine nets external to complex blocks */
 		assert(
 				block_list[i].type->pb_type->num_input_pins + block_list[i].type->pb_type->num_output_pins + block_list[i].type->pb_type->num_clock_pins == block_list[i].type->num_pins / block_list[i].type->capacity);
+		char tempWriteBuffer[20];
+
+
 
 		rr_graph = block_list[i].pb->rr_graph;		/* we start by iterating through the complex blocks */
 		for (j = 0; j < block_list[i].pb->pb_graph_node->num_input_ports; j++) { /* we run through all the ports */
 			for (k = 0; k < block_list[i].pb->pb_graph_node->num_input_pins[j];  /* we also run through all the pins of the ports */
 					k++) {
+
+				sprintf(tempWriteBuffer,"Number of input ports: %d\n",block_list[i].pb->pb_graph_node->num_input_ports);
+				writeToDebugFile(tempWriteBuffer,0);
+
+				sprintf(tempWriteBuffer,"Number of input pins: %d\n",block_list[i].pb->pb_graph_node->num_input_pins[j]);
+				writeToDebugFile(tempWriteBuffer,0);
+
 				pb_graph_pin =
 						&block_list[i].pb->pb_graph_node->input_pins[j][k]; /* We go through all the pins of all the blocks */
 				assert(pb_graph_pin->pin_count_in_cluster == ipin);
@@ -1150,7 +1023,7 @@ static void load_external_nets_and_cb(INP int L_num_blocks,
 			block_list[i].nets[ipin] = OPEN;
 		}
 	}
-
+	writeToDebugFile("\n",1);
 	/* alloc and partially load the list of external nets */
 	(*ext_nets) = alloc_and_init_netlist_from_hash(*ext_ncount, ext_nhash);
 	/* Load global nets */
@@ -1171,7 +1044,7 @@ static void load_external_nets_and_cb(INP int L_num_blocks,
 					/* If it is a receiver */
 					count[netnum]++;
 					/* It counts the number of the receivers so that they do not over pass the number of the available inputs(sinks) */
-					/* TODO: This should probably has to change because we will be able to have more connecions on the same sink */
+					/* TODO: This should probably has to change because we will be able to have more connections on the same sink */
 					if(count[netnum] > (*ext_nets)[netnum].num_sinks) {
 						vpr_printf(TIO_MESSAGE_ERROR, "net %s #%d inconsistency, expected %d terminals but encountered %d terminals, it is likely net terminal is disconnected in netlist file.\n", 
 							(*ext_nets)[netnum].name, netnum, count[netnum], (*ext_nets)[netnum].num_sinks);

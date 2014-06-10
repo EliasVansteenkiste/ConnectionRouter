@@ -230,6 +230,19 @@ typedef struct s_logical_block {
 	t_pb_graph_node *expected_lowest_cost_primitive; /* predicted ideal primitive to use for this logical block */
 } t_logical_block;
 
+
+typedef struct s_map_block {
+	char *name;
+
+	t_model* model; /* Technology-mapped type (eg. LUT, Flip-flop, memory slice, inpad, etc) */
+
+	int **connection;
+
+	int index;
+
+}t_map_block;
+
+
 enum e_pack_pattern_molecule_type {
 	MOLECULE_SINGLE_ATOM, MOLECULE_FORCED_PACK
 };
@@ -275,6 +288,7 @@ typedef struct s_cluster_placement_stats {
 #define MODEL_LATCH "latch"
 #define MODEL_INPUT "input"
 #define MODEL_OUTPUT "output"
+#define MODEL_MAP 	"map"
 
 /******************************************************************
  * Timing data types
@@ -1062,7 +1076,7 @@ typedef struct s_con {
     int sink_block;
     //int sink_block_port;
     //int sink_block_pin;
-    int target_node;
+    int target_node; /* sink node */
     
     float previous_total_path_cost;
     float neighborhood;

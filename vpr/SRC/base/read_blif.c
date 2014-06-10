@@ -9,7 +9,7 @@
 #include "arch_types.h"
 #include "ReadOptions.h"
 #include "hash.h"
-
+#include "logic_types.h"
 /* PRINT_PIN_NETS */
 
 struct s_model_stats {
@@ -50,7 +50,7 @@ static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 static void get_blif_tok(char *buffer, int doall, boolean *done,
 		boolean *add_truth_table, INP t_model* inpad_model,
 		INP t_model* outpad_model, INP t_model* logic_model,
-		INP t_model* latch_model, INP t_model* user_models);
+		INP t_model* latch_model, INP t_model* user_models, INP t_model* map_model);
 static void init_parse(int doall);
 static void check_net(boolean sweep_hanging_nets_and_inputs);
 static void free_parse(void);
@@ -58,11 +58,12 @@ static void io_line(int in_or_out, int doall, t_model *io_model);
 static boolean add_lut(int doall, t_model *logic_model);
 static void add_latch(int doall, INP t_model *latch_model);
 static void add_subckt(int doall, INP t_model *user_models);
+static void add_map(int doall, t_model* map_model);
 static void check_and_count_models(int doall, const char* model_name,
 		t_model* user_models);
 static void load_default_models(INP t_model *library_models,
 		OUTP t_model** inpad_model, OUTP t_model** outpad_model,
-		OUTP t_model** logic_model, OUTP t_model** latch_model);
+		OUTP t_model** logic_model, OUTP t_model** latch_model, OUTP t_model** map_model);
 static void read_activity(char * activity_file);
 static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		t_model *user_models, t_model *library_models,
@@ -81,7 +82,7 @@ static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 	int doall;
 	boolean done;
 	boolean add_truth_table;
-	t_model *inpad_model, *outpad_model, *logic_model, *latch_model;
+	t_model *inpad_model, *outpad_model, *logic_model, *latch_model, *map_model; /*addition of the map model */
 	clock_t begin, end;
 
 	blif = fopen(blif_file, "r");
@@ -91,7 +92,7 @@ static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		exit(1);
 	}
 	load_default_models(library_models, &inpad_model, &outpad_model,
-			&logic_model, &latch_model);
+			&logic_model, &latch_model, &map_model);
 
 	/* doall = 0 means do a counting pass, doall = 1 means allocate and load data structures */
 	for (doall = 0; doall <= 1; doall++) {
@@ -115,7 +116,7 @@ static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		model_lines = 0;
 		while (my_fgets(buffer, BUFSIZE, blif) != NULL ) {
 			get_blif_tok(buffer, doall, &done, &add_truth_table, inpad_model,
-					outpad_model, logic_model, latch_model, user_models);
+					outpad_model, logic_model, latch_model, user_models, map_model);
 		}
 		rewind(blif); /* Start at beginning of file again */
 
@@ -169,6 +170,8 @@ static void init_parse(int doall) {
 				sizeof(int));
 		logical_block_output_count = (int *) my_calloc(num_logical_blocks,
 				sizeof(int));
+		/* This is the data structure for the .map type */
+		map_block = (struct s_map_block *) my_calloc(num_map_blocks,sizeof(struct s_map_block)); /* This is the array that will hold all the information about the explicit connections */
 
 		for (i = 0; i < num_logical_nets; i++) {
 			num_driver[i] = 0;
@@ -183,7 +186,10 @@ static void init_parse(int doall) {
 		for (i = 0; i < num_logical_blocks; i++) {
 			logical_block[i].index = i;
 		}
-
+		/* Added to support the new .map */
+		for (i = 0; i < num_map_blocks; i++) {
+					map_block[i].index = i;
+		}
 		for (i = 0; i < HASHSIZE; i++) {
 			h_ptr = blif_hash[i];
 			while (h_ptr != NULL ) {
@@ -227,7 +233,7 @@ static void init_parse(int doall) {
 static void get_blif_tok(char *buffer, int doall, boolean *done,
 		boolean *add_truth_table, INP t_model* inpad_model,
 		INP t_model* outpad_model, INP t_model* logic_model,
-		INP t_model* latch_model, INP t_model* user_models) {
+		INP t_model* latch_model, INP t_model* user_models, INP t_model* map_model) {
 
 	/* Figures out which, if any token is at the start of this line and *
 	 * takes the appropriate action.                                    */
@@ -348,6 +354,12 @@ static void get_blif_tok(char *buffer, int doall, boolean *done,
 	if (strcmp(ptr, ".subckt") == 0) {
 		*add_truth_table = FALSE;
 		add_subckt(doall, user_models);
+	}
+
+	/* New add for the support of the tmux */
+	if	(strcmp(ptr, ".map") == 0){
+		*add_truth_table = FALSE;
+		add_map(doall, map_model);
 	}
 
 	/* Could have numbers following a .names command, so not matching any *
@@ -876,6 +888,52 @@ static void check_and_count_models(int doall, const char* model_name,
 	}
 }
 
+static void add_map(int doall, t_model* map_model)
+{
+	int i;
+	char *ptr, buf[BUFSIZE];
+	char saved_names[2][BUFSIZE];
+
+	num_map_blocks++;
+
+	/* Count # parameters, making sure we don't go over 6 (avoids memory corr.) */
+	/* Note that we can't rely on the tokens being around unless we copy them.  */
+
+	for (i = 0; i < 3; i++) {
+		ptr = my_strtok(NULL, TOKENS, blif, buf);
+		if (ptr == NULL )
+			break;
+		strcpy(saved_names[i], ptr);
+	}
+
+	if (i != 2) {
+		vpr_printf(TIO_MESSAGE_ERROR, ".map does not have 2 parameters.\n");
+		vpr_printf(TIO_MESSAGE_ERROR, "Check netlist, line %d.\n",
+				file_line_number);
+		exit(1);
+	}
+
+	if (!doall) { /* If only a counting pass ... */
+		add_vpack_net(saved_names[1], DRIVER, num_map_blocks - 1, 0, 0,
+				FALSE, doall); /* Name of the LUT */
+		return;
+	}
+	map_block[num_map_blocks - 1].model = map_model; /* Set the model */
+	/* Allocate memory for the LUT code */
+	map_block[num_map_blocks - 1].connection = (int **)my_malloc(sizeof(int*));
+	/* Set the code of the LUT so that we can find it later */
+	map_block[num_map_blocks - 1].connection[0] = (int *) my_malloc(sizeof(int));
+
+	map_block[num_map_blocks - 1].connection[0][0] = add_vpack_net(
+			saved_names[1], DRIVER, num_map_blocks - 1, 0, 0, FALSE, doall); /* Q */
+
+	/* Copy the name */
+	map_block[num_map_blocks - 1].name = my_strdup(saved_names[0]);
+	/* The name should be for our case tmux */
+
+}
+
+
 static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 		boolean is_global, int doall) {
 
@@ -1119,7 +1177,7 @@ void echo_input(char *blif_file, char *echo_file, t_model *library_models) {
 /* load default vpack models (inpad, outpad, logic) */
 static void load_default_models(INP t_model *library_models,
 		OUTP t_model** inpad_model, OUTP t_model** outpad_model,
-		OUTP t_model** logic_model, OUTP t_model** latch_model) {
+		OUTP t_model** logic_model, OUTP t_model** latch_model, OUTP t_model** map_model) {
 	t_model *cur_model;
 	cur_model = library_models;
 	*inpad_model = *outpad_model = *logic_model = *latch_model = NULL;
@@ -1143,6 +1201,11 @@ static void load_default_models(INP t_model *library_models,
 			assert(cur_model->outputs->next == NULL);
 			assert(cur_model->outputs->size == 1);
 			*latch_model = cur_model;
+		} else if (strcmp(MODEL_MAP, cur_model->name) == 0){
+			assert(cur_model->inputs == NULL);
+			assert(cur_model->outputs->next == NULL);
+			assert(cur_model->outputs->size == 1);
+			*map_model = cur_model;
 		} else {
 			assert(0);
 		}
