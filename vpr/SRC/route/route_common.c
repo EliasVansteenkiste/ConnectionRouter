@@ -46,9 +46,9 @@ static t_chunk trace_ch = {NULL, 0, NULL};
 
 /* Connection router data and experimental stuff*/
 int num_cons = 0;
-s_con* cons = NULL;
-s_node_hash_map* node_hash_maps = NULL;
-s_rr_to_rg_node_hash_map* node_maps = NULL;
+t_con* cons = NULL;
+t_node_hash_map* node_hash_maps = NULL;
+t_rr_to_rg_node_hash_map* node_maps = NULL;
 boolean* congested_cons = NULL;
 boolean* congested_nets = NULL;
 boolean* bb_cotains_congested_node = NULL;
@@ -59,7 +59,8 @@ int* no_its_pathcost_unchanged = NULL;
 
 struct s_source* source_free_head = NULL;
 struct s_node_entry* top = NULL;
-struct s_rr_to_rg_node_entry* rr_to_rg_top = NULL;
+t_rr_to_rg_node_entry* rr_to_rg_top = NULL;
+t_link_chunk_rr_to_rg_nes* top_allocators = NULL;
 int available_node_entries = 0;
 int available_rr_to_rg_node_entries = 0;
 
@@ -123,10 +124,10 @@ static void adjust_one_rr_occ_and_pcost(int inode, int add_or_sub,
 
 
 static struct s_node_entry* alloc_node_entry(void);
-static void add_node_entry(s_node_hash_map* map, s_node_entry* node_entry_ptr);
-static void add_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, s_rr_to_rg_node_entry* node_entry_ptr);
-static s_rr_to_rg_node_entry* alloc_rr_to_rg_node_entry(void);
-void increase_hashmap_size(s_node_hash_map* node_hash_map);
+static void add_node_entry(t_node_hash_map* map, t_node_entry* node_entry_ptr);
+static void add_rr_to_rg_node_entry(t_rr_to_rg_node_hash_map* map, t_rr_to_rg_node_entry* node_entry_ptr);
+static t_rr_to_rg_node_entry* alloc_rr_to_rg_node_entry(void);
+void increase_hashmap_size(t_node_hash_map* node_hash_map);
 static struct s_source* alloc_source_data(void);
 
 /************************** Subroutine definitions ***************************/
@@ -1352,17 +1353,17 @@ void free_chunk_memory_trace(void) {
 }
 
 /** Methods for s_node_hash_maps * Added by Elias Vansteenkiste */
-s_node_entry* get_node_entry(s_node_hash_map* map, int key){
+t_node_entry* get_node_entry(t_node_hash_map* map, int key){
     int node_hash_map_size = map->size;
     int hashfvalue = key % node_hash_map_size;
-    s_node_entry* node_entry_ptr = map->node_entries[hashfvalue];
+    t_node_entry* node_entry_ptr = map->node_entries[hashfvalue];
     if(node_entry_ptr == NULL) return NULL;
     else{
         if(key == node_entry_ptr->node) return node_entry_ptr;
         int i;
         for(i=1;i<node_hash_map_size;i++){
             int idx = (hashfvalue+i)%node_hash_map_size;
-            s_node_entry* current_node_entry = map->node_entries[idx];
+            t_node_entry* current_node_entry = map->node_entries[idx];
             if(current_node_entry ==  NULL) return NULL;
             else if(key == current_node_entry->node) return current_node_entry;
         }
@@ -1372,7 +1373,7 @@ s_node_entry* get_node_entry(s_node_hash_map* map, int key){
     }
 }
 
-s_node_entry* add_node(s_node_hash_map* map, int key){
+t_node_entry* add_node(t_node_hash_map* map, int key){
     int node_hash_map_size = map->size;
 //    printf("Print Hash Table\n");
 //    int i;
@@ -1383,7 +1384,7 @@ s_node_entry* add_node(s_node_hash_map* map, int key){
     if(map->node_entries[hashfvalue] == NULL){
         if((map->no_entries+1)*1.0/map->size<0.35){
             //Add node
-            s_node_entry* node_entry_ptr = alloc_node_entry();
+            t_node_entry* node_entry_ptr = alloc_node_entry();
             node_entry_ptr->node = key;
             node_entry_ptr->usage = 1;
             map->node_entries[hashfvalue] = node_entry_ptr;
@@ -1404,7 +1405,7 @@ s_node_entry* add_node(s_node_hash_map* map, int key){
                 if(map->node_entries[idx] ==  NULL){
                     if((map->no_entries+1)*1.0/map->size<0.35){
                         //Add node
-                        s_node_entry* node_entry_ptr = alloc_node_entry();
+                        t_node_entry* node_entry_ptr = alloc_node_entry();
                         node_entry_ptr->node = key;
                         node_entry_ptr->usage = 1;
                         map->node_entries[idx] = node_entry_ptr;
@@ -1426,7 +1427,7 @@ s_node_entry* add_node(s_node_hash_map* map, int key){
 
 }
 
-static void add_node_entry(s_node_hash_map* map, s_node_entry* node_entry_ptr){
+static void add_node_entry(t_node_hash_map* map, t_node_entry* node_entry_ptr){
     int key = node_entry_ptr->node;
     int value = node_entry_ptr->usage;
     int node_hash_map_size = map->size;
@@ -1458,14 +1459,14 @@ static void add_node_entry(s_node_hash_map* map, s_node_entry* node_entry_ptr){
     }
 }
 
-void increase_hashmap_size(s_node_hash_map* node_hash_map){
+void increase_hashmap_size(t_node_hash_map* node_hash_map){
     int oldsize = node_hash_map->size;
     int newsize = oldsize*2;
     node_hash_map->size = newsize;
     int old_no_entries = node_hash_map->no_entries;
     node_hash_map->no_entries = 0;
-    s_node_entry** old_hashtable = node_hash_map->node_entries;
-    node_hash_map->node_entries = (s_node_entry**) my_calloc(newsize,sizeof(s_node_entry*));
+    t_node_entry** old_hashtable = node_hash_map->node_entries;
+    node_hash_map->node_entries = (t_node_entry**) my_calloc(newsize,sizeof(t_node_entry*));
     int i, no_entries=0;    
     for(i=0;i<oldsize&&no_entries<old_no_entries;i++){
         if(old_hashtable[i]!=NULL){
@@ -1476,7 +1477,7 @@ void increase_hashmap_size(s_node_hash_map* node_hash_map){
     free(old_hashtable);
 }
 
-s_node_entry* remove_node(s_node_hash_map* map, int key){
+t_node_entry* remove_node(t_node_hash_map* map, int key){
     int map_size = map->size;
     int hashfvalue = key % map_size;
     if(map->node_entries[hashfvalue] == NULL){
@@ -1497,7 +1498,7 @@ s_node_entry* remove_node(s_node_hash_map* map, int key){
                         int hfv = map->node_entries[idx]->node % map_size;
                         if(hfv == idx) continue;
                         else{
-                            s_node_entry* temp = map->node_entries[idx];
+                            t_node_entry* temp = map->node_entries[idx];
                             map->node_entries[idx] = NULL;
                             add_node_entry(map,temp);
                         }
@@ -1529,7 +1530,7 @@ s_node_entry* remove_node(s_node_hash_map* map, int key){
                                 int hfv = map->node_entries[loc]->node % map_size;
                                 if(hfv == loc) continue;
                                 else{
-                                    s_node_entry* temp = map->node_entries[loc];
+                                    t_node_entry* temp = map->node_entries[loc];
                                     map->node_entries[loc] = NULL;
                                     add_node_entry(map,temp);
                                 }
@@ -1563,17 +1564,17 @@ static struct s_node_entry* alloc_node_entry(void) {
 }
 
 /* Methods for s_rr_to_rg_node_hash_map * Added by Elias Vansteenkiste */
-s_rr_to_rg_node_entry* get_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, int key){
+t_rr_to_rg_node_entry* get_rr_to_rg_node_entry(t_rr_to_rg_node_hash_map* map, int key){
     int map_size = map->size;
     int hashfvalue = key % map_size;
-    s_rr_to_rg_node_entry* node_entry_ptr = map->node_entries[hashfvalue];
+    t_rr_to_rg_node_entry* node_entry_ptr = map->node_entries[hashfvalue];
     if(node_entry_ptr == NULL) return NULL;
     else{
         if(key == node_entry_ptr->rr_node) return node_entry_ptr;
         int i;
         for(i=1;i<map_size;i++){
             int idx = (hashfvalue+i)%map_size;
-            s_rr_to_rg_node_entry* current_node_entry = map->node_entries[idx];
+            t_rr_to_rg_node_entry* current_node_entry = map->node_entries[idx];
             if(current_node_entry ==  NULL) return NULL;
             else if(key == current_node_entry->rr_node) return current_node_entry;
         }
@@ -1583,7 +1584,7 @@ s_rr_to_rg_node_entry* get_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, in
     }
 }
 
-s_rr_to_rg_node_entry* add_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key, t_rg_node* node){
+t_rr_to_rg_node_entry* add_rr_to_rg_node(t_rr_to_rg_node_hash_map* map, int key, t_rg_node* node){
     int node_hash_map_size = map->size;
 //    printf("Print Hash Table\n");
 //    int i;
@@ -1594,7 +1595,7 @@ s_rr_to_rg_node_entry* add_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key,
     if(map->node_entries[hashfvalue] == NULL){
         if((map->no_entries+1)*1.0/map->size<0.35){
             //Add node
-        	s_rr_to_rg_node_entry* node_entry_ptr = alloc_rr_to_rg_node_entry();
+        	t_rr_to_rg_node_entry* node_entry_ptr = alloc_rr_to_rg_node_entry();
             node_entry_ptr->rr_node = key;
             node_entry_ptr->rg_node = node;
             node_entry_ptr->usage = 1;
@@ -1602,7 +1603,7 @@ s_rr_to_rg_node_entry* add_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key,
             map->no_entries++;
             return node_entry_ptr;
         }else{
-        	increase_rr_to_rg_node_hash_map_size(map);
+        		increase_rr_to_rg_node_hash_map_size(map);
             return add_rr_to_rg_node(map,key,node);
         }
     }else{
@@ -1616,7 +1617,7 @@ s_rr_to_rg_node_entry* add_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key,
                 if(map->node_entries[idx] ==  NULL){
                     if((map->no_entries+1)*1.0/map->size<0.35){
                         //Add node
-                    	s_rr_to_rg_node_entry* node_entry_ptr = alloc_rr_to_rg_node_entry();
+                    	t_rr_to_rg_node_entry* node_entry_ptr = alloc_rr_to_rg_node_entry();
                         node_entry_ptr->rr_node = key;
                         node_entry_ptr->rg_node = node;
                         node_entry_ptr->usage = 1;
@@ -1639,7 +1640,7 @@ s_rr_to_rg_node_entry* add_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key,
 
 }
 
-static void add_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, s_rr_to_rg_node_entry* node_entry_ptr){
+static void add_rr_to_rg_node_entry(t_rr_to_rg_node_hash_map* map, t_rr_to_rg_node_entry* node_entry_ptr){
     int key = node_entry_ptr->rr_node;
     int value = node_entry_ptr->usage;
     int node_hash_map_size = map->size;
@@ -1671,15 +1672,15 @@ static void add_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, s_rr_to_rg_no
     }
 }
 
-void increase_rr_to_rg_node_hash_map_size(s_rr_to_rg_node_hash_map* map){
+void increase_rr_to_rg_node_hash_map_size(t_rr_to_rg_node_hash_map* map){
 //	printf("increase hashmap size\n");
     int oldsize = map->size;
     int newsize = oldsize*2;
     map->size = newsize;
     int old_no_entries = map->no_entries;
     map->no_entries = 0;
-    s_rr_to_rg_node_entry** old_hashtable = map->node_entries;
-    map->node_entries = (s_rr_to_rg_node_entry**) my_calloc(newsize,sizeof(s_rr_to_rg_node_entry*));
+    t_rr_to_rg_node_entry** old_hashtable = map->node_entries;
+    map->node_entries = (t_rr_to_rg_node_entry**) my_calloc(newsize,sizeof(t_rr_to_rg_node_entry*));
     int i, no_entries=0;
     for(i=0;i<oldsize&&no_entries<old_no_entries;i++){
         if(old_hashtable[i]!=NULL){
@@ -1690,7 +1691,19 @@ void increase_rr_to_rg_node_hash_map_size(s_rr_to_rg_node_hash_map* map){
     free(old_hashtable);
 }
 
-s_rr_to_rg_node_entry* remove_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key){
+void free_rr_to_rg_node_entries(){
+	t_link_chunk_rr_to_rg_nes* it = top_allocators;
+	while(it!=NULL){
+		free(it->top);
+		t_link_chunk_rr_to_rg_nes* temp = it;
+		it = it->next;
+		free(temp);
+	}
+	top_allocators = NULL;
+	available_rr_to_rg_node_entries = 0;
+}
+
+t_rr_to_rg_node_entry* remove_rr_to_rg_node(t_rr_to_rg_node_hash_map* map, int key){
     int map_size = map->size;
     int hashfvalue = key % map_size;
     if(map->node_entries[hashfvalue] == NULL){
@@ -1699,7 +1712,6 @@ s_rr_to_rg_node_entry* remove_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int k
     }else{
         if(key == map->node_entries[hashfvalue]->rr_node){
             if(map->node_entries[hashfvalue]->usage==1){
-                //free(node_hash_map->node_entries[hashfvalue]);
                 map->node_entries[hashfvalue] = NULL;
                 map->no_entries--;
                 //move following entries up if legal
@@ -1711,7 +1723,7 @@ s_rr_to_rg_node_entry* remove_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int k
                         int hfv = map->node_entries[idx]->rr_node % map_size;
                         if(hfv == idx) continue;
                         else{
-                        	s_rr_to_rg_node_entry* temp = map->node_entries[idx];
+                        		t_rr_to_rg_node_entry* temp = map->node_entries[idx];
                             map->node_entries[idx] = NULL;
                             add_rr_to_rg_node_entry(map,temp);
                         }
@@ -1743,7 +1755,7 @@ s_rr_to_rg_node_entry* remove_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int k
                                 int hfv = map->node_entries[loc]->rr_node % map_size;
                                 if(hfv == loc) continue;
                                 else{
-                                	s_rr_to_rg_node_entry* temp = map->node_entries[loc];
+                                	t_rr_to_rg_node_entry* temp = map->node_entries[loc];
                                     map->node_entries[loc] = NULL;
                                     add_rr_to_rg_node_entry(map,temp);
                                 }
@@ -1762,11 +1774,15 @@ s_rr_to_rg_node_entry* remove_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int k
     }
 }
 
-static s_rr_to_rg_node_entry* alloc_rr_to_rg_node_entry(void) {
+static t_rr_to_rg_node_entry* alloc_rr_to_rg_node_entry(void) {
     if (available_rr_to_rg_node_entries == 0) {
-    	rr_to_rg_top = (struct s_rr_to_rg_node_entry *) my_malloc(NCHUNK *
-                sizeof (struct s_rr_to_rg_node_entry));
+    		rr_to_rg_top = (t_rr_to_rg_node_entry *) my_malloc(NCHUNK * sizeof (t_rr_to_rg_node_entry));
         available_rr_to_rg_node_entries = NCHUNK;
+        t_link_chunk_rr_to_rg_nes* new_link = (t_link_chunk_rr_to_rg_nes*) my_malloc(sizeof (t_link_chunk_rr_to_rg_nes));
+		new_link->top = rr_to_rg_top;
+		new_link->next = top_allocators;
+		top_allocators = new_link;
+
     }
 
     struct s_rr_to_rg_node_entry* ret_ptr = rr_to_rg_top;
@@ -1863,13 +1879,13 @@ void rip_up_con(int icon, float pres_fac) {
     } /* End while loop -- did an entire traceback. */
 }
 
-void rip_up_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac) {
+void rip_up_con_fast(int icon, t_node_hash_map* node_hash_map, float pres_fac) {
     struct s_trace* tptr = trace_head_con[icon];
     int inode, occupancy, capacity;
     if (tptr != NULL){
         for (;;) {
             inode = tptr->index;
-            s_node_entry* node_entry = remove_node(node_hash_map,inode);
+            t_node_entry* node_entry = remove_node(node_hash_map,inode);
             if(node_entry == NULL){
                 occupancy = rr_node[inode].occ -1;
             }else{
@@ -2027,7 +2043,7 @@ static struct s_source* alloc_source_data(void) {
     return (temp_ptr);
 }
 
-void add_con_fast(int icon, s_node_hash_map* node_hash_map , float pres_fac) {
+void add_con_fast(int icon, t_node_hash_map* node_hash_map , float pres_fac) {
     struct s_trace* route_segment_start = trace_head_con[icon];
     struct s_trace* tptr;
     int inode;
@@ -2088,14 +2104,14 @@ void add_con_fast(int icon, s_node_hash_map* node_hash_map , float pres_fac) {
         int size = (int) pow(2,ceil(log2(no_trace_elements*clb_net[cons[icon].net].num_sinks*4)));
         node_hash_map->no_entries = 0;
         node_hash_map->size = size;
-        node_hash_map->node_entries = (s_node_entry**) my_calloc(size,sizeof(s_node_entry*));
+        node_hash_map->node_entries = (t_node_entry**) my_calloc(size,sizeof(t_node_entry*));
     }
     
     
     
     for (tptr = route_segment_start;;) {
         inode = tptr->index;
-        s_node_entry* node_entry = add_node(node_hash_map,inode);
+        t_node_entry* node_entry = add_node(node_hash_map,inode);
         int occupancy;
         if(rr_node[inode].occ>0 && node_entry->usage>1){
             occupancy = rr_node[inode].occ;

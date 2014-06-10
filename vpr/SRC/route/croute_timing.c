@@ -29,7 +29,7 @@ static boolean timing_driven_route_con(int icon,
         float con_slack,
         float T_crit,
         float *net_delay,
-        s_rr_to_rg_node_hash_map* node_map);
+        t_rr_to_rg_node_hash_map* node_map);
 
 static void timing_driven_expand_neighbours_con(struct s_heap *current,
 		int inet,
@@ -38,7 +38,7 @@ static void timing_driven_expand_neighbours_con(struct s_heap *current,
         int target_node,
         float astar_fac,
         int highfanout_rlim,
-        s_rr_to_rg_node_hash_map* node_map);
+        t_rr_to_rg_node_hash_map* node_map);
 
 static float get_timing_driven_expected_cost(int inode,
         int target_node,
@@ -60,9 +60,9 @@ static int mark_node_expansion_by_bin(int inet,
 
 static void con_to_net();
 
-static void alloc_timing_driven_route_structs();
+static void alloc_timing_driven_route_structs_and_arrays();
 
-static void free_timing_driven_route_structs_td();
+static void free_timing_driven_route_structs_and_arrays();
 
 static void update_net_delays_from_route_tree_conr(float *net_delay, int inet);
 
@@ -73,15 +73,15 @@ static boolean timing_driven_route_con(int icon,
         float bend_cost,
         float *net_delay,
         t_slack * slacks,
-        s_rr_to_rg_node_hash_map* node_map);
+        t_rr_to_rg_node_hash_map* node_map);
 
 static unsigned long no_nodes_expanded;
 static t_rg_node ** rg_sinks;
 static t_rg_node ** rg_roots;
 
-static void add_con_td(int con, int net, float *net_delay, s_rr_to_rg_node_hash_map* node_map , float pres_fac);
+static void add_con_td(int con, int net, float *net_delay, t_rr_to_rg_node_hash_map* node_map , float pres_fac);
 
-static void rip_up_con_td(int con, int net, s_rr_to_rg_node_hash_map* node_map, float pres_fac);
+static void rip_up_con_td(int con, int net, t_rr_to_rg_node_hash_map* node_map, float pres_fac);
 
 
 
@@ -110,7 +110,7 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
     clock_t c0, c1, c2, c3, c4, ca, cb, begin,end;
     double t_ripup = 0.0, t_route = 0.0, t_add = 0.0;
     float secs = 0.0;
-    s_rr_to_rg_node_hash_map* node_map = NULL;
+    t_rr_to_rg_node_hash_map* node_map = NULL;
    
     
     sinks = (float*) my_malloc(sizeof (float) * num_nets);
@@ -135,7 +135,7 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
     //printf("Net %d has %d sinks\n",278,clb_net[278].num_sinks);
     /*2. Allocate memory for Connection Array*/
     printf("Allocate memory for Connection Array for %d cons\n", num_cons);
-    cons = (s_con*) my_malloc(num_cons * sizeof (s_con));
+    cons = (t_con*) my_malloc(num_cons * sizeof (t_con));
     /*4. Assign values to connection structs*/
     printf("Assigning values to connection structs\n");
     icon = 0;
@@ -172,16 +172,7 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
     }
 
     printf("Allocate timing driven route structs.\n");
-    alloc_timing_driven_route_structs();
-
-    printf("Allocate hashmaps per net\n");
-    node_maps = (s_rr_to_rg_node_hash_map*) my_calloc(num_nets, sizeof(s_rr_to_rg_node_hash_map));
-  
-    trace_head_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
-    trace_tail_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
-    
-    back_trace_head_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
-    back_trace_tail_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
+    alloc_timing_driven_route_structs_and_arrays();
 
     if (timing_analysis_enabled) {
             init_timing_criticality_val = 1.;
@@ -241,7 +232,7 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
             /* Impossible to route? (disconnected rr_graph) */
             if (!is_routable) {
             	vpr_printf(TIO_MESSAGE_INFO, "Routing failed.\n");
-                free_timing_driven_route_structs_td();
+                free_timing_driven_route_structs_and_arrays();
                 free(net_index);
                 free(sinks);
                 return (FALSE);
@@ -269,7 +260,7 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
         success = feasible_routing_debug();
         printf("Routing iteration: %d ...\n", itry);
         if (success) {
-        	s_rr_to_rg_node_entry * node = NULL;
+        	t_rr_to_rg_node_entry * node = NULL;
         	struct s_trace * trace_it = NULL;
         	t_linked_rg_edge_ref * edge_it = NULL;
             printf("Successfully routed after %d routing iterations.\n",itry);
@@ -294,8 +285,8 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
 
             printf("Con to net\n");
             con_to_net();
-            printf("free_timing_driven_route_structs_td\n");
-            free_timing_driven_route_structs_td();
+            printf("free_timing_driven_route_structs_and_arrays\n");
+            free_timing_driven_route_structs_and_arrays();
             printf("cons\n");
             free(cons);
 #ifdef DEBUG
@@ -359,40 +350,56 @@ try_timing_driven_route_conr(struct s_router_opts router_opts,
     }
 
     vpr_printf(TIO_MESSAGE_INFO, "Routing failed.\n");
-    free_timing_driven_route_structs_td();
+    free_timing_driven_route_structs_and_arrays();
     free(net_index);
     free(sinks);
     return (FALSE);
 }
 
 static void
-alloc_timing_driven_route_structs() {
+alloc_timing_driven_route_structs_and_arrays() {
 
-    /* Allocates all the structures needed only by the timing-driven router.   */
-    int icon;
-    
+    /* Allocates all the structures needed only by the timing-driven connection router.   */
+
     rg_roots = (t_rg_node **) my_calloc(num_nets, sizeof (t_rg_node *));
-    
     rg_sinks = (t_rg_node **) my_calloc(num_cons, sizeof (t_rg_node *));
+    
+    node_maps = (t_rr_to_rg_node_hash_map*) my_calloc(num_nets, sizeof(t_rr_to_rg_node_hash_map));
+
+    trace_head_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
+    trace_tail_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
+    
+    back_trace_head_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
+    back_trace_tail_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
     
 }
 
 static void
-free_timing_driven_route_structs_td() {
+free_timing_driven_route_structs_and_arrays() {
 
-    /* Frees all the stuctures needed only by the timing-driven router.        */
-    int inet;
+    /* Frees all the stuctures needed only by the timing-driven connection router.        */
+    free(node_maps);
+
+	int inet;
     for(inet = 0; inet<num_nets; inet++){
     		//print_rg(rg_roots[inet],0);
-        //printf("free_route_tree %d\n",inet);
         free_rg(rg_roots[inet]);
+        free(node_maps[inet].node_entries);
     }
- 
-    //printf("\nfree rt_roots\n");
-    free(rg_roots);
-    
-    printf("free_route_tree_timing_structs\n");
+    free_rr_to_rg_node_entries();
+
     free_route_graph_timing_structs();
+    free(rg_roots);
+    free(rg_sinks);
+
+    /*TODO free all trace elements used while routing */
+
+    free(trace_head_con);
+    free(trace_tail_con);
+
+    free(back_trace_head_con);
+    free(back_trace_tail_con);
+
 }
 
 static int
@@ -421,7 +428,7 @@ timing_driven_route_con(int icon,
         float bend_cost,
         float *net_delay,
         t_slack * slacks,
-        s_rr_to_rg_node_hash_map* node_map) {
+        t_rr_to_rg_node_hash_map* node_map) {
 
     /* Returns TRUE as long is found some way to hook up this net, even if that *
      * way resulted in overuse of resources (congestion).  If there is no way   *
@@ -565,7 +572,7 @@ timing_driven_expand_neighbours_con(struct s_heap *current,
         int target_node,
         float astar_fac,
         int highfanout_rlim,
-        s_rr_to_rg_node_hash_map* node_map) {
+        t_rr_to_rg_node_hash_map* node_map) {
 
     /* Puts all the rr_nodes adjacent to current on the heap.  rr_nodes outside *
      * the expanded bounding box specified in route_bb are not added to the     *
@@ -1057,7 +1064,7 @@ static void con_to_net() {
 //    printf("Maximum: %d, avg: %f", maximum, (1.0 * totalnodes / num_nets));
 }
 
-static void add_con_td(int con, int net, float *net_delay, s_rr_to_rg_node_hash_map* node_map, float pres_fac) {
+static void add_con_td(int con, int net, float *net_delay, t_rr_to_rg_node_hash_map* node_map, float pres_fac) {
     struct s_trace* route_segment_start = trace_head_con[con];
     struct s_trace* tptr;
     int inode;
@@ -1112,7 +1119,7 @@ static void add_con_td(int con, int net, float *net_delay, s_rr_to_rg_node_hash_
 
     for (tptr = route_segment_start;;) {
         inode = tptr->index;
-        s_rr_to_rg_node_entry* node_entry;
+        t_rr_to_rg_node_entry* node_entry;
         int occupancy;
         if(rr_node[inode].type == SOURCE && rr_node[inode].type == SINK){
         	occupancy = rr_node[inode].occ;
@@ -1152,13 +1159,13 @@ static void add_con_td(int con, int net, float *net_delay, s_rr_to_rg_node_hash_
 
 }
 
-static void rip_up_con_td(int con, int net, s_rr_to_rg_node_hash_map* node_map, float pres_fac) {
+static void rip_up_con_td(int con, int net, t_rr_to_rg_node_hash_map* node_map, float pres_fac) {
     struct s_trace* tptr = trace_head_con[con];
     int inode, occupancy, capacity;
     if (tptr != NULL){
         for (;;) {
             inode = tptr->index;
-            s_rr_to_rg_node_entry* node_entry;
+            t_rr_to_rg_node_entry* node_entry;
             if(rr_node[inode].type == SOURCE && rr_node[inode].type == SINK){
             	node_entry = get_rr_to_rg_node_entry(node_map,inode);
             }else{

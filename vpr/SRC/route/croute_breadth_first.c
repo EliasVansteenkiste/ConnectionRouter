@@ -81,7 +81,7 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
     /*2. Allocate memory for Connection Array*/
     printf("Allocate memory for Connection Array for %d cons\n", num_cons);
     //num_cons = 3000;
-    cons = (s_con*) my_malloc(num_cons * sizeof (s_con));
+    cons = (t_con*) my_malloc(num_cons * sizeof (t_con));
     /*3. Assign values to connection structs*/
     printf("Assigning values to connection structs\n");
     icon = 0;
@@ -255,7 +255,7 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
     /*2. Allocate memory for Connection Array*/
     printf("Allocate memory for Connection Array for %d cons\n", num_cons);
     //num_cons = 3000;
-    cons = (s_con*) my_malloc(num_cons * sizeof (s_con));
+    cons = (t_con*) my_malloc(num_cons * sizeof (t_con));
     /*3. Assign values to connection structs*/
     printf("Assigning values to connection structs\n");
     icon = 0;
@@ -290,7 +290,7 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
 
     /*5. Sort Connections in ascending order of bounding box via QuickSort algorithm*/
     int i, j, temp;
-    s_con con_temp;
+    t_con con_temp;
     for (i = 0; i < num_cons; i++) {
         for (j = i + 1; j < num_cons; j++) {
             if (bbs[i] > bbs[j]) {
@@ -445,7 +445,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
     /*2. Allocate memory for Connection Array*/
     printf("Allocate memory for Connection Array for %d cons\n", num_cons);
     //num_cons = 3000;
-    cons = (s_con*) my_malloc(num_cons * sizeof (s_con));
+    cons = (t_con*) my_malloc(num_cons * sizeof (t_con));
     /*3. Assign values to connection structs*/
     printf("Assigning values to connection structs\n");
     icon = 0;
@@ -490,7 +490,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //    heapsort(con_index, sorting_values, num_cons, 1);
     
     /*6. Allocate hashmaps per net*/
-    node_hash_maps = (s_node_hash_map*) my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (t_node_hash_map*) my_calloc(num_nets, sizeof(t_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -515,7 +515,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
             icon = i;
 //            icon = con_index[i];
             inet = cons[icon].net;
-            s_node_hash_map* node_hash_map = &node_hash_maps[inet];
+            t_node_hash_map* node_hash_map = &node_hash_maps[inet];
             
             //printf("Rip up connection %d\n",icon);
             /*Rip up*/

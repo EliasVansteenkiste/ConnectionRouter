@@ -43,7 +43,7 @@ static t_linked_rg_edge_ref *alloc_linked_rg_edge_ref(void);
 static void free_rg_edge(t_rg_edge * edge);
 
 static t_rg_node *
-add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, s_rr_to_rg_node_hash_map* node_map);
+add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_rr_to_rg_node_hash_map* node_map);
 
 static void load_new_path_R_upstream(t_rg_node * start_of_new_path_rg_node);
 
@@ -79,7 +79,7 @@ static void
 free_rg_link(t_linked_rg_edge_ref * link);
 
 static void
-load_Tdel_in_net_delay_structure(int net, s_rr_to_rg_node_hash_map* node_map, float* delays);
+load_Tdel_in_net_delay_structure(int net, t_rr_to_rg_node_hash_map* node_map, float* delays);
 
 
 /************************** Subroutine definitions ***************************/
@@ -87,7 +87,7 @@ load_Tdel_in_net_delay_structure(int net, s_rr_to_rg_node_hash_map* node_map, fl
 
 
 t_rg_node *
-update_route_graph(int icon, t_rg_node *root, s_rr_to_rg_node_hash_map* node_map, float* delays)
+update_route_graph(int icon, t_rg_node *root, t_rr_to_rg_node_hash_map* node_map, float* delays)
 {
 
     /* Adds the most recently finished wire segment to the routing tree, and    *
@@ -118,7 +118,7 @@ update_route_graph(int icon, t_rg_node *root, s_rr_to_rg_node_hash_map* node_map
 }
 
 static void
-load_Tdel_in_net_delay_structure(int net, s_rr_to_rg_node_hash_map* node_map, float* delays){
+load_Tdel_in_net_delay_structure(int net, t_rr_to_rg_node_hash_map* node_map, float* delays){
 	int ipin;
 	int first_con = clb_net[net].con;
 
@@ -289,7 +289,7 @@ static t_rg_edge *alloc_rg_edge(void) {
 }
 
 t_rg_node *
-init_graph_to_source(int inet, t_rg_node** rg_sinks, s_rr_to_rg_node_hash_map* node_map)
+init_graph_to_source(int inet, t_rg_node** rg_sinks, t_rr_to_rg_node_hash_map* node_map)
 {
 
 /* Initializes the routing tree to just the net source, and returns the root *
@@ -303,7 +303,7 @@ init_graph_to_source(int inet, t_rg_node** rg_sinks, s_rr_to_rg_node_hash_map* n
         int size = 32;
         node_map->no_entries = 0;
         node_map->size = size;
-        node_map->node_entries = (s_rr_to_rg_node_entry**) my_calloc(size,sizeof(s_rr_to_rg_node_entry*));
+        node_map->node_entries = (t_rr_to_rg_node_entry**) my_calloc(size,sizeof(t_rr_to_rg_node_entry*));
     }
 
     rg_root = alloc_rg_node();
@@ -337,7 +337,7 @@ init_graph_to_source(int inet, t_rg_node** rg_sinks, s_rr_to_rg_node_hash_map* n
 }
 
 static t_rg_node *
-add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, s_rr_to_rg_node_hash_map* node_map) {
+add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_rr_to_rg_node_hash_map* node_map) {
 
     /* Adds the most recent wire segment, ending at the SINK indicated by hptr, *
      * to the routing tree.  It returns the first (most upstream) new rt_node,  *
@@ -352,7 +352,7 @@ add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, s_r
     t_linked_rg_edge_ref *parent_link;
     t_linked_rg_edge_ref *it;
     t_rg_edge *edge;
-    s_rr_to_rg_node_entry *node_entry;
+    t_rr_to_rg_node_entry *node_entry;
     boolean sink_found = FALSE;
     
     t_rg_node * rg_node = root;
@@ -786,7 +786,7 @@ load_Tdel(t_rg_node * subtree_rt_root,
 		    Tchild += switch_inf[iswitch].Tdel;	/* Intrinsic switch delay. */
 			load_Tdel(child_node, Tchild, con);
 		}else{
-//			printf("Warning: load_rg_subgraph_Tdel is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d. The node will be discarded.\n");
+			printf("Warning: load_rg_subgraph_Tdel is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d. The node will be discarded.\n");
 			stumbles_1++;
 
 		}
@@ -811,7 +811,7 @@ update_C_downstream(t_rg_node * rg_node, int icon){
 		    	C += C_downstream;
 		    }
 		}else{
-//			printf("Warning: update_C_downstream is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d. The node will be discarded.\n", icon);
+			printf("Warning: update_C_downstream is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d (net %d). The node will be discarded.\n", icon,cons[icon].net);
 			stumbles_0++;
 		}
         child_link = child_link->next;

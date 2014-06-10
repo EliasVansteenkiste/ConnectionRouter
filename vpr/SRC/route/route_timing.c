@@ -296,8 +296,7 @@ static int get_max_pins_per_net(void) {
 	max_pins_per_net = 0;
 	for (inet = 0; inet < num_nets; inet++) {
 		if (clb_net[inet].is_global == FALSE) {
-			max_pins_per_net = std::max(max_pins_per_net,
-					(clb_net[inet].num_sinks + 1));
+			max_pins_per_net = std::max(max_pins_per_net,(clb_net[inet].num_sinks + 1));
 		}
 	}
 

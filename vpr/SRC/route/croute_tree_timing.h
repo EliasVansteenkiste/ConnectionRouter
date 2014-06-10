@@ -64,11 +64,11 @@ void alloc_route_graph_timing_structs(void);
 
 void free_route_graph_timing_structs(void);
 
-t_rg_node *init_graph_to_source(int inet, t_rg_node** rg_sinks, s_rr_to_rg_node_hash_map* node_map);
+t_rg_node *init_graph_to_source(int inet, t_rg_node** rg_sinks, t_rr_to_rg_node_hash_map* node_map);
 
 void free_rg(t_rg_node * rg_node);
 
-t_rg_node *update_route_graph(int icon, t_rg_node *root, s_rr_to_rg_node_hash_map* node_map, float* net_delay);
+t_rg_node *update_route_graph(int icon, t_rg_node *root, t_rr_to_rg_node_hash_map* node_map, float* net_delay);
 
 void update_net_delays_from_route_graph(float *net_delay,
 				       t_rg_node ** rg_node_of_sink,

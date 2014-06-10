@@ -24,7 +24,7 @@ static int get_expected_segs_to_target(int inode,
 static void con_to_net();
 
 static boolean route_con(int icon,
-        s_node_hash_map* node_hash_map,
+        t_node_hash_map* node_hash_map,
         float bend_cost, 
         float pres_fac,
         float astar_fac);
@@ -80,7 +80,7 @@ try_conr_ds_route_heap(struct s_router_opts router_opts,
     /*2. Allocate memory for Connection Array*/
     printf("Allocate memory for Connection Array for %d cons\n", num_cons);
     //num_cons = 3000;
-    cons = (s_con*) my_malloc(num_cons * sizeof (s_con));
+    cons = (t_con*) my_malloc(num_cons * sizeof (t_con));
     /*3. Assign values to connection structs*/
     printf("Assigning values to connection structs\n");
     icon = 0;
@@ -128,7 +128,7 @@ try_conr_ds_route_heap(struct s_router_opts router_opts,
     
     //allocate_data_structures();
     /*6. Allocate hashmaps per net*/
-    node_hash_maps = (s_node_hash_map *) my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (t_node_hash_map *) my_calloc(num_nets, sizeof(t_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -153,7 +153,7 @@ try_conr_ds_route_heap(struct s_router_opts router_opts,
             icon = i;
 //            icon = con_index[i];
             inet = cons[icon].net;
-            s_node_hash_map* node_hash_map = &node_hash_maps[inet];
+            t_node_hash_map* node_hash_map = &node_hash_maps[inet];
             
            //printf("rip_up_con_fast  %d ...\n", icon);
             //c1 = clock();
@@ -310,7 +310,7 @@ static void con_to_net() {
 }
 
 static boolean
-route_con(int icon, s_node_hash_map* node_hash_map, float bend_cost, float pres_fac, float astar_fac) {
+route_con(int icon, t_node_hash_map* node_hash_map, float bend_cost, float pres_fac, float astar_fac) {
 
     /* Uses a maze routing (Dijkstra's) algorithm to route a connection.  The net       *
      * begins at the net output, and expands outward until it hits a target      *

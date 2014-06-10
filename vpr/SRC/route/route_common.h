@@ -101,9 +101,9 @@ extern struct s_bb *route_bb; /* [0..num_nets-1]     */
 
 /* Connection router data and experimental stuff*/
 extern int num_cons;
-extern s_con* cons;
-extern s_node_hash_map* node_hash_maps;
-extern s_rr_to_rg_node_hash_map* node_maps;
+extern t_con* cons;
+extern t_node_hash_map* node_hash_maps;
+extern t_rr_to_rg_node_hash_map* node_maps;
 extern boolean* congested_cons;
 extern boolean* congested_nets;
 extern boolean* bb_cotains_congested_node;
@@ -196,29 +196,31 @@ void add_con(int icon, float pres_fac);
 
 void rip_up_con(int icon, float pres_fac);
 
-void add_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac);
+void add_con_fast(int icon, t_node_hash_map* node_hash_map, float pres_fac);
 
-void rip_up_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac);
+void rip_up_con_fast(int icon, t_node_hash_map* node_hash_map, float pres_fac);
 
 void add_con_hashmap(int icon, float pres_fac);
 
 void rip_up_con_hashmap(int icon, float pres_fac);
 
-s_node_entry* get_node_entry(s_node_hash_map* node_hash_map, int key);
+t_node_entry* get_node_entry(t_node_hash_map* node_hash_map, int key);
 
-s_node_entry* add_node(s_node_hash_map* node_hash_map, int key);
+t_node_entry* add_node(t_node_hash_map* node_hash_map, int key);
 
-s_node_entry* remove_node(s_node_hash_map* node_hash_map, int key);
+t_node_entry* remove_node(t_node_hash_map* node_hash_map, int key);
 
-s_rr_to_rg_node_entry* get_rr_to_rg_node_entry(s_rr_to_rg_node_hash_map* map, int key);
+t_rr_to_rg_node_entry* get_rr_to_rg_node_entry(t_rr_to_rg_node_hash_map* map, int key);
 
-s_rr_to_rg_node_entry* add_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key, t_rg_node* node);
+t_rr_to_rg_node_entry* add_rr_to_rg_node(t_rr_to_rg_node_hash_map* map, int key, t_rg_node* node);
 
-void increase_rr_to_rg_node_hash_map_size(s_rr_to_rg_node_hash_map* node_map);
+void increase_rr_to_rg_node_hash_map_size(t_rr_to_rg_node_hash_map* node_map);
 
-s_rr_to_rg_node_entry* remove_rr_to_rg_node(s_rr_to_rg_node_hash_map* map, int key);
+t_rr_to_rg_node_entry* remove_rr_to_rg_node(t_rr_to_rg_node_hash_map* map, int key);
 
-void add_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac);
+void add_con_fast(int icon, t_node_hash_map* node_hash_map, float pres_fac);
 
-void rip_up_con_fast(int icon, s_node_hash_map* node_hash_map, float pres_fac);
+void rip_up_con_fast(int icon, t_node_hash_map* node_hash_map, float pres_fac);
+
+void free_rr_to_rg_node_entries();
 

@@ -4,13 +4,13 @@ def ppr_blif_6(ciruit):
 
 def ppr(circuitpath):
         print("circuit:"+circuitpath)
-        outputfile = "small_benchmarks.conr_td.txt"
+        outputfile = "small_benchmarks.txt"
         f = open(outputfile,"a")
         f.write("circuit:"+circuitpath+"\n")
         f.close
         vpr = "vpr/vpr "
-        archfile = " vpr/sample_arch.xml "
-        options = " -route -router_algorithm timing_driven_conr -first_iter_pres_fac 0.5 -initial_pres_fac 0.5 "
+        archfile = " vtr_flow/arch/timing/k6_frac_N10_mem32K_40nm.xml "
+        options = " -router_algorithm timing_driven_conr -first_iter_pres_fac 0.5 -initial_pres_fac 0.5 "
 #        subprocess.call(vpr+archfile+circuitpath+options+" 2>&1 ", shell=True)
 #        print(vpr+archfile+circuitpath+options)
         subprocess.call(vpr+archfile+circuitpath+options+" >> "+outputfile, shell=True)

@@ -102,7 +102,7 @@ try_directed_search_route_conr(struct s_router_opts router_opts,
     }
     /*2. Allocate memory for Connection Array*/
     printf("Allocate memory for Connection Array for %d cons\n", num_cons);
-    cons = (s_con*) my_malloc(num_cons * sizeof (s_con));
+    cons = (t_con*) my_malloc(num_cons * sizeof (t_con));
     /*3. Allocate memory for net-to-con Array*/
     int* first_con_of_net = (int*) my_malloc(num_nets * sizeof (int));
     /*4. Assign values to connection structs*/
@@ -152,7 +152,7 @@ try_directed_search_route_conr(struct s_router_opts router_opts,
 //    heapsort(con_index, sorting_values, num_cons, 1);
     
     /*6. Allocate hashmaps per net*/
-    node_hash_maps = (s_node_hash_map*) my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (t_node_hash_map*) my_calloc(num_nets, sizeof(t_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -177,7 +177,7 @@ try_directed_search_route_conr(struct s_router_opts router_opts,
         for (i = 0; i < num_cons; i++) {
             icon = i;
 //            icon = con_index[i];
-            s_node_hash_map* node_hash_map = &node_hash_maps[cons[icon].net];
+            t_node_hash_map* node_hash_map = &node_hash_maps[cons[icon].net];
             
 //           printf("rip_up_con_fast  %d ...\n", icon);
             //c1 = clock();
@@ -324,7 +324,7 @@ try_conr_ds_route_fast(struct s_router_opts router_opts,
     /*2. Allocate memory for Connection Array*/
     printf("Allocate memory for Connection Array for %d cons\n", num_cons);
     //num_cons = 3000;
-    cons = (s_con*) my_malloc(num_cons * sizeof (s_con));
+    cons = (t_con*) my_malloc(num_cons * sizeof (t_con));
     /*3. Assign values to connection structs*/
     printf("Assigning values to connection structs\n");
     icon = 0;
@@ -396,7 +396,7 @@ try_conr_ds_route_fast(struct s_router_opts router_opts,
     
     /*6. Allocate hashmaps per net*/
     printf("Allocating node hash maps for each net\n");
-    node_hash_maps = (s_node_hash_map*) my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (t_node_hash_map*) my_calloc(num_nets, sizeof(t_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -496,7 +496,7 @@ try_conr_ds_route_fast(struct s_router_opts router_opts,
             icon = i;
 //            icon = con_index[i];
             inet = cons[icon].net;
-            s_node_hash_map* node_hash_map = &node_hash_maps[inet];
+            t_node_hash_map* node_hash_map = &node_hash_maps[inet];
             
             bool ripupandreroute = FALSE;
             float path_cost = 0.0;
@@ -830,7 +830,7 @@ try_conr_ds_route_history(struct s_router_opts router_opts,
     /*2. Allocate memory for Connection Array*/
     printf("Allocate memory for Connection Array for %d cons\n", num_cons);
     //num_cons = 3000;
-    cons = (s_con*) my_malloc(num_cons * sizeof (s_con));
+    cons = (t_con*) my_malloc(num_cons * sizeof (t_con));
     /*3. Assign values to connection structs*/
     printf("Assigning values to connection structs\n");
     icon = 0;
@@ -877,7 +877,7 @@ try_conr_ds_route_history(struct s_router_opts router_opts,
 //    heapsort(con_index, sorting_values, num_cons, 1);
     
     /*6. Allocate hashmaps per net*/
-    node_hash_maps = (s_node_hash_map*) my_calloc(num_nets, sizeof(s_node_hash_map));
+    node_hash_maps = (t_node_hash_map*) my_calloc(num_nets, sizeof(t_node_hash_map));
 
     /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
      * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -902,7 +902,7 @@ try_conr_ds_route_history(struct s_router_opts router_opts,
             icon = i;
 //            icon = con_index[i];
             inet = cons[icon].net;
-            s_node_hash_map* node_hash_map = &node_hash_maps[inet];
+            t_node_hash_map* node_hash_map = &node_hash_maps[inet];
             
            //printf("rip_up_con_fast  %d ...\n", icon);
             //c1 = clock();
