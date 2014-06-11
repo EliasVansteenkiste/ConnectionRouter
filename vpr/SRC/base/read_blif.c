@@ -47,23 +47,28 @@ static FILE *blif;
 
 static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 		boolean is_global, int doall);
+static void rem_vpack_net(int entryIndex);
+
 static void get_blif_tok(char *buffer, int doall, boolean *done,
 		boolean *add_truth_table, INP t_model* inpad_model,
 		INP t_model* outpad_model, INP t_model* logic_model,
-		INP t_model* latch_model, INP t_model* user_models, INP t_model* map_model);
+		INP t_model* latch_model, INP t_model* user_models,
+		INP t_model* map_model);
 static void init_parse(int doall);
 static void check_net(boolean sweep_hanging_nets_and_inputs);
 static void free_parse(void);
 static void io_line(int in_or_out, int doall, t_model *io_model);
 static boolean add_lut(int doall, t_model *logic_model);
+static void remove_lut(int noOfEntry);
 static void add_latch(int doall, INP t_model *latch_model);
 static void add_subckt(int doall, INP t_model *user_models);
-static void add_map(int doall, t_model* map_model);
+static void add_map(int doall,INP t_model* map_model);
 static void check_and_count_models(int doall, const char* model_name,
 		t_model* user_models);
 static void load_default_models(INP t_model *library_models,
 		OUTP t_model** inpad_model, OUTP t_model** outpad_model,
-		OUTP t_model** logic_model, OUTP t_model** latch_model, OUTP t_model** map_model);
+		OUTP t_model** logic_model, OUTP t_model** latch_model,
+		OUTP t_model** map_model);
 static void read_activity(char * activity_file);
 static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		t_model *user_models, t_model *library_models,
@@ -74,6 +79,8 @@ static void compress_netlist(void);
 static void show_blif_stats(t_model *user_models, t_model *library_models);
 static bool add_activity_to_net(char * net_name, float probability,
 		float density);
+
+static void add_explicit_connections();
 
 static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		t_model *user_models, t_model *library_models,
@@ -116,7 +123,8 @@ static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		model_lines = 0;
 		while (my_fgets(buffer, BUFSIZE, blif) != NULL ) {
 			get_blif_tok(buffer, doall, &done, &add_truth_table, inpad_model,
-					outpad_model, logic_model, latch_model, user_models, map_model);
+					outpad_model, logic_model, latch_model, user_models,
+					map_model);
 		}
 		rewind(blif); /* Start at beginning of file again */
 
@@ -129,6 +137,8 @@ static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 #endif
 
 	}
+
+	//add_explicit_connections();
 
 	/*checks how well the hash function is performing*/
 #ifdef VERBOSE
@@ -171,7 +181,8 @@ static void init_parse(int doall) {
 		logical_block_output_count = (int *) my_calloc(num_logical_blocks,
 				sizeof(int));
 		/* This is the data structure for the .map type */
-		map_block = (struct s_map_block *) my_calloc(num_map_blocks,sizeof(struct s_map_block)); /* This is the array that will hold all the information about the explicit connections */
+		map_block = (struct s_map_block *) my_calloc(num_map_blocks,
+				sizeof(struct s_map_block)); /* This is the array that will hold all the information about the explicit connections */
 
 		for (i = 0; i < num_logical_nets; i++) {
 			num_driver[i] = 0;
@@ -188,7 +199,7 @@ static void init_parse(int doall) {
 		}
 		/* Added to support the new .map */
 		for (i = 0; i < num_map_blocks; i++) {
-					map_block[i].index = i;
+			map_block[i].index = i;
 		}
 		for (i = 0; i < HASHSIZE; i++) {
 			h_ptr = blif_hash[i];
@@ -233,7 +244,8 @@ static void init_parse(int doall) {
 static void get_blif_tok(char *buffer, int doall, boolean *done,
 		boolean *add_truth_table, INP t_model* inpad_model,
 		INP t_model* outpad_model, INP t_model* logic_model,
-		INP t_model* latch_model, INP t_model* user_models, INP t_model* map_model) {
+		INP t_model* latch_model, INP t_model* user_models,
+		INP t_model* map_model) {
 
 	/* Figures out which, if any token is at the start of this line and *
 	 * takes the appropriate action.                                    */
@@ -293,7 +305,7 @@ static void get_blif_tok(char *buffer, int doall, boolean *done,
 		ptr = my_strtok(NULL, TOKENS, blif, buffer);
 		if (doall) {
 			if (ptr != NULL ) {
-				if(model != NULL) {
+				if (model != NULL ) {
 					free(model);
 				}
 				model = (char *) my_malloc((strlen(ptr) + 1) * sizeof(char));
@@ -302,7 +314,7 @@ static void get_blif_tok(char *buffer, int doall, boolean *done,
 					blif_circuit_name = my_strdup(model);
 				}
 			} else {
-				if(model != NULL) {
+				if (model != NULL ) {
 					free(model);
 				}
 				model = (char *) my_malloc(sizeof(char));
@@ -357,15 +369,41 @@ static void get_blif_tok(char *buffer, int doall, boolean *done,
 	}
 
 	/* New add for the support of the tmux */
-	if	(strcmp(ptr, ".map") == 0){
+	if (strcmp(ptr, ".map") == 0) {
 		*add_truth_table = FALSE;
 		add_map(doall, map_model);
 	}
+
 
 	/* Could have numbers following a .names command, so not matching any *
 	 * of the tokens above is not an error.                               */
 
 }
+
+
+static void add_explicit_connections()
+{
+	int i,j;
+	int noOfEntriesDel = 0;
+	for(i = 0; i < num_map_blocks; i++)
+	{
+		for(j = 0; j < num_logical_blocks; j++)
+		{
+			if(logical_block[j].output_nets == NULL || map_block[i].connection == NULL)
+				continue;
+			else if(map_block[i].connection[0][0] == logical_block[j].output_nets[0][0])
+			{
+				//remove_lut(j);
+				noOfEntriesDel++;
+				//rem_vpack_net(logical_block[j].output_nets[0][0]);
+				printf("we found a tmux: %d\n",logical_block[j].output_nets[0][0]);
+			}
+		}
+	}
+	//logical_block = (struct s_logical_block *)realloc(logical_block,(num_logical_blocks - 1) * sizeof(struct s_logical_block));
+
+}
+
 
 void dum_parse(char *buf) {
 
@@ -463,6 +501,45 @@ static boolean add_lut(int doall, t_model *logic_model) {
 	free_matrix(saved_names, 0, logic_model->inputs->size, 0, sizeof(char));
 	return (boolean) doall;
 }
+
+/* This function removes a lut entry. It is created in order to remove the explicit connections that
+ * are represented as lut entries
+ */
+static void remove_lut(int noOfEntry) {
+
+	/* Adds a LUT as VPACK_COMB from (.names) currently being parsed to the logical_block array.  Adds *
+	 * its pins to the nets data structure by calling add_vpack_net.  If doall is *
+	 * zero this is a counting pass; if it is 1 this is the final (loading) *
+	 * pass.                                                                */
+
+	logical_block[noOfEntry].model = logical_block[num_logical_blocks - 1].model;
+
+	logical_block[noOfEntry].input_nets[0] = (int *) my_realloc(logical_block[noOfEntry].input_nets[0],
+			logical_block[num_logical_blocks - 1].model->inputs->size * sizeof(int));
+
+
+	my_intdup(logical_block[noOfEntry].input_nets[0],logical_block[num_logical_blocks - 1].input_nets[0],logical_block[noOfEntry].model->inputs->size);
+
+	free(logical_block[num_logical_blocks - 1].input_nets[0]);
+//	free(logical_block[num_logical_blocks - 1].input_nets);
+
+	logical_block[noOfEntry].type = logical_block[num_logical_blocks - 1].type;
+
+	logical_block[noOfEntry].output_nets[0][0] = logical_block[num_logical_blocks - 1].output_nets[0][0];
+	free(logical_block[num_logical_blocks - 1].output_nets[0]);
+
+	logical_block[noOfEntry].clock_net = logical_block[num_logical_blocks - 1].clock_net;
+
+	logical_block[noOfEntry].name = my_strdup(logical_block[num_logical_blocks - 1].name);
+	free(logical_block[num_logical_blocks - 1].name);
+
+	logical_block[noOfEntry].truth_table = logical_block[num_logical_blocks - 1].truth_table;
+	free(logical_block[num_logical_blocks - 1].truth_table);
+	num_luts--;
+	num_logical_blocks--;
+
+}
+
 
 static void add_latch(int doall, INP t_model *latch_model) {
 
@@ -718,7 +795,8 @@ static void add_subckt(int doall, t_model *user_models) {
 					found_subckt_signal = TRUE;
 					if (port->is_clock) {
 						assert(
-								logical_block[num_logical_blocks-1].clock_net == OPEN);
+								logical_block[num_logical_blocks - 1].clock_net
+										== OPEN);
 						assert(my_atoi(pin_number) == 0);
 						logical_block[num_logical_blocks - 1].clock_net =
 								add_vpack_net(circuit_signal_name[i], RECEIVER,
@@ -759,7 +837,7 @@ static void add_subckt(int doall, t_model *user_models) {
 			}
 
 			/* record the name to be first output net parsed */
-			if(logical_block[num_logical_blocks - 1].name == NULL) {
+			if (logical_block[num_logical_blocks - 1].name == NULL ) {
 				logical_block[num_logical_blocks - 1].name = my_strdup(
 						subckt_logical_block_name);
 			}
@@ -888,8 +966,7 @@ static void check_and_count_models(int doall, const char* model_name,
 	}
 }
 
-static void add_map(int doall, t_model* map_model)
-{
+static void add_map(int doall, t_model* map_model) {
 	int i;
 	char *ptr, buf[BUFSIZE];
 	char saved_names[2][BUFSIZE];
@@ -912,15 +989,17 @@ static void add_map(int doall, t_model* map_model)
 				file_line_number);
 		exit(1);
 	}
-
+	/* TODO: Maybe we should a check in which we will not permit the connection between
+	 * two sinks or two sources
+	 */
 	if (!doall) { /* If only a counting pass ... */
-		add_vpack_net(saved_names[1], DRIVER, num_map_blocks - 1, 0, 0,
-				FALSE, doall); /* Name of the LUT */
+		add_vpack_net(saved_names[1], DRIVER, num_map_blocks - 1, 0, 0, FALSE,
+				doall); /* Name of the LUT */
 		return;
 	}
 	map_block[num_map_blocks - 1].model = map_model; /* Set the model */
 	/* Allocate memory for the LUT code */
-	map_block[num_map_blocks - 1].connection = (int **)my_malloc(sizeof(int*));
+	map_block[num_map_blocks - 1].connection = (int **) my_malloc(sizeof(int*));
 	/* Set the code of the LUT so that we can find it later */
 	map_block[num_map_blocks - 1].connection[0] = (int *) my_malloc(sizeof(int));
 
@@ -928,11 +1007,8 @@ static void add_map(int doall, t_model* map_model)
 			saved_names[1], DRIVER, num_map_blocks - 1, 0, 0, FALSE, doall); /* Q */
 
 	/* Copy the name */
-	map_block[num_map_blocks - 1].name = my_strdup(saved_names[0]);
-	/* The name should be for our case tmux */
-
+	map_block[num_map_blocks - 1].name = my_strdup(saved_names[1]);
 }
-
 
 static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 		boolean is_global, int doall) {
@@ -1034,6 +1110,42 @@ static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 	h_ptr->name = my_strdup(ptr);
 	return (h_ptr->index);
 }
+
+
+static void rem_vpack_net(int entryIndex) {
+
+
+	struct s_hash *last_ptr,*cur_ptr;
+	int index, j, cur_index,last_index;
+
+
+	index = entryIndex;
+	/* set the last node */
+	last_ptr = blif_hash[num_logical_nets - 1];
+	/* set the current node */
+	cur_ptr = blif_hash[index];
+
+	cur_index = cur_ptr->index;
+	last_index = last_ptr->index;
+
+	num_driver[cur_index] = num_driver[last_index];
+
+	num_logical_nets--;
+	//num_driver = (int *)my_realloc(num_driver,num_logical_nets * sizeof(int));
+
+	last_ptr->next = cur_ptr->next;
+	last_ptr->prev->next = NULL;
+	last_ptr->prev = cur_ptr->prev;
+
+	cur_ptr->prev->next = last_ptr;
+	cur_ptr->next->prev = last_ptr;
+
+	/* Disconnect the last node now that you have copied the data */
+	//free(cur_ptr);
+
+
+}
+
 
 void echo_input(char *blif_file, char *echo_file, t_model *library_models) {
 
@@ -1177,7 +1289,8 @@ void echo_input(char *blif_file, char *echo_file, t_model *library_models) {
 /* load default vpack models (inpad, outpad, logic) */
 static void load_default_models(INP t_model *library_models,
 		OUTP t_model** inpad_model, OUTP t_model** outpad_model,
-		OUTP t_model** logic_model, OUTP t_model** latch_model, OUTP t_model** map_model) {
+		OUTP t_model** logic_model, OUTP t_model** latch_model,
+		OUTP t_model** map_model) {
 	t_model *cur_model;
 	cur_model = library_models;
 	*inpad_model = *outpad_model = *logic_model = *latch_model = NULL;
@@ -1201,7 +1314,7 @@ static void load_default_models(INP t_model *library_models,
 			assert(cur_model->outputs->next == NULL);
 			assert(cur_model->outputs->size == 1);
 			*latch_model = cur_model;
-		} else if (strcmp(MODEL_MAP, cur_model->name) == 0){
+		} else if (strcmp(MODEL_MAP, cur_model->name) == 0) {
 			assert(cur_model->inputs == NULL);
 			assert(cur_model->outputs->next == NULL);
 			assert(cur_model->outputs->size == 1);
@@ -1255,12 +1368,16 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 		error++;
 	}
 	for (i = 0; i < num_logical_nets; i++) {
-
+		/* The next error checking is the one that we will deactivate in order to support
+		 * the new type of explicit connections that will open the way to multiple connections
+		 * on the same pin.
+		 */
+		/* This is the place that we deactivate the error checking */
 		if (num_driver[i] != 1) {
 			vpr_printf(TIO_MESSAGE_ERROR,
 					"vpack_net %s has %d signals driving it.\n",
 					vpack_net[i].name, num_driver[i]);
-			error++;
+			//error++;
 		}
 
 		if (vpack_net[i].num_sinks == 0) {
@@ -1321,13 +1438,18 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 			} else {
 				if (j == 0) {
 					L_check_net = logical_block[iblk].output_nets[iport][ipin];
+					/* The next error checking is the one that we will deactivate in order to support
+					 * the new type of explicit connections that will open the way to multiple connections
+					 * on the same pin.
+					 */
+					/* This is the place that we deactivated one of the error checking mechanisms*/
 					if (L_check_net != i) {
 						vpr_printf(TIO_MESSAGE_ERROR,
 								"Output net for block %s #%d is net %s #%d but connecting net is %s #%d.\n",
 								logical_block[iblk].name, iblk,
 								vpack_net[L_check_net].name, L_check_net,
 								vpack_net[i].name, i);
-						error++;
+						//error++;
 					}
 				} else {
 					if (vpack_net[i].is_global) {
@@ -1398,7 +1520,7 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 						}
 					}
 				}
-				assert(found == TRUE);
+				//assert(found == TRUE);
 			}
 			port = port->next;
 		}
@@ -1429,11 +1551,11 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 						}
 					}
 				}
-				assert(found == TRUE);
+				//assert(found == TRUE);
 			}
 			port = port->next;
 		}
-		assert(count_outputs == logical_block_output_count[i]);
+		//assert(count_outputs == logical_block_output_count[i]);
 
 		if (logical_block[i].type == VPACK_LATCH) {
 			if (logical_block_input_count[i] != 1) {
@@ -1470,7 +1592,7 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 						"IO inpad logical_block #%d name %s of type %d" "has %d output pins.\n",
 						i, logical_block[i].name, logical_block[i].type,
 						logical_block_output_count[i]);
-				error++;
+				//error++;
 			}
 			if (logical_block[i].clock_net != OPEN) {
 				vpr_printf(TIO_MESSAGE_ERROR,
@@ -1533,8 +1655,9 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 					logical_block[i].name);
 		}
 	}
-	vpr_printf(TIO_MESSAGE_INFO, "%d unconnected blocks in input netlist.\n", count_unconn_blocks);
-		
+	vpr_printf(TIO_MESSAGE_INFO, "%d unconnected blocks in input netlist.\n",
+			count_unconn_blocks);
+
 	if (error != 0) {
 		vpr_printf(TIO_MESSAGE_ERROR,
 				"Found %d fatal errors in the input netlist.\n", error);
@@ -1622,7 +1745,8 @@ static void absorb_buffer_luts(void) {
 								vpack_net[out_net].node_block_pin[1];
 
 						assert(
-								logical_block[out_blk].input_nets[vpack_net[out_net].node_block_port[1]][vpack_net[out_net].node_block_pin[1]] == out_net);
+								logical_block[out_blk].input_nets[vpack_net[out_net].node_block_port[1]][vpack_net[out_net].node_block_pin[1]]
+										== out_net);
 						logical_block[out_blk].input_nets[vpack_net[out_net].node_block_port[1]][vpack_net[out_net].node_block_pin[1]] =
 								in_net;
 
@@ -1722,7 +1846,8 @@ static void compress_netlist(void) {
 					for (ipin = 0; ipin < port->size; ipin++) {
 						if (port->is_clock) {
 							assert(
-									port->size == 1 && port->index == 0 && ipin == 0);
+									port->size == 1 && port->index == 0
+											&& ipin == 0);
 							if (logical_block[index].clock_net == OPEN)
 								continue;
 							logical_block[index].clock_net =
@@ -1827,7 +1952,8 @@ static void compress_netlist(void) {
  */
 void read_and_process_blif(char *blif_file,
 		boolean sweep_hanging_nets_and_inputs, t_model *user_models,
-		t_model *library_models, boolean read_activity_file, char * activity_file) {
+		t_model *library_models, boolean read_activity_file,
+		char * activity_file) {
 
 	/* begin parsing blif input file */
 	read_blif(blif_file, sweep_hanging_nets_and_inputs, user_models,
@@ -1979,7 +2105,8 @@ static void read_activity(char * activity_file) {
 
 	for (net_idx = 0; net_idx < num_logical_nets; net_idx++) {
 		if (!vpack_net[net_idx].net_power) {
-			vpack_net[net_idx].net_power = new t_net_power;
+			vpack_net[net_idx].net_power = new
+			t_net_power;
 		}
 		vpack_net[net_idx].net_power->probability = -1.0;
 		vpack_net[net_idx].net_power->density = -1.0;

@@ -113,6 +113,16 @@ my_strdup(const char *str) {
 	return Dst;
 }
 
+void
+my_intdup(int *output,int* input,int size) {
+	int i;
+
+	for(i = 0; i < size; i++)
+	{
+		output[i] = input[i];
+	}
+}
+
 int my_atoi(const char *str) {
 
 	/* Returns the integer represented by the first part of the character       *

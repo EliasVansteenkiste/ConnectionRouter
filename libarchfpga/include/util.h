@@ -118,6 +118,7 @@ void alloc_ivector_and_copy_int_list(t_linked_int ** list_head_ptr,
 int my_atoi(const char *str);
 
 char* my_strdup(const char *str);
+void my_intdup(int *output,int *input,int size);
 char *my_strncpy(char *dest, const char *src, size_t size);
 char *my_strtok(char *ptr, const char *tokens, FILE * fp, char *buf);
 
