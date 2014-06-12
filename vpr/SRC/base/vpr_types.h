@@ -105,7 +105,7 @@ typedef size_t bitfield;
 
 /* netlist blocks are assigned one of these types */
 enum logical_block_types {
-	VPACK_INPAD = -2, VPACK_OUTPAD, VPACK_COMB, VPACK_LATCH, VPACK_EMPTY
+	VPACK_INPAD = -2, VPACK_OUTPAD, VPACK_COMB, VPACK_LATCH, VPACK_EMPTY, VPACK_MAP
 };
 
 /* Selection algorithm for selecting next seed  */

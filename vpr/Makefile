@@ -16,7 +16,7 @@ export BUILD_TYPE = release
 
 COMPILER = g++
 
-OPTIMIZATION_LEVEL_FOR_RELEASE_BUILD = -O3
+OPTIMIZATION_LEVEL_FOR_RELEASE_BUILD = -O0
 # can be -O0 (no optimization) to -O3 (full optimization), or -Os (optimize space)
 
 #############################################################################################

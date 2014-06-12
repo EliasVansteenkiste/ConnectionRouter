@@ -81,7 +81,7 @@ extern int num_p_inputs, num_p_outputs;
 extern struct s_net *vpack_net;
 extern struct s_logical_block *logical_block;
 extern struct s_subckt *subckt;
-extern struct s_map_block *map_block;
+extern struct s_logical_block **map_block;
 
 /* primiary inputs removed from circuit */
 extern struct s_linked_vptr *circuit_p_io_removed;
