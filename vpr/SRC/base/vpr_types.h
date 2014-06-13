@@ -1068,14 +1068,18 @@ typedef struct s_vpr_setup {
 
 typedef struct s_con {
     char *name;
+
     int net;
+
     int source;
     int source_block;
-    //int source_block_port;
-    //int source_block_pin;
+    int source_block_port;
+    int source_block_pin;
+
     int sink_block;
-    //int sink_block_port;
-    //int sink_block_pin;
+    int sink_block_port;
+    int sink_block_pin;
+
     int target_node; /* sink node */
     
     float previous_total_path_cost;

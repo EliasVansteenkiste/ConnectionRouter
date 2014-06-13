@@ -80,6 +80,7 @@ extern int num_logical_nets, num_logical_blocks, num_map_blocks;
 extern int num_p_inputs, num_p_outputs;
 extern struct s_net *vpack_net;
 extern struct s_logical_block *logical_block;
+extern struct s_con* exp_con;
 extern struct s_subckt *subckt;
 extern struct s_logical_block **map_block;
 
