@@ -14,7 +14,7 @@ float grid_logic_tile_area = 0;
 float ipin_mux_trans_size = 0;
 
 /* User netlist information begin  */
-int num_logical_nets = 0, num_logical_blocks = 0, num_map_blocks = 0;
+int num_logical_nets = 0, num_logical_blocks = 0, num_map_blocks = 0, num_exp_con = 0;
 int num_p_inputs = 0, num_p_outputs = 0;
 struct s_net *vpack_net = NULL;
 struct s_con *exp_con = NULL;

@@ -76,7 +76,7 @@ extern float ipin_mux_trans_size;
 /* Netlist description data structures. */
 
 /* User netlist information */
-extern int num_logical_nets, num_logical_blocks, num_map_blocks;
+extern int num_logical_nets, num_logical_blocks, num_map_blocks, num_exp_con;
 extern int num_p_inputs, num_p_outputs;
 extern struct s_net *vpack_net;
 extern struct s_logical_block *logical_block;
