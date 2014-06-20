@@ -275,7 +275,7 @@ static void print_primitive(FILE *fpout, int iblk) {
 			if (pb_type->ports[i].type == IN_PORT
 					&& pb_type->ports[i].is_clock == FALSE) {
 				assert(pb_type->ports[i].num_pins == 1);
-				assert(logical_block[iblk].input_nets[i][0] != OPEN);
+				assert(logical_block[iblk].nets->input_nets[i][0] != OPEN);
 				node_index =
 						pb->pb_graph_node->input_pins[in_port_index][0].pin_count_in_cluster;
 				fprintf(fpout, "clb_%d_rr_node_%d ", clb_index,
@@ -319,11 +319,11 @@ static void print_primitive(FILE *fpout, int iblk) {
 					   The intra-logic block router may have taken advantage of logical equivalence so we need to unscramble the inputs when we output the LUT logic.
 					*/
 					for (j = 0; j < pb_type->ports[i].num_pins; j++) {
-						if (logical_block[iblk].input_nets[in_port_index][j] != OPEN) {
+						if (logical_block[iblk].nets->input_nets[in_port_index][j] != OPEN) {
 							for (k = 0; k < pb_type->ports[i].num_pins; k++) {								
 								node_index = pb->pb_graph_node->input_pins[in_port_index][k].pin_count_in_cluster;
 								if(rr_node[node_index].net_num != OPEN) {
-									if(rr_node[node_index].net_num == logical_block[iblk].input_nets[in_port_index][j]) {
+									if(rr_node[node_index].net_num == logical_block[iblk].nets->input_nets[in_port_index][j]) {
 										fprintf(fpout, "clb_%d_rr_node_%d ", clb_index,
 										find_fanin_rr_node(pb,
 												pb_type->ports[i].type,
@@ -335,7 +335,7 @@ static void print_primitive(FILE *fpout, int iblk) {
 							if(k == pb_type->ports[i].num_pins) {
 								/* Failed to find LUT input, a netlist error has occurred */
 								vpr_printf(TIO_MESSAGE_ERROR, "LUT %s missing input %s post packing.  This is a VPR internal error, report to vpr@eecg.utoronto.ca\n",
-									logical_block[iblk].name, vpack_net[logical_block[iblk].input_nets[in_port_index][j]].name);
+									logical_block[iblk].name, vpack_net[logical_block[iblk].nets->input_nets[in_port_index][j]].name);
 								exit(1);
 							}
 						}
@@ -538,14 +538,14 @@ void output_blif (t_block *clb, int num_clusters, boolean global_clocks,
 		if (logical_block[bnum].type == VPACK_INPAD) {
 			for (i = 1;
 					i
-							<= vpack_net[logical_block[bnum].output_nets[0][0]].num_sinks;
+							<= vpack_net[logical_block[bnum].nets->output_nets[0][0]].num_sinks;
 					i++) {
-				if (logical_block[vpack_net[logical_block[bnum].output_nets[0][0]].node_block[i]].type
+				if (logical_block[vpack_net[logical_block[bnum].nets->output_nets[0][0]].node_block[i]].type
 						== VPACK_OUTPAD) {
 					fprintf(fpout, ".names ");
 					print_string(logical_block[bnum].name, &column, fpout);
 					print_string(
-							logical_block[vpack_net[logical_block[bnum].output_nets[0][0]].node_block[i]].name
+							logical_block[vpack_net[logical_block[bnum].nets->output_nets[0][0]].node_block[i]].name
 									+ 4, &column, fpout);
 					fprintf(fpout, "\n1 1\n");
 				}

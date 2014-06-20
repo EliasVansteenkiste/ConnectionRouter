@@ -81,7 +81,7 @@ match the clustered netlist (block).  You pass in the is_pre_packed flag to
 say which kind of netlist and timing graph you are working with.
                                                                                                                                            
 Every used (not OPEN) block pin becomes a timing node, both on primitive
-blocks and (if you’re building the timing graph that matches a clustered 
+blocks and (if youï¿½re building the timing graph that matches a clustered 
 netlist) on clustered blocks.  For the clustered (not pre_packed) timing
 graph, every used pin within a clustered (pb_type) block also becomes a timing
 node.  So a CLB that contains ALMs that contains LUTs will have nodes created 
@@ -310,8 +310,7 @@ t_slack * alloc_and_load_pre_packing_timing_graph(float block_delay,
 	num_timing_nets = num_logical_nets;
 	timing_nets = vpack_net;
 
-	alloc_and_load_tnodes_from_prepacked_netlist(block_delay,
-			inter_cluster_net_delay);
+	alloc_and_load_tnodes_from_prepacked_netlist(block_delay,inter_cluster_net_delay);
 
 	num_sinks = alloc_and_load_timing_graph_levels();
 
@@ -751,11 +750,8 @@ static void alloc_and_load_tnodes(t_timing_inf timing_inf) {
 		num_nodes_in_block = 0;
 		for (j = 0; j < block[i].pb->pb_graph_node->total_pb_pins; j++) {
 			if (block[i].pb->rr_graph[j].net_num != OPEN) {
-				if (block[i].pb->rr_graph[j].pb_graph_pin->type == PB_PIN_INPAD
-						|| block[i].pb->rr_graph[j].pb_graph_pin->type
-								== PB_PIN_OUTPAD
-						|| block[i].pb->rr_graph[j].pb_graph_pin->type
-								== PB_PIN_SEQUENTIAL) {
+				if (block[i].pb->rr_graph[j].pb_graph_pin->type == PB_PIN_INPAD	|| block[i].pb->rr_graph[j].pb_graph_pin->type							== PB_PIN_OUTPAD
+						|| block[i].pb->rr_graph[j].pb_graph_pin->type == PB_PIN_SEQUENTIAL) {
 					num_nodes_in_block += 2;
 				} else {
 					num_nodes_in_block++;
@@ -831,8 +827,7 @@ static void alloc_and_load_tnodes(t_timing_inf timing_inf) {
 			}
 			assert(count > 0);
 			tnode[i].num_edges = count;
-			tnode[i].out_edges = (t_tedge *) my_chunk_malloc(
-					count * sizeof(t_tedge), &tedge_ch);
+			tnode[i].out_edges = (t_tedge *) my_chunk_malloc(count * sizeof(t_tedge), &tedge_ch);
 
 			/* Load edges */
 			count = 0;
@@ -840,16 +835,12 @@ static void alloc_and_load_tnodes(t_timing_inf timing_inf) {
 				dnode = local_rr_graph[irr_node].edges[j];
 				if ((local_rr_graph[dnode].prev_node == irr_node)
 						&& (j == local_rr_graph[dnode].prev_edge)) {
-					assert(
-							(ipb_graph_pin->output_edges[j]->num_output_pins == 1) && (local_rr_graph[ipb_graph_pin->output_edges[j]->output_pins[0]->pin_count_in_cluster].net_num == local_rr_graph[irr_node].net_num));
+					assert((ipb_graph_pin->output_edges[j]->num_output_pins == 1) && (local_rr_graph[ipb_graph_pin->output_edges[j]->output_pins[0]->pin_count_in_cluster].net_num == local_rr_graph[irr_node].net_num));
 
-					tnode[i].out_edges[count].Tdel =
-							ipb_graph_pin->output_edges[j]->delay_max;
-					tnode[i].out_edges[count].to_node =
-							get_tnode_index(local_rr_graph[dnode].tnode);
+					tnode[i].out_edges[count].Tdel = ipb_graph_pin->output_edges[j]->delay_max;
+					tnode[i].out_edges[count].to_node = get_tnode_index(local_rr_graph[dnode].tnode);
 
-					if (vpack_net[local_rr_graph[irr_node].net_num].is_const_gen
-							== TRUE && tnode[i].type == TN_PRIMITIVE_OPIN) {
+					if (vpack_net[local_rr_graph[irr_node].net_num].is_const_gen == TRUE && tnode[i].type == TN_PRIMITIVE_OPIN) {
 						tnode[i].out_edges[count].Tdel = HUGE_NEGATIVE_FLOAT;
 						tnode[i].type = TN_CONSTANT_GEN_SOURCE;
 					}
@@ -988,6 +979,34 @@ static void alloc_and_load_tnodes(t_timing_inf timing_inf) {
 	}
 }
 
+static int has_multiple_inputs(int checkBlock)
+{
+	t_nets *cur;
+	int counter = 0;
+	for(cur = logical_block[checkBlock].nets->next; cur != NULL; cur = cur->next)
+	{
+		if(cur->input_nets != NULL)
+		{
+			printf("Multiple inputs: %s\n",logical_block[checkBlock].name);
+			counter++;
+		}
+	}
+	return counter;
+}
+
+static int has_multiple_outputs(int checkBlock)
+{
+	/* This is included for the multiple nets in one pin */
+	t_nets *cur;
+	int counter = 0;
+	for(cur = logical_block[checkBlock].nets->next; cur != NULL; cur = cur->next){
+		if(cur->output_nets != NULL){
+			printf("Multiple Outputs: %s\n",logical_block[checkBlock].name);
+			counter++;
+		}
+	}
+	return counter;
+}
 /* Allocate timing graph for pre packed netlist
  Count number of tnodes first
  Then connect up tnodes with edges
@@ -1001,6 +1020,8 @@ static void alloc_and_load_tnodes_from_prepacked_netlist(float block_delay,
 	int inode, inet;
 	int incr;
 	int count;
+	t_nets *cur;
+	int check = 0;
 
 	f_net_to_driver_tnode = (int*)my_malloc(num_logical_nets * sizeof(int));
 
@@ -1014,12 +1035,17 @@ static void alloc_and_load_tnodes_from_prepacked_netlist(float block_delay,
 		model = logical_block[i].model;
 		logical_block[i].clock_net_tnode = NULL;
 		if (logical_block[i].type == VPACK_INPAD) {
-			logical_block[i].output_net_tnodes = (t_tnode***)my_calloc(1,
-					sizeof(t_tnode**));
+			for(cur = logical_block[i].nets; cur != NULL; cur = cur->next)
+				cur->output_net_tnodes = (t_tnode***)my_calloc(1,sizeof(t_tnode**));
 			num_tnodes += 2;
+			num_tnodes += (has_multiple_outputs(i) * 2);
+			printf("Inpad: %s %d\n",logical_block[i].name,num_tnodes);
 		} else if (logical_block[i].type == VPACK_OUTPAD) {
-			logical_block[i].input_net_tnodes = (t_tnode***)my_calloc(1, sizeof(t_tnode**));
+			for(cur = logical_block[i].nets; cur != NULL; cur = cur->next)
+				cur->input_net_tnodes = (t_tnode***)my_calloc(1, sizeof(t_tnode**));
 			num_tnodes += 2;
+			num_tnodes += (has_multiple_inputs(i) * 2);
+			printf("Outpad: %s %d\n",logical_block[i].name,num_tnodes);
 		} else {
 			if (logical_block[i].clock_net == OPEN) {
 				incr = 1;
@@ -1031,31 +1057,41 @@ static void alloc_and_load_tnodes_from_prepacked_netlist(float block_delay,
 			while (model_port) {
 				if (model_port->is_clock == FALSE) {
 					for (k = 0; k < model_port->size; k++) {
-						if (logical_block[i].input_nets[j][k] != OPEN) {
+						if (logical_block[i].nets->input_nets[j][k] != OPEN) {
 							num_tnodes += incr;
 						}
 					}
+					num_tnodes += (has_multiple_inputs(i) * incr);
+					printf("Inputs: %s %d\n",logical_block[i].name,num_tnodes);
+					/* This is included for the multiple nets in one pin */
 					j++;
 				} else {
 					num_tnodes++;
+					printf("Clock: %s %d\n",logical_block[i].name,num_tnodes);
 				}
 				model_port = model_port->next;
 			}
-			logical_block[i].input_net_tnodes = (t_tnode ***)my_calloc(j, sizeof(t_tnode**));
+			//logical_block[i].nets->input_net_tnodes = (t_tnode ***)my_calloc(j, sizeof(t_tnode**));
+			for(cur = logical_block[i].nets; cur != NULL; cur = cur->next)
+				cur->input_net_tnodes = (t_tnode ***)my_calloc(j,sizeof(t_tnode**));
 
 			j = 0;
 			model_port = model->outputs;
 			while (model_port) {
 				for (k = 0; k < model_port->size; k++) {
-					if (logical_block[i].output_nets[j][k] != OPEN) {
+					if (logical_block[i].nets->output_nets[j][k] != OPEN) {
 						num_tnodes += incr;
 					}
 				}
+				num_tnodes += (has_multiple_outputs(i) * incr);
+				printf("Outputs: %s %d\n",logical_block[i].name,num_tnodes);
 				j++;
 				model_port = model_port->next;
 			}
-			logical_block[i].output_net_tnodes = (t_tnode ***)my_calloc(j,
-					sizeof(t_tnode**));
+			//logical_block[i].nets->output_net_tnodes = (t_tnode ***)my_calloc(j,sizeof(t_tnode**));
+			for(cur = logical_block[i].nets; cur != NULL; cur = cur->next)
+				cur->output_net_tnodes = (t_tnode ***)my_calloc(j,sizeof(t_tnode**));
+
 		}
 	}
 	tnode = (t_tnode *)my_calloc(num_tnodes, sizeof(t_tnode));
@@ -1068,169 +1104,188 @@ static void alloc_and_load_tnodes_from_prepacked_netlist(float block_delay,
 	/* load tnodes, alloc edges for tnodes, load all known tnodes */
 	inode = 0;
 	for (i = 0; i < num_logical_blocks; i++) {
-		model = logical_block[i].model;
-		if (logical_block[i].type == VPACK_INPAD) {
-			logical_block[i].output_net_tnodes[0] = (t_tnode **)my_calloc(1,
-					sizeof(t_tnode*));
-			logical_block[i].output_net_tnodes[0][0] = &tnode[inode];
-			f_net_to_driver_tnode[logical_block[i].output_nets[0][0]] = inode;
-			tnode[inode].prepacked_data->model_pin = 0;
-			tnode[inode].prepacked_data->model_port = 0;
-			tnode[inode].prepacked_data->model_port_ptr = model->outputs;
-			tnode[inode].block = i;
-			tnode[inode].type = TN_INPAD_OPIN;
+		t_nets *cur;
+		for(cur = logical_block[i].nets; cur != NULL; cur = cur->next){
+			model = logical_block[i].model;
+			if (logical_block[i].type == VPACK_INPAD) {
+				cur->output_net_tnodes[0] = (t_tnode **)my_calloc(1,sizeof(t_tnode*));
+				cur->output_net_tnodes[0][0] = &tnode[inode];
+				f_net_to_driver_tnode[cur->output_nets[0][0]] = inode;
+				tnode[inode].prepacked_data->model_pin = 0;
+				tnode[inode].prepacked_data->model_port = 0;
+				tnode[inode].prepacked_data->model_port_ptr = model->outputs;
+				tnode[inode].block = i;
+				tnode[inode].type = TN_INPAD_OPIN;
+				tnode[inode].num_edges = vpack_net[cur->output_nets[0][0]].num_sinks;
+				tnode[inode].out_edges = (t_tedge *) my_chunk_malloc(tnode[inode].num_edges * sizeof(t_tedge),&tedge_ch);
+				tnode[inode + 1].num_edges = 1;
+				tnode[inode + 1].out_edges = (t_tedge *) my_chunk_malloc(1 * sizeof(t_tedge), &tedge_ch);
+				tnode[inode + 1].out_edges->Tdel = 0;
+				tnode[inode + 1].out_edges->to_node = inode;
+				tnode[inode + 1].type = TN_INPAD_SOURCE;
+				tnode[inode + 1].block = i;
+				inode += 2;
+				printf("Inpad: %s %d\n",logical_block[i].name,inode);
+			} else if (logical_block[i].type == VPACK_OUTPAD) {
+				cur->input_net_tnodes[0] = (t_tnode **)my_calloc(1,sizeof(t_tnode*));
+				cur->input_net_tnodes[0][0] = &tnode[inode];
+				tnode[inode].prepacked_data->model_pin = 0;
+				tnode[inode].prepacked_data->model_port = 0;
+				tnode[inode].prepacked_data->model_port_ptr = model->inputs;
+				tnode[inode].block = i;
+				tnode[inode].type = TN_OUTPAD_IPIN;
+				tnode[inode].num_edges = 1;
+				tnode[inode].out_edges = (t_tedge *) my_chunk_malloc(1 * sizeof(t_tedge), &tedge_ch);
+				tnode[inode].out_edges->Tdel = 0;
+				tnode[inode].out_edges->to_node = inode + 1;
+				tnode[inode + 1].type = TN_OUTPAD_SINK;
+				tnode[inode + 1].block = i;
+				tnode[inode + 1].num_edges = 0;
+				tnode[inode + 1].out_edges = NULL;
+				inode += 2;
+				printf("Outpad: %s %d\n",logical_block[i].name,inode);
+			} else {
+				j = 0;
+				model_port = model->outputs;
+				while (model_port) {
+					if(cur->output_nets != NULL){
+						cur->output_net_tnodes[j] = (t_tnode **)my_calloc(model_port->size, sizeof(t_tnode*));
+						for (k = 0; k < model_port->size; k++) {
+							if ( cur->output_nets[j][k] != OPEN) {
+								tnode[inode].prepacked_data->model_pin = k;
+								tnode[inode].prepacked_data->model_port = j;
+								tnode[inode].prepacked_data->model_port_ptr = model_port;
+								tnode[inode].block = i;
+								f_net_to_driver_tnode[cur->output_nets[j][k]] = inode;
+								cur->output_net_tnodes[j][k] = &tnode[inode];
 
-			tnode[inode].num_edges =
-					vpack_net[logical_block[i].output_nets[0][0]].num_sinks;
-			tnode[inode].out_edges = (t_tedge *) my_chunk_malloc(
-					tnode[inode].num_edges * sizeof(t_tedge),
-					&tedge_ch);
-			tnode[inode + 1].num_edges = 1;
-			tnode[inode + 1].out_edges = (t_tedge *) my_chunk_malloc(
-					1 * sizeof(t_tedge), &tedge_ch);
-			tnode[inode + 1].out_edges->Tdel = 0;
-			tnode[inode + 1].out_edges->to_node = inode;
-			tnode[inode + 1].type = TN_INPAD_SOURCE;
-			tnode[inode + 1].block = i;
-			inode += 2;
-		} else if (logical_block[i].type == VPACK_OUTPAD) {
-			logical_block[i].input_net_tnodes[0] = (t_tnode **)my_calloc(1,
-					sizeof(t_tnode*));
-			logical_block[i].input_net_tnodes[0][0] = &tnode[inode];
-			tnode[inode].prepacked_data->model_pin = 0;
-			tnode[inode].prepacked_data->model_port = 0;
-			tnode[inode].prepacked_data->model_port_ptr = model->inputs;
-			tnode[inode].block = i;
-			tnode[inode].type = TN_OUTPAD_IPIN;
-			tnode[inode].num_edges = 1;
-			tnode[inode].out_edges = (t_tedge *) my_chunk_malloc(
-					1 * sizeof(t_tedge), &tedge_ch);
-			tnode[inode].out_edges->Tdel = 0;
-			tnode[inode].out_edges->to_node = inode + 1;
-			tnode[inode + 1].type = TN_OUTPAD_SINK;
-			tnode[inode + 1].block = i;
-			tnode[inode + 1].num_edges = 0;
-			tnode[inode + 1].out_edges = NULL;
-			inode += 2;
-		} else {
-			j = 0;
-			model_port = model->outputs;
-			while (model_port) {
-				logical_block[i].output_net_tnodes[j] = (t_tnode **)my_calloc(
-						model_port->size, sizeof(t_tnode*));
-				for (k = 0; k < model_port->size; k++) {
-					if (logical_block[i].output_nets[j][k] != OPEN) {
-						tnode[inode].prepacked_data->model_pin = k;
-						tnode[inode].prepacked_data->model_port = j;
-						tnode[inode].prepacked_data->model_port_ptr = model_port;
-						tnode[inode].block = i;
-						f_net_to_driver_tnode[logical_block[i].output_nets[j][k]] =
-								inode;
-						logical_block[i].output_net_tnodes[j][k] =
-								&tnode[inode];
+								tnode[inode].num_edges = vpack_net[cur->output_nets[j][k]].num_sinks;
+								tnode[inode].out_edges = (t_tedge *) my_chunk_malloc(tnode[inode].num_edges * sizeof(t_tedge),&tedge_ch);
 
-						tnode[inode].num_edges =
-								vpack_net[logical_block[i].output_nets[j][k]].num_sinks;
-						tnode[inode].out_edges = (t_tedge *) my_chunk_malloc(
-								tnode[inode].num_edges * sizeof(t_tedge),
-								&tedge_ch);
+								if (logical_block[i].clock_net == OPEN) {
+									tnode[inode].type = TN_PRIMITIVE_OPIN;
+									inode++;
+									printf("General: %s %d\n",logical_block[i].name,inode);
+								} else {
+									/* load delays from predicted clock-to-Q time */
+									from_pb_graph_pin = get_pb_graph_node_pin_from_model_port_pin(model_port, k, logical_block[i].expected_lowest_cost_primitive);
+									tnode[inode].type = TN_FF_OPIN;
+									tnode[inode + 1].num_edges = 1;
+									tnode[inode + 1].out_edges = (t_tedge *) my_chunk_malloc(1 * sizeof(t_tedge),&tedge_ch);
+									tnode[inode + 1].out_edges->to_node = inode;
+									tnode[inode + 1].out_edges->Tdel = from_pb_graph_pin->tsu_tco;
+									tnode[inode + 1].type = TN_FF_SOURCE;
+									tnode[inode + 1].block = i;
+									inode += 2;
+									printf("General: %s %d\n",logical_block[i].name,inode);
+								}
+							}
+						}
+						j++;
+						model_port = model_port->next;
+					}
+					break;
+				}
 
-						if (logical_block[i].clock_net == OPEN) {
-							tnode[inode].type = TN_PRIMITIVE_OPIN;
+				j = 0;
+				model_port = model->inputs;
+				while (model_port) {
+					if (model_port->is_clock == FALSE) {
+						if(cur->input_nets != NULL){
+							cur->input_net_tnodes[j] = (t_tnode **)my_calloc(model_port->size, sizeof(t_tnode*));
+							for (k = 0; k < model_port->size; k++) {
+								if (cur->input_nets[j][k] != OPEN) {
+									tnode[inode].prepacked_data->model_pin = k;
+									tnode[inode].prepacked_data->model_port = j;
+									tnode[inode].prepacked_data->model_port_ptr = model_port;
+									tnode[inode].block = i;
+									cur->input_net_tnodes[j][k] = &tnode[inode];
+									from_pb_graph_pin = get_pb_graph_node_pin_from_model_port_pin(model_port, k, logical_block[i].expected_lowest_cost_primitive);
+									if (logical_block[i].clock_net == OPEN) {
+										/* load predicted combinational delays to predicted edges */
+										tnode[inode].type = TN_PRIMITIVE_IPIN;
+										tnode[inode].out_edges = (t_tedge *) my_chunk_malloc(from_pb_graph_pin->num_pin_timing * sizeof(t_tedge), &tedge_ch);
+										count = 0;
+										for(int m = 0; m < from_pb_graph_pin->num_pin_timing; m++) {
+											to_pb_graph_pin = from_pb_graph_pin->pin_timing[m];
+											if(cur->output_nets == NULL || cur->output_nets[to_pb_graph_pin->port->model_port->index][to_pb_graph_pin->pin_number] == OPEN) {
+												continue;
+											}
+											tnode[inode].out_edges[count].Tdel = from_pb_graph_pin->pin_timing_del_max[m];
+											tnode[inode].out_edges[count].to_node = get_tnode_index(cur->output_net_tnodes[to_pb_graph_pin->port->model_port->index][to_pb_graph_pin->pin_number]);
+											count++;
+										}
+										tnode[inode].num_edges = count;
+										inode++;
+										printf("General: %s %d\n",logical_block[i].name,inode);
+
+									} else {
+										/* load predicted setup time */
+										tnode[inode].type = TN_FF_IPIN;
+										tnode[inode].num_edges = 1;
+										tnode[inode].out_edges =
+												(t_tedge *) my_chunk_malloc(
+														1 * sizeof(t_tedge),
+														&tedge_ch);
+										tnode[inode].out_edges->to_node = inode + 1;
+										tnode[inode].out_edges->Tdel = from_pb_graph_pin->tsu_tco;
+										tnode[inode + 1].type = TN_FF_SINK;
+										tnode[inode + 1].num_edges = 0;
+										tnode[inode + 1].out_edges = NULL;
+										tnode[inode + 1].block = i;
+										inode += 2;
+										printf("General: %s %d\n",logical_block[i].name,inode);
+									}
+								}
+							}
+							j++;
+						}
+						break;
+					} else {
+						if (logical_block[i].clock_net != OPEN) {
+							assert(logical_block[i].clock_net_tnode == NULL);
+							logical_block[i].clock_net_tnode = &tnode[inode];
+							tnode[inode].block = i;
+							tnode[inode].prepacked_data->model_pin = 0;
+							tnode[inode].prepacked_data->model_port = 0;
+							tnode[inode].prepacked_data->model_port_ptr = model_port;
+							tnode[inode].num_edges = 0;
+							tnode[inode].out_edges = NULL;
+							tnode[inode].type = TN_FF_CLOCK;
 							inode++;
-						} else {
-							/* load delays from predicted clock-to-Q time */
-							from_pb_graph_pin = get_pb_graph_node_pin_from_model_port_pin(model_port, k, logical_block[i].expected_lowest_cost_primitive);
-							tnode[inode].type = TN_FF_OPIN;
-							tnode[inode + 1].num_edges = 1;
-							tnode[inode + 1].out_edges =
-									(t_tedge *) my_chunk_malloc(
-											1 * sizeof(t_tedge),
-											&tedge_ch);
-							tnode[inode + 1].out_edges->to_node = inode;
-							tnode[inode + 1].out_edges->Tdel = from_pb_graph_pin->tsu_tco;
-							tnode[inode + 1].type = TN_FF_SOURCE;
-							tnode[inode + 1].block = i;
-							inode += 2;
+							printf("General: %s %d\n",logical_block[i].name,inode);
 						}
 					}
+					model_port = model_port->next;
 				}
-				j++;
-				model_port = model_port->next;
 			}
-
+		}
+		/* This is the place where we put one of the choices that we have as a connection into the block */
+		for (i = 0; i < num_logical_blocks; i++) {
 			j = 0;
+			int l;
 			model_port = model->inputs;
 			while (model_port) {
-				if (model_port->is_clock == FALSE) {
-					logical_block[i].input_net_tnodes[j] = (t_tnode **)my_calloc(
-							model_port->size, sizeof(t_tnode*));
+				if(cur->input_nets != NULL){
 					for (k = 0; k < model_port->size; k++) {
-						if (logical_block[i].input_nets[j][k] != OPEN) {
-							tnode[inode].prepacked_data->model_pin = k;
-							tnode[inode].prepacked_data->model_port = j;
-							tnode[inode].prepacked_data->model_port_ptr = model_port;
-							tnode[inode].block = i;
-							logical_block[i].input_net_tnodes[j][k] =
-									&tnode[inode];
-							from_pb_graph_pin = get_pb_graph_node_pin_from_model_port_pin(model_port, k, logical_block[i].expected_lowest_cost_primitive);
-							if (logical_block[i].clock_net == OPEN) {
-								/* load predicted combinational delays to predicted edges */
-								tnode[inode].type = TN_PRIMITIVE_IPIN;
-								tnode[inode].out_edges =
-										(t_tedge *) my_chunk_malloc(
-										from_pb_graph_pin->num_pin_timing * sizeof(t_tedge),
-												&tedge_ch);
-								count = 0;
-								for(int m = 0; m < from_pb_graph_pin->num_pin_timing; m++) {
-									to_pb_graph_pin = from_pb_graph_pin->pin_timing[m];
-									if(logical_block[i].output_nets[to_pb_graph_pin->port->model_port->index][to_pb_graph_pin->pin_number] == OPEN) {
-										continue;
-									}
-									tnode[inode].out_edges[count].Tdel = from_pb_graph_pin->pin_timing_del_max[m];
-									tnode[inode].out_edges[count].to_node = 
-										get_tnode_index(logical_block[i].output_net_tnodes[to_pb_graph_pin->port->model_port->index][to_pb_graph_pin->pin_number]);
-									count++;
+						if (logical_block[i].nets->input_nets[j][k] == OPEN) {
+							for(cur = logical_block[i].nets->next; cur != NULL; cur = cur->next){
+								if(cur->input_net_tnodes[j][k] != OPEN){
+									for(l = 0; l < num_tnodes; l++)
+										if(tnode[l].block == i)
+											logical_block[i].nets->input_net_tnodes[j][k] = &tnode[l];
 								}
-								tnode[inode].num_edges = count;
-								inode++;
-							} else {
-								/* load predicted setup time */
-								tnode[inode].type = TN_FF_IPIN;
-								tnode[inode].num_edges = 1;
-								tnode[inode].out_edges =
-										(t_tedge *) my_chunk_malloc(
-												1 * sizeof(t_tedge),
-												&tedge_ch);
-								tnode[inode].out_edges->to_node = inode + 1;
-								tnode[inode].out_edges->Tdel = from_pb_graph_pin->tsu_tco;
-								tnode[inode + 1].type = TN_FF_SINK;
-								tnode[inode + 1].num_edges = 0;
-								tnode[inode + 1].out_edges = NULL;
-								tnode[inode + 1].block = i;
-								inode += 2;
 							}
 						}
 					}
+					model_port = model_port->next;
 					j++;
-				} else {
-					if (logical_block[i].clock_net != OPEN) {
-						assert(logical_block[i].clock_net_tnode == NULL);
-						logical_block[i].clock_net_tnode = &tnode[inode];
-						tnode[inode].block = i;
-						tnode[inode].prepacked_data->model_pin = 0;
-						tnode[inode].prepacked_data->model_port = 0;
-						tnode[inode].prepacked_data->model_port_ptr = model_port;
-						tnode[inode].num_edges = 0;
-						tnode[inode].out_edges = NULL;
-						tnode[inode].type = TN_FF_CLOCK;
-						inode++;
-					}
 				}
-				model_port = model_port->next;
+				break;
 			}
 		}
 	}
+	printf("Difference: %d\n",num_tnodes - inode);
 	assert(inode == num_tnodes);
 
 	/* load edge delays and initialize clock domains to OPEN. */
@@ -1248,10 +1303,10 @@ static void alloc_and_load_tnodes_from_prepacked_netlist(float block_delay,
 		case TN_FF_OPIN:
 			/* fanout is determined by intra-cluster connections */
 			/* Allocate space for edges  */
-			inet =
-					logical_block[tnode[i].block].output_nets[tnode[i].prepacked_data->model_port][tnode[i].prepacked_data->model_pin];
-			assert(inet != OPEN);
 
+			inet = logical_block[tnode[i].block].nets->output_nets[tnode[i].prepacked_data->model_port][tnode[i].prepacked_data->model_pin];
+			assert(inet != OPEN);
+			printf("Block: %s %s %d\n",logical_block[tnode[i].block].name,vpack_net[inet].name,vpack_net[inet].num_sinks);
 			for (j = 1; j <= vpack_net[inet].num_sinks; j++) {
 				if (vpack_net[inet].is_const_gen) {
 					tnode[i].out_edges[j - 1].Tdel = HUGE_NEGATIVE_FLOAT;
@@ -1260,16 +1315,24 @@ static void alloc_and_load_tnodes_from_prepacked_netlist(float block_delay,
 					tnode[i].out_edges[j - 1].Tdel = inter_cluster_net_delay;
 				}
 				if (vpack_net[inet].is_global) {
-					assert(
-							logical_block[vpack_net[inet].node_block[j]].clock_net == inet);
+					assert(logical_block[vpack_net[inet].node_block[j]].clock_net == inet);
 					tnode[i].out_edges[j - 1].to_node =
 							get_tnode_index(logical_block[vpack_net[inet].node_block[j]].clock_net_tnode);
 				} else {
-					assert(
-						logical_block[vpack_net[inet].node_block[j]].input_net_tnodes[vpack_net[inet].node_block_port[j]][vpack_net[inet].node_block_pin[j]] != NULL);
-					tnode[i].out_edges[j - 1].to_node =
-							get_tnode_index(logical_block[vpack_net[inet].node_block[j]].input_net_tnodes[vpack_net[inet].node_block_port[j]][vpack_net[inet].node_block_pin[j]]);
-				}
+					printf("%s\n",logical_block[vpack_net[inet].node_block[j]].name);
+					for(cur = logical_block[vpack_net[inet].node_block[j]].nets; cur != NULL; )
+						if(cur->input_net_tnodes[vpack_net[inet].node_block_port[j]][vpack_net[inet].node_block_pin[j]] == NULL)
+							cur = cur->next;
+						else{
+							tnode[i].out_edges[j - 1].to_node = get_tnode_index(cur->input_net_tnodes[vpack_net[inet].node_block_port[j]][vpack_net[inet].node_block_pin[j]]);
+							check = 1;
+							break;
+						}
+					//assert(logical_block[vpack_net[inet].node_block[j]].nets->input_net_tnodes[vpack_net[inet].node_block_port[j]][vpack_net[inet].node_block_pin[j]] != NULL);
+					}
+					if(!check)
+						assert(logical_block[vpack_net[inet].node_block[j]].nets->input_net_tnodes[vpack_net[inet].node_block_port[j]][vpack_net[inet].node_block_pin[j]] != NULL);
+
 			}
 			assert(tnode[i].num_edges == vpack_net[inet].num_sinks);
 			break;
@@ -1300,8 +1363,7 @@ static void load_tnode(INP t_pb_graph_pin *pb_graph_pin, INP int iblock,
 	i = *inode;
 	tnode[i].pb_graph_pin = pb_graph_pin;
 	tnode[i].block = iblock;
-	block[iblock].pb->rr_graph[pb_graph_pin->pin_count_in_cluster].tnode =
-			&tnode[i];
+	block[iblock].pb->rr_graph[pb_graph_pin->pin_count_in_cluster].tnode =	&tnode[i];
 	if (tnode[i].pb_graph_pin->parent_node->pb_type->blif_model == NULL) {
 		assert(tnode[i].pb_graph_pin->type == PB_PIN_NORMAL);
 		if (tnode[i].pb_graph_pin->parent_node->parent_pb_graph_node == NULL) {
@@ -2056,7 +2118,6 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 		for (i = 0; i < num_at_level; i++) {
 			inode = tnodes_at_level[ilevel].list[i];
 			num_edges = tnode[inode].num_edges;
-	
 			if (ilevel == 0) {
 				if (!(tnode[inode].type == TN_INPAD_SOURCE || tnode[inode].type == TN_FF_SOURCE || tnode[inode].type == TN_CONSTANT_GEN_SOURCE)) {
 					vpr_printf(TIO_MESSAGE_ERROR, "Timing graph started on unexpected node %s.%s[%d].\n",
@@ -2090,6 +2151,7 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 	
 				if (!(tnode[inode].type == TN_OUTPAD_SINK || tnode[inode].type == TN_FF_SINK)) {
 					if(is_prepacked) {
+						printf("");
 						vpr_printf(TIO_MESSAGE_WARNING, "Pin on block %s.%s[%d] not used\n", 
 													logical_block[tnode[inode].block].name, 
 													tnode[inode].prepacked_data->model_port_ptr->name, 
@@ -2216,8 +2278,7 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 					all paths go through one of these edges. */
 					if (tnode[to_node].num_edges == 0 && tnode[to_node].clock_domain == sink_clock_domain) {
 						f_timing_stats->least_slack[source_clock_domain][sink_clock_domain] = 
-							std::min(f_timing_stats->least_slack[source_clock_domain][sink_clock_domain],
-							   (T_req - Tdel - tnode[inode].T_arr)); 
+							std::min(f_timing_stats->least_slack[source_clock_domain][sink_clock_domain],(T_req - Tdel - tnode[inode].T_arr));
 					}
 				}
 #ifndef PATH_COUNTING
@@ -3462,7 +3523,7 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 	if (logical_block[iblk].type == VPACK_INPAD) {
 		if (logical_block[iblk].pb == NULL) {
 			fprintf(fpout, ".names %s tnode_%d\n", logical_block[iblk].name,
-					get_tnode_index(logical_block[iblk].output_net_tnodes[0][0]));
+					get_tnode_index(logical_block[iblk].nets->output_net_tnodes[0][0]));
 		} else {
 			fprintf(fpout, ".names %s tnode_%d\n", logical_block[iblk].name,
 					get_tnode_index(logical_block[iblk].pb->rr_graph[logical_block[iblk].pb->pb_graph_node->output_pins[0][0].pin_count_in_cluster].tnode));
@@ -3472,7 +3533,7 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 		/* outputs have the symbol out: automatically prepended to it, must remove */
 		if (logical_block[iblk].pb == NULL) {
 			fprintf(fpout, ".names tnode_%d %s\n",
-					get_tnode_index(logical_block[iblk].input_net_tnodes[0][0]),
+					get_tnode_index(logical_block[iblk].nets->input_net_tnodes[0][0]),
 					&logical_block[iblk].name[4]);
 		} else {
 			/* avoid the out: from output pad naming */
@@ -3492,9 +3553,9 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 				if (!port->is_clock) {
 					assert(port->size == 1);
 					for (j = 0; j < port->size; j++) {
-						if (logical_block[iblk].input_net_tnodes[i][j] != NULL) {
+						if (logical_block[iblk].nets->input_net_tnodes[i][j] != NULL) {
 							fprintf(fpout, "tnode_%d ",
-									get_tnode_index(logical_block[iblk].input_net_tnodes[i][j]));
+									get_tnode_index(logical_block[iblk].nets->input_net_tnodes[i][j]));
 						} else {
 							assert(0);
 						}
@@ -3510,9 +3571,9 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 			while (port) {
 				assert(port->size == 1);
 				for (j = 0; j < port->size; j++) {
-					if (logical_block[iblk].output_net_tnodes[i][j] != NULL) {
+					if (logical_block[iblk].nets->output_net_tnodes[i][j] != NULL) {
 						node =
-								get_tnode_index(logical_block[iblk].output_net_tnodes[i][j]);
+								get_tnode_index(logical_block[iblk].nets->output_net_tnodes[i][j]);
 						fprintf(fpout, "latch_%s re ",
 								logical_block[iblk].name);
 					} else {
@@ -3569,9 +3630,9 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 			while (port) {
 				assert(!port->is_clock);
 				for (j = 0; j < port->size; j++) {
-					if (logical_block[iblk].input_net_tnodes[i][j] != NULL) {
+					if (logical_block[iblk].nets->input_net_tnodes[i][j] != NULL) {
 						fprintf(fpout, "tnode_%d ",
-								get_tnode_index(logical_block[iblk].input_net_tnodes[i][j]));
+								get_tnode_index(logical_block[iblk].nets->input_net_tnodes[i][j]));
 					} else {
 						break;
 					}
@@ -3586,7 +3647,7 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 			while (port) {
 				assert(port->size == 1);
 				fprintf(fpout, "lut_%s\n", logical_block[iblk].name);
-				node = get_tnode_index(logical_block[iblk].output_net_tnodes[0][0]);
+				node = get_tnode_index(logical_block[iblk].nets->output_net_tnodes[0][0]);
 				assert(node != OPEN);
 				i++;
 				port = port->next;
@@ -3598,11 +3659,11 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 			for (i = 0;
 					i < logical_block[iblk].pb->pb_graph_node->num_input_pins[0];
 					i++) {
-				if(logical_block[iblk].input_nets[0][i] != OPEN) {
+				if(logical_block[iblk].nets->input_nets[0][i] != OPEN) {
 					for (j = 0; j < logical_block[iblk].pb->pb_graph_node->num_input_pins[0]; j++) {
 						if (irr_graph[logical_block[iblk].pb->pb_graph_node->input_pins[0][j].pin_count_in_cluster].net_num
 							!= OPEN) {
-							if (irr_graph[logical_block[iblk].pb->pb_graph_node->input_pins[0][j].pin_count_in_cluster].net_num == logical_block[iblk].input_nets[0][i]) {
+							if (irr_graph[logical_block[iblk].pb->pb_graph_node->input_pins[0][j].pin_count_in_cluster].net_num == logical_block[iblk].nets->input_nets[0][i]) {
 								fprintf(fpout, "tnode_%d ",
 								get_tnode_index(irr_graph[logical_block[iblk].pb->pb_graph_node->input_pins[0][j].pin_count_in_cluster].tnode));
 								break;
@@ -3639,14 +3700,14 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 			while (port) {
 				if (!port->is_clock) {
 					for (j = 0; j < port->size; j++) {
-						if (logical_block[iblk].input_net_tnodes[i][j] != NULL) {
+						if (logical_block[iblk].nets->input_net_tnodes[i][j] != NULL) {
 							if (port->size > 1) {
 								fprintf(fpout, "\\\n%s[%d]=tnode_%d ",
 										port->name, j,
-										get_tnode_index(logical_block[iblk].input_net_tnodes[i][j]));
+										get_tnode_index(logical_block[iblk].nets->input_net_tnodes[i][j]));
 							} else {
 								fprintf(fpout, "\\\n%s=tnode_%d ", port->name,
-										get_tnode_index(logical_block[iblk].input_net_tnodes[i][j]));
+										get_tnode_index(logical_block[iblk].nets->input_net_tnodes[i][j]));
 							}
 						} else {
 							if (port->size > 1) {
@@ -3666,13 +3727,13 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 			port = logical_block[iblk].model->outputs;
 			while (port) {
 				for (j = 0; j < port->size; j++) {
-					if (logical_block[iblk].output_net_tnodes[i][j] != NULL) {
+					if (logical_block[iblk].nets->output_net_tnodes[i][j] != NULL) {
 						if (port->size > 1) {
 							fprintf(fpout, "\\\n%s[%d]=%s ", port->name, j,
-									vpack_net[logical_block[iblk].output_nets[i][j]].name);
+									vpack_net[logical_block[iblk].nets->output_nets[i][j]].name);
 						} else {
 							fprintf(fpout, "\\\n%s=%s ", port->name,
-									vpack_net[logical_block[iblk].output_nets[i][j]].name);
+									vpack_net[logical_block[iblk].nets->output_nets[i][j]].name);
 						}
 					} else {
 						if (port->size > 1) {
@@ -3710,10 +3771,10 @@ static void print_primitive_as_blif (FILE *fpout, int iblk) {
 			port = logical_block[iblk].model->outputs;
 			while (port) {
 				for (j = 0; j < port->size; j++) {
-					if (logical_block[iblk].output_net_tnodes[i][j] != NULL) {
+					if (logical_block[iblk].nets->output_net_tnodes[i][j] != NULL) {
 						fprintf(fpout, ".names %s tnode_%d\n",
-								vpack_net[logical_block[iblk].output_nets[i][j]].name,
-								get_tnode_index(logical_block[iblk].output_net_tnodes[i][j]));
+								vpack_net[logical_block[iblk].nets->output_nets[i][j]].name,
+								get_tnode_index(logical_block[iblk].nets->output_net_tnodes[i][j]));
 						fprintf(fpout, "1 1\n\n");
 					}
 				}

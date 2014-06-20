@@ -202,15 +202,24 @@ typedef struct s_pb {
 
 struct s_tnode;
 
+typedef struct s_nets {
+	int **input_nets; /* [0..num_input_ports-1][0..num_port_pins-1] List of input nets connected to this logical_block. */
+	int **output_nets; /* [0..num_output_ports-1][0..num_port_pins-1] List of output nets connected to this logical_block. */
+	struct s_tnode ***output_net_tnodes; /* [0..num_output_ports-1][0..num_pins -1] correspnding output net tnode */
+	struct s_tnode ***input_net_tnodes;
+
+	struct s_nets *next;
+}t_nets;
+
 /* Technology-mapped user netlist block */
 typedef struct s_logical_block {
 	char *name; /* Taken from the first vpack_net which it drives. */
 	enum logical_block_types type; /* I/O, combinational logic, or latch */
 	t_model* model; /* Technology-mapped type (eg. LUT, Flip-flop, memory slice, inpad, etc) */
 
-	int **input_nets; /* [0..num_input_ports-1][0..num_port_pins-1] List of input nets connected to this logical_block. */
-	int **output_nets; /* [0..num_output_ports-1][0..num_port_pins-1] List of output nets connected to this logical_block. */
 	int clock_net; /* Clock net connected to this logical_block. */
+
+	t_nets *nets;
 
 	int used_input_pins; /* Number of used input pins */
 
@@ -229,6 +238,7 @@ typedef struct s_logical_block {
 
 	t_pb_graph_node *expected_lowest_cost_primitive; /* predicted ideal primitive to use for this logical block */
 } t_logical_block;
+
 
 
 typedef struct s_map_block {

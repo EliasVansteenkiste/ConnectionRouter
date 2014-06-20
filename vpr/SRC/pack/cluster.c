@@ -630,7 +630,7 @@ static void check_clocks(boolean *is_clock) {
 			port = logical_block[iblk].model->inputs;
 			while (port) {
 				for (ipin = 0; ipin < port->size; ipin++) {
-					inet = logical_block[iblk].input_nets[port->index][ipin];
+					inet = logical_block[iblk].nets->input_nets[port->index][ipin];
 					if (inet != OPEN) {
 						if (is_clock[inet]) {
 							vpr_printf(TIO_MESSAGE_ERROR, "Error in check_clocks.\n");
@@ -736,8 +736,7 @@ static void alloc_and_init_clustering(boolean global_clocks, float alpha,
 	}
 
 	/* alloc and load list of molecules to pack */
-	unclustered_list_head = (struct s_molecule_link *) my_calloc(
-			max_molecule_inputs + 1, sizeof(struct s_molecule_link));
+	unclustered_list_head = (struct s_molecule_link *) my_calloc(max_molecule_inputs + 1, sizeof(struct s_molecule_link));
 	unclustered_list_head_size = max_molecule_inputs + 1;
 
 	for (i = 0; i <= max_molecule_inputs; i++) {
@@ -753,11 +752,9 @@ static void alloc_and_init_clustering(boolean global_clocks, float alpha,
 		cur_molecule = cur_molecule->next;
 	}
 	assert(cur_molecule == NULL);
-	qsort((void*) molecule_array, num_molecules, sizeof(t_pack_molecule*),
-			compare_molecule_gain);
+	qsort((void*) molecule_array, num_molecules, sizeof(t_pack_molecule*),compare_molecule_gain);
 
-	memory_pool = (struct s_molecule_link *) my_malloc(
-			num_molecules * sizeof(struct s_molecule_link));
+	memory_pool = (struct s_molecule_link *) my_malloc(	num_molecules * sizeof(struct s_molecule_link));
 	next_ptr = memory_pool;
 
 	for (i = 0; i < num_molecules; i++) {
@@ -770,8 +767,7 @@ static void alloc_and_init_clustering(boolean global_clocks, float alpha,
 	free(molecule_array);
 
 	/* alloc and load net info */
-	net_output_feeds_driving_block_input = (int *) my_malloc(
-			num_logical_nets * sizeof(int));
+	net_output_feeds_driving_block_input = (int *) my_malloc(num_logical_nets * sizeof(int));
 
 	for (inet = 0; inet < num_logical_nets; inet++) {
 		net_output_feeds_driving_block_input[inet] = 0;
@@ -893,13 +889,13 @@ static boolean primitive_type_and_memory_feasible(int iblk,
 									|| strstr(cur_pb_type->ports[i].port_class,
 											"data")
 											!= cur_pb_type->ports[i].port_class) {
-								if (logical_block[iblk].input_nets[port->index][j]
-										!= logical_block[sibling_memory_blk].input_nets[port->index][j]) {
+								if (logical_block[iblk].nets->input_nets[port->index][j]
+										!= logical_block[sibling_memory_blk].nets->input_nets[port->index][j]) {
 									return FALSE;
 								}
 							}
 						}
-						if (logical_block[iblk].input_nets[port->index][j]
+						if (logical_block[iblk].nets->input_nets[port->index][j]
 								!= OPEN
 								&& j >= cur_pb_type->ports[i].num_pins) {
 							return FALSE;
@@ -910,13 +906,13 @@ static boolean primitive_type_and_memory_feasible(int iblk,
 									|| strstr(cur_pb_type->ports[i].port_class,
 											"data")
 											!= cur_pb_type->ports[i].port_class) {
-								if (logical_block[iblk].output_nets[port->index][j]
-										!= logical_block[sibling_memory_blk].output_nets[port->index][j]) {
+								if (logical_block[iblk].nets->output_nets[port->index][j]
+										!= logical_block[sibling_memory_blk].nets->output_nets[port->index][j]) {
 									return FALSE;
 								}
 							}
 						}
-						if (logical_block[iblk].output_nets[port->index][j]
+						if (logical_block[iblk].nets->output_nets[port->index][j]
 								!= OPEN
 								&& j >= cur_pb_type->ports[i].num_pins) {
 							return FALSE;
@@ -1394,7 +1390,7 @@ static enum e_block_pack_status try_place_logical_block_rec(
 		if (block_pack_status == BLK_PASSED && is_root_of_chain == TRUE) {
 			/* is carry chain, must check if this carry chain spans multiple logic blocks or not */
 			root_port = chain_root_pin->port->model_port;
-			if(logical_block[ilogical_block].input_nets[root_port->index][chain_root_pin->pin_number] != OPEN) {
+			if(logical_block[ilogical_block].nets->input_nets[root_port->index][chain_root_pin->pin_number] != OPEN) {
 				/* this carry chain spans multiple logic blocks, must match up correctly with previous chain for this to route */
 				if(pb_graph_node != chain_root_pin->parent_node) {
 					/* this location does not match with the dedicated chain input from outside logic block, therefore not feasible */
@@ -1715,7 +1711,7 @@ static void update_total_gain(float alpha, float beta, boolean timing_driven,
 				num_input_pins += port->size;
 				if (!port->is_clock) {
 					for (k = 0; k < port->size; k++) {
-						if (logical_block[iblk].input_nets[j][k] != OPEN) {
+						if (logical_block[iblk].nets->input_nets[j][k] != OPEN) {
 							num_used_input_pins++;
 						}
 					}
@@ -1734,7 +1730,7 @@ static void update_total_gain(float alpha, float beta, boolean timing_driven,
 			while (port) {
 				num_output_pins += port->size;
 				for (k = 0; k < port->size; k++) {
-					if (logical_block[iblk].output_nets[j][k] != OPEN) {
+					if (logical_block[iblk].nets->output_nets[j][k] != OPEN) {
 						num_used_output_pins++;
 					}
 				}
@@ -1820,7 +1816,7 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 		port = logical_block[new_blk].model->outputs;
 		while (port) {
 			for (ipin = 0; ipin < port->size; ipin++) {
-				inet = logical_block[new_blk].output_nets[port->index][ipin]; /* Output pin first. */
+				inet = logical_block[new_blk].nets->output_nets[port->index][ipin]; /* Output pin first. */
 				if (inet != OPEN) {
 					if (!is_clock[inet] || !global_clocks)
 						mark_and_update_partial_gain(inet, GAIN, new_blk,
@@ -1842,7 +1838,7 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 			}
 			for (ipin = 0; ipin < port->size; ipin++) { /*  VPACK_BLOCK input pins. */
 
-				inet = logical_block[new_blk].input_nets[port->index][ipin];
+				inet = logical_block[new_blk].nets->input_nets[port->index][ipin];
 				if (inet != OPEN) {
 					mark_and_update_partial_gain(inet, GAIN, new_blk,
 							port->index, ipin, timing_driven, connection_driven,
@@ -2384,7 +2380,7 @@ static float get_molecule_gain(t_pack_molecule *molecule, std::map<int, float> &
 					if (cur->is_clock != TRUE) {
 						for (ipin = 0; ipin < cur->size; ipin++) {
 							inet =
-									molecule->logical_block_ptrs[i]->input_nets[iport][ipin];
+									molecule->logical_block_ptrs[i]->nets->input_nets[iport][ipin];
 							if (inet != OPEN) {
 								num_introduced_inputs_of_indirectly_related_block++;
 								for (iblk = 0;
@@ -2542,21 +2538,21 @@ static void compute_and_mark_lookahead_pins_used(int ilogical_block) {
 			clock_port++;
 		} else if (prim_port->type == IN_PORT) {
 			for (j = 0; j < prim_port->num_pins; j++) {
-				if (logical_block[ilogical_block].input_nets[prim_port->model_port->index][j]
+				if (logical_block[ilogical_block].nets->input_nets[prim_port->model_port->index][j]
 						!= OPEN) {
 					compute_and_mark_lookahead_pins_used_for_pin(
 							&pb_graph_node->input_pins[input_port][j], cur_pb,
-							logical_block[ilogical_block].input_nets[prim_port->model_port->index][j]);
+							logical_block[ilogical_block].nets->input_nets[prim_port->model_port->index][j]);
 				}
 			}
 			input_port++;
 		} else if (prim_port->type == OUT_PORT) {
 			for (j = 0; j < prim_port->num_pins; j++) {
-				if (logical_block[ilogical_block].output_nets[prim_port->model_port->index][j]
+				if (logical_block[ilogical_block].nets->output_nets[prim_port->model_port->index][j]
 						!= OPEN) {
 					compute_and_mark_lookahead_pins_used_for_pin(
 							&pb_graph_node->output_pins[output_port][j], cur_pb,
-							logical_block[ilogical_block].output_nets[prim_port->model_port->index][j]);
+							logical_block[ilogical_block].nets->output_nets[prim_port->model_port->index][j]);
 				}
 			}
 			output_port++;
@@ -2896,10 +2892,10 @@ static int get_net_corresponding_to_pb_graph_pin(t_pb *cur_pb,
 				assert(model_port->dir == IN_PORT);
 				return logical_block[ilogical_block].clock_net;
 			} else if (model_port->dir == IN_PORT) {
-				return logical_block[ilogical_block].input_nets[model_port->index][pb_graph_pin->pin_number];
+				return logical_block[ilogical_block].nets->input_nets[model_port->index][pb_graph_pin->pin_number];
 			} else {
 				assert(model_port->dir == OUT_PORT);
-				return logical_block[ilogical_block].output_nets[model_port->index][pb_graph_pin->pin_number];
+				return logical_block[ilogical_block].nets->output_nets[model_port->index][pb_graph_pin->pin_number];
 			}
 		}
 	}

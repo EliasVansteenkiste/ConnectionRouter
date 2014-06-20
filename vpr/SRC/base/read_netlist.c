@@ -197,16 +197,16 @@ void read_netlist(INP const char *net_file, INP const t_arch *arch,
 	}
 	assert(i == bcount);
 	assert(num_primitives == num_logical_blocks);
-
+/*
 	int conCount;
 	t_con* connections;
 	conCount = CountChildren(Top, "con", 1);
 	connections = (t_con *) my_calloc(bcount, sizeof(t_con));
 
-	/* Process netlist in order to read the <con>*/
+	 Process netlist in order to read the <con>*/
 	/* TODO: We have to include error control that will check if there is a
 	 * connection between two sinks or two sources
-	 */
+
 	Cur = Top->child;
 	i = 0;
 	while (Cur) {
@@ -226,7 +226,7 @@ void read_netlist(INP const char *net_file, INP const t_arch *arch,
 			Cur = Cur->next;
 		}
 	}
-
+*/
 
 
 	/* Error check */
@@ -1433,17 +1433,17 @@ void free_logical_blocks(void) {
 		i = 0;
 		while (port) {
 			if (!port->is_clock) {
-				free(logical_block[iblk].input_nets[i]);
-				if (logical_block[iblk].input_net_tnodes) {
-					if (logical_block[iblk].input_net_tnodes[i])
-						free(logical_block[iblk].input_net_tnodes[i]);
+				free(logical_block[iblk].nets->input_nets[i]);
+				if (logical_block[iblk].nets->input_net_tnodes) {
+					if (logical_block[iblk].nets->input_net_tnodes[i])
+						free(logical_block[iblk].nets->input_net_tnodes[i]);
 				}
 				i++;
 			}
 			port = port->next;
 		}
-		if (logical_block[iblk].input_net_tnodes) 
-			free(logical_block[iblk].input_net_tnodes);
+		if (logical_block[iblk].nets->input_net_tnodes) 
+			free(logical_block[iblk].nets->input_net_tnodes);
 		
 		tvptr = logical_block[iblk].packed_molecules;
 		while (tvptr != NULL) {
@@ -1452,22 +1452,22 @@ void free_logical_blocks(void) {
 			tvptr = next;
 		}
 
-		free(logical_block[iblk].input_nets);
+		free(logical_block[iblk].nets->input_nets);
 		port = logical_block[iblk].model->outputs;
 		i = 0;
 		while (port) {
-			free(logical_block[iblk].output_nets[i]);
-			if (logical_block[iblk].output_net_tnodes) {
-				if (logical_block[iblk].output_net_tnodes[i])
-					free(logical_block[iblk].output_net_tnodes[i]);
+			free(logical_block[iblk].nets->output_nets[i]);
+			if (logical_block[iblk].nets->output_net_tnodes) {
+				if (logical_block[iblk].nets->output_net_tnodes[i])
+					free(logical_block[iblk].nets->output_net_tnodes[i]);
 			}
 			i++;
 			port = port->next;
 		}
-		if (logical_block[iblk].output_net_tnodes) {
-			free(logical_block[iblk].output_net_tnodes);
+		if (logical_block[iblk].nets->output_net_tnodes) {
+			free(logical_block[iblk].nets->output_net_tnodes);
 		}
-		free(logical_block[iblk].output_nets);
+		free(logical_block[iblk].nets->output_nets);
 		free(logical_block[iblk].name);
 		tvptr = logical_block[iblk].truth_table;
 		while (tvptr != NULL) {

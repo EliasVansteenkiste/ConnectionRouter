@@ -162,9 +162,7 @@ void reload_ext_net_rr_terminal_cluster(void) {
 	for (i = 0; i < num_nets_in_cluster; i++) {
 		net_index = nets_in_cluster[i];
 		has_ext_sink = FALSE;
-		has_ext_source = (boolean)
-				(logical_block[vpack_net[net_index].node_block[0]].clb_index
-						!= curr_cluster_index);
+		has_ext_source = (boolean)(logical_block[vpack_net[net_index].node_block[0]].clb_index != curr_cluster_index);
 		if (has_ext_source) {
 			/* Instantiate a source of this net */
 			if (vpack_net[net_index].is_global) {
@@ -975,7 +973,7 @@ void setup_intracluster_routing_for_logical_block(INP int iblock,
 				assert(port->size == 1);
 				iblk_net = logical_block[iblock].clock_net;
 			} else {
-				iblk_net = logical_block[iblock].input_nets[port->index][ipin];
+				iblk_net = logical_block[iblock].nets->input_nets[port->index][ipin];
 			}
 			if (iblk_net == OPEN) {
 				continue;
@@ -993,7 +991,7 @@ void setup_intracluster_routing_for_logical_block(INP int iblock,
 	port = logical_block[iblock].model->outputs;
 	while (port) {
 		for (ipin = 0; ipin < port->size; ipin++) {
-			iblk_net = logical_block[iblock].output_nets[port->index][ipin];
+			iblk_net = logical_block[iblock].nets->output_nets[port->index][ipin];
 			if (iblk_net == OPEN) {
 				continue;
 			}
