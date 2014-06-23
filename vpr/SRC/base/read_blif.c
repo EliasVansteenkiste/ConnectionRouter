@@ -580,7 +580,7 @@ static boolean add_lut(int doall, t_model *logic_model) {
 					"[LINE %d] .names %s ... %s has a LUT size that exceeds the maximum LUT size (%d) of the architecture.\n",
 					file_line_number, saved_names[0], ptr,
 					logic_model->inputs->size);
-			exit(1);
+			//exit(1);
 		}
 		strcpy(saved_names[i], ptr);
 		i++;
