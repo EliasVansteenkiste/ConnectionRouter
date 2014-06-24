@@ -89,6 +89,8 @@ void free_ivec_matrix3(struct s_ivec ***ivec_matrix3, int nrmin,
 
 void** alloc_matrix(int nrmin, int nrmax, int ncmin, int ncmax,
 		size_t elsize);
+void ** realloc_matrix(char** pointer, int prev , int newSize , int noOfElements);
+
 void ***alloc_matrix3(int nrmin, int nrmax, int ncmin, int ncmax,
 		int ndmin, int ndmax, size_t elsize);
 void ****alloc_matrix4(int nrmin, int nrmax, int ncmin, int ncmax,

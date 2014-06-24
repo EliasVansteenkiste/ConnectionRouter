@@ -577,6 +577,24 @@ alloc_matrix(int nrmin, int nrmax, int ncmin, int ncmax, size_t elsize) {
 	return ((void **) cptr);
 }
 
+void ** realloc_matrix(char** pointer, int prev , int newSize , int noOfElements){
+
+	/* allocates an generic matrix with nrmax-nrmin + 1 rows and ncmax - *
+	 * ncmin + 1 columns, with each element of size elsize. i.e.         *
+	 * returns a pointer to a storage block [nrmin..nrmax][ncmin..ncmax].*
+	 * Simply cast the returned array pointer to the proper type.        */
+
+	int i;
+	char **cptr;
+
+	cptr = (char **) my_realloc(pointer,newSize * sizeof(char *));
+
+	for (i = prev; i <= newSize; i++)
+		cptr[i] = (char *) my_realloc(pointer,noOfElements * sizeof(char));
+
+	return ((void **) cptr);
+}
+
 /* NB:  need to make the pointer type void * instead of void ** to allow   *
  * any pointer to be passed in without a cast.                             */
 

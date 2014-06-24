@@ -18,6 +18,7 @@ struct s_model_stats {
 };
 
 #define MAX_ATOM_PARSE 200000000
+#define MAX_LUT_SIZE 20
 
 /* This source file will read in a FLAT blif netlist consisting     *
  * of .inputs, .outputs, .names and .latch commands.  It currently   *
@@ -38,6 +39,7 @@ static int *num_driver, *temp_num_pins;
 static int *logical_block_input_count, *logical_block_output_count;
 static int num_blif_models;
 static int num_luts = 0, num_latches = 0, num_subckts = 0;
+static int max_t_mux_size = 0;
 char **map_names;
 
 /* # of .input, .output, .model and .end lines */
@@ -64,7 +66,10 @@ static void remove_lut(int noOfEntry,int quick);
 static void add_latch(int doall, INP t_model *latch_model);
 static void add_subckt(int doall, INP t_model *user_models);
 static void add_map(int doall, INP t_model* map_model);
+
 static void find_t_mux();
+static int is_a_t_mux(char *index);
+
 static void check_and_count_models(int doall, const char* model_name,
 		t_model* user_models);
 static void load_default_models(INP t_model *library_models,
@@ -180,28 +185,19 @@ static void init_parse(int doall) {
 	}
 	/* Allocate memory for second (load) pass */
 	else {
-		vpack_net = (struct s_net *) my_calloc(num_logical_nets,
-				sizeof(struct s_net));
-		logical_block = (struct s_logical_block *) my_calloc(num_logical_blocks,
-				sizeof(struct s_logical_block));
+		vpack_net = (struct s_net *) my_calloc(num_logical_nets,sizeof(struct s_net));
+		logical_block = (struct s_logical_block *) my_calloc(num_logical_blocks,sizeof(struct s_logical_block));
 		num_driver = (int *) my_malloc(num_logical_nets * sizeof(int));
 		temp_num_pins = (int *) my_malloc(num_logical_nets * sizeof(int));
 
-		logical_block_input_count = (int *) my_calloc(num_logical_blocks,
-				sizeof(int));
-		logical_block_output_count = (int *) my_calloc(num_logical_blocks,
-				sizeof(int));
+		logical_block_input_count = (int *) my_calloc(num_logical_blocks,sizeof(int));
+		logical_block_output_count = (int *) my_calloc(num_logical_blocks,sizeof(int));
 
 		/* This is the data structure for the .map type */
-		map_block = (struct s_logical_block **) my_calloc(num_map_blocks,
-				sizeof(struct s_logical_block*));
+		map_block = (struct s_logical_block **) my_calloc(num_map_blocks,sizeof(struct s_logical_block*));
 
-		if(num_map_blocks > 0){
-			map_names = (char **) my_calloc(num_map_blocks, sizeof(char*));
-			printf("Num map blocks: %d\n",num_map_blocks);
-			num_map_blocks = 0;
-		}
-
+		map_names = (char **) my_calloc(num_map_blocks, sizeof(char*));
+		num_map_blocks = 0;
 		for (i = 0; i < num_logical_nets; i++) {
 			num_driver[i] = 0;
 			vpack_net[i].num_sinks = 0;
@@ -219,12 +215,9 @@ static void init_parse(int doall) {
 		for (i = 0; i < HASHSIZE; i++) {
 			h_ptr = blif_hash[i];
 			while (h_ptr != NULL ) {
-				vpack_net[h_ptr->index].node_block = (int *) my_malloc(
-						h_ptr->count * sizeof(int));
-				vpack_net[h_ptr->index].node_block_port = (int *) my_malloc(
-						h_ptr->count * sizeof(int));
-				vpack_net[h_ptr->index].node_block_pin = (int *) my_malloc(
-						h_ptr->count * sizeof(int));
+				vpack_net[h_ptr->index].node_block = (int *) my_malloc(h_ptr->count * sizeof(int));
+				vpack_net[h_ptr->index].node_block_port = (int *) my_malloc(h_ptr->count * sizeof(int));
+				vpack_net[h_ptr->index].node_block_pin = (int *) my_malloc(h_ptr->count * sizeof(int));
 
 				/* For avoiding assigning values beyond end of pins array. */
 				temp_num_pins[h_ptr->index] = h_ptr->count;
@@ -439,7 +432,7 @@ static void import_t_muxes() {
 		for (l = 0; l < nonOpen >> 1; l++) {
 			index = (*map_block[i]).nets->input_nets[0][l];
 			bnum = (*map_block[i]).nets->output_nets[0][0];
-
+			printf("Name: %s\n",(*map_block[i]).name);
 			int temp = vpack_net[bnum].node_block[1];
 			for(m = 0; m < logical_block[temp].model->inputs->size; m++)
 				if(logical_block[temp].nets->input_nets[0][m] == bnum){
@@ -567,24 +560,30 @@ static boolean add_lut(int doall, t_model *logic_model) {
 	char *ptr, **saved_names, buf[BUFSIZE];
 	int i, j, output_net_index;
 
-	saved_names = (char**) alloc_matrix(0, logic_model->inputs->size, 0,
-			BUFSIZE - 1, sizeof(char));
-
+	saved_names = (char**) alloc_matrix(0, 500, 0,BUFSIZE - 1, sizeof(char));
+	max_t_mux_size = logic_model->inputs->size;
 	num_logical_blocks++;
 
 	/* Count # nets connecting */
 	i = 0;
 	while ((ptr = my_strtok(NULL, TOKENS, blif, buf)) != NULL ) {
-		if (i > logic_model->inputs->size) {
+		/*if (i > logic_model->inputs->size) {
 			vpr_printf(TIO_MESSAGE_ERROR,
 					"[LINE %d] .names %s ... %s has a LUT size that exceeds the maximum LUT size (%d) of the architecture.\n",
 					file_line_number, saved_names[0], ptr,
 					logic_model->inputs->size);
+
 			//exit(1);
-		}
+		}*/
 		strcpy(saved_names[i], ptr);
+		printf("%s\n",saved_names[i]);
 		i++;
 	}
+	if(max_t_mux_size < i){
+		max_t_mux_size = i;
+		printf("Max num: %d\n",max_t_mux_size);
+	}
+
 	output_net_index = i - 1;
 	if (strcmp(saved_names[output_net_index], "unconn") == 0) {
 		/* unconn is a keyword to pad unused pins, ignore this block */
@@ -594,15 +593,19 @@ static boolean add_lut(int doall, t_model *logic_model) {
 	}
 
 	if (!doall) { /* Counting pass only ... */
-		for (j = 0; j <= output_net_index; j++)
+		for (j = 0; j <= output_net_index; j++){
+			//printf("%d:Name: %s\n",j,saved_names[j]);
 			/* On this pass it doesn't matter if RECEIVER or DRIVER.  Just checking if in hash.  [0] should be DRIVER */
-			add_vpack_net(saved_names[j], RECEIVER, num_logical_blocks - 1, 0,
-					j, FALSE, doall);
+			add_vpack_net(saved_names[j], RECEIVER, num_logical_blocks - 1, 0, j, FALSE, doall);
+		}
 		free_matrix(saved_names, 0, logic_model->inputs->size, 0, sizeof(char));
 		return FALSE;
 	}
 
 	logical_block[num_logical_blocks - 1].model = logic_model;
+	if(max_t_mux_size > logic_model->inputs->size)
+		logical_block[num_logical_blocks - 1].model->inputs->size = max_t_mux_size;
+
 
 	if (output_net_index > logic_model->inputs->size) {
 		vpr_printf(TIO_MESSAGE_ERROR,
@@ -616,32 +619,31 @@ static boolean add_lut(int doall, t_model *logic_model) {
 
 	logical_block[num_logical_blocks - 1].nets = (t_nets *)my_malloc(sizeof(t_nets));
 	logical_block[num_logical_blocks - 1].nets->next = NULL;
-	logical_block[num_logical_blocks - 1].nets->input_nets = (int **) my_malloc(
-			sizeof(int*));
-	logical_block[num_logical_blocks - 1].nets->output_nets = (int **) my_malloc(
-			sizeof(int*));
+	logical_block[num_logical_blocks - 1].nets->input_nets = (int **) my_malloc(sizeof(int*));
+	logical_block[num_logical_blocks - 1].nets->output_nets = (int **) my_malloc(sizeof(int*));
 	logical_block[num_logical_blocks - 1].clock_net = OPEN;
 
-	logical_block[num_logical_blocks - 1].nets->input_nets[0] = (int *) my_malloc(
-			logic_model->inputs->size * sizeof(int));
-	logical_block[num_logical_blocks - 1].nets->output_nets[0] = (int *) my_malloc(
-			sizeof(int));
+	//if(is_a_t_mux(saved_names[output_net_index]))
+	logical_block[num_logical_blocks - 1].nets->input_nets[0] = (int *) my_malloc(max_t_mux_size * sizeof(int));
+
+	logical_block[num_logical_blocks - 1].nets->output_nets[0] = (int *) my_malloc(sizeof(int));
 
 	logical_block[num_logical_blocks - 1].type = VPACK_COMB;
-	for (i = 0; i < output_net_index; i++) /* Do inputs */
+	for (i = 0; i < output_net_index; i++) /* Do inputs */{
 		logical_block[num_logical_blocks - 1].nets->input_nets[0][i] = add_vpack_net(saved_names[i], RECEIVER, num_logical_blocks - 1, 0, i, FALSE,	doall);
+	}
+
 	logical_block[num_logical_blocks - 1].nets->output_nets[0][0] = add_vpack_net(saved_names[output_net_index], DRIVER, num_logical_blocks - 1, 0, 0,
 			FALSE, doall);
 
-	for (i = output_net_index; i < logic_model->inputs->size; i++)
+	for (i = output_net_index; i < max_t_mux_size; i++)
 		logical_block[num_logical_blocks - 1].nets->input_nets[0][i] = OPEN;
 
-	logical_block[num_logical_blocks - 1].name = my_strdup(
-			saved_names[output_net_index]);
+	logical_block[num_logical_blocks - 1].name = my_strdup(saved_names[output_net_index]);
 	logical_block[num_logical_blocks - 1].truth_table = NULL;
 	num_luts++;
 
-	free_matrix(saved_names, 0, logic_model->inputs->size, 0, sizeof(char));
+	free_matrix(saved_names, 0, 500, 0, sizeof(char));
 	return (boolean) doall;
 }
 
@@ -677,8 +679,7 @@ static void remove_lut(int noOfEntry,int quick) {
 	if (logical_block[noOfEntry].type == VPACK_COMB) {
 		printf("Type: VPACK_COMB\n");
 		*logical_block[noOfEntry].nets->input_nets = (int *) realloc(
-				logical_block[noOfEntry].nets->input_nets[0],
-				logical_block[num_logical_blocks - 1].model->inputs->size
+				logical_block[noOfEntry].nets->input_nets[0],logical_block[num_logical_blocks - 1].model->inputs->size
 						* sizeof(int));
 
 		//	free(logical_block[num_logical_blocks - 1].nets->input_nets);
@@ -720,15 +721,12 @@ static void remove_lut(int noOfEntry,int quick) {
 
 	logical_block[noOfEntry].type = logical_block[num_logical_blocks - 1].type;
 
-	logical_block[noOfEntry].clock_net =
-			logical_block[num_logical_blocks - 1].clock_net;
+	logical_block[noOfEntry].clock_net = logical_block[num_logical_blocks - 1].clock_net;
 
-	logical_block[noOfEntry].name = my_strdup(
-			logical_block[num_logical_blocks - 1].name);
+	logical_block[noOfEntry].name = my_strdup(logical_block[num_logical_blocks - 1].name);
 	free(logical_block[num_logical_blocks - 1].name);
 
-	logical_block[noOfEntry].truth_table =
-			logical_block[num_logical_blocks - 1].truth_table;
+	logical_block[noOfEntry].truth_table = logical_block[num_logical_blocks - 1].truth_table;
 	free(logical_block[num_logical_blocks - 1].truth_table);
 
 	num_logical_blocks--;
@@ -1170,7 +1168,7 @@ static void add_map(int doall, t_model* map_model) {
 	int i;
 	char *ptr, buf[BUFSIZE];
 	char saved_names[2][BUFSIZE];
-
+	static int mapSizeMax = 20;
 	num_map_blocks++;
 
 	/* Count # parameters, making sure we don't go over 6 (avoids memory corr.) */
@@ -1189,9 +1187,16 @@ static void add_map(int doall, t_model* map_model) {
 				file_line_number);
 		exit(1);
 	}
-	if (!doall)
+	if(!doall)
 		return;
-
+/*
+	if(num_map_blocks == 1){
+		map_names = (char **) my_calloc(mapSizeMax, sizeof(char*));
+	}else if(num_map_blocks > mapSizeMax){
+		mapSizeMax = mapSizeMax << 1;
+		map_names = (char **) my_realloc(map_names,mapSizeMax * sizeof(char*));
+	}
+	*/
 	map_names[num_map_blocks - 1] = my_strdup(saved_names[1]);
 }
 
@@ -1204,6 +1209,14 @@ static void find_t_mux() {
 				map_block[j] = &logical_block[i];
 			}
 		}
+}
+
+static int is_a_t_mux(char* LUT_name) {
+	int j;
+	for (j = 0; j < num_map_blocks; j++)
+		if (!strcmp(map_names[j], LUT_name))
+			return TRUE;
+	return FALSE;
 }
 
 static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
@@ -1298,6 +1311,7 @@ static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 	/* Add the vpack_net (only counting pass will add nets to symbol table). */
 
 	num_logical_nets++;
+
 	h_ptr = (struct s_hash *) my_malloc(sizeof(struct s_hash));
 	if (prev_ptr == NULL ) {
 		blif_hash[index] = h_ptr;
@@ -1315,18 +1329,24 @@ static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 
 static void rem_vpack_net(int entryIndex, int quick,int output) {
 	int i,j;
+	int size;
 
 	if(quick){
 		if(output)
 		{
 			for(i = 0; i < num_logical_blocks; i++)
 			{
-				if(logical_block[i].nets->input_nets != NULL)
-					for(j = 0; j < logical_block[i].model->inputs->size; j++)
+				if(logical_block[i].nets->input_nets != NULL){
+					if(is_a_t_mux(logical_block[i].name))
+						size = max_t_mux_size;
+					else
+						size = logical_block[i].model->inputs->size;
+					for(j = 0; j < size; j++)
 					{
 						if(logical_block[i].nets->input_nets[0][j] == entryIndex)
 							logical_block[i].nets->input_nets[0][j] = OPEN;
 					}
+				}
 				if(logical_block[i].nets->output_nets != NULL && logical_block[i].nets->output_nets[0][0] == entryIndex)
 					logical_block[i].nets->output_nets[0][0] = OPEN;
 			}
@@ -1335,12 +1355,17 @@ static void rem_vpack_net(int entryIndex, int quick,int output) {
 
 		for(i = 0; i < num_logical_blocks; i++)
 		{
-			if(logical_block[i].nets->input_nets != NULL)
-				for(j = 0; j < logical_block[i].model->inputs->size; j++)
+			if(logical_block[i].nets->input_nets != NULL){
+				if(is_a_t_mux(logical_block[i].name))
+					size = max_t_mux_size;
+				else
+					size = logical_block[i].model->inputs->size;
+				for(j = 0; j < size; j++)
 				{
 					if(logical_block[i].nets->input_nets[0][j] == num_logical_nets - 1)
 						logical_block[i].nets->input_nets[0][j] = entryIndex;
 				}
+			}
 			if(logical_block[i].nets->output_nets != NULL && logical_block[i].nets->output_nets[0][0] == num_logical_nets - 1)
 				logical_block[i].nets->output_nets[0][0] = entryIndex;
 		}
@@ -1911,9 +1936,7 @@ static void absorb_buffer_luts(void) {
 						|| strcmp("1 1",
 								(char*) logical_block[bnum].truth_table->data_vptr)
 								== 0) {
-					for (ipin = 0;
-							ipin < logical_block[bnum].model->inputs->size;
-							ipin++) {
+					for (ipin = 0;ipin < logical_block[bnum].model->inputs->size;ipin++) {
 						if (logical_block[bnum].nets->input_nets[0][ipin] == OPEN)
 							break;
 					}

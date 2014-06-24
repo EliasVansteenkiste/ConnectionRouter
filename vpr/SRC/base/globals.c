@@ -20,7 +20,6 @@ struct s_net *vpack_net = NULL;
 struct s_con *exp_con = NULL;
 struct s_logical_block *logical_block = NULL;
 struct s_logical_block **map_block = NULL;
-//struct s_map_block *map_block = NULL;
 char *blif_circuit_name = NULL;
 char *default_output_name = NULL;
 /* User netlist information end  */
