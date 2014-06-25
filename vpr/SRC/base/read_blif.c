@@ -96,6 +96,9 @@ static void set_sources(int pin,int sourceIndex,int sinkIndex);
 static void print_nets();
 static void print_logical_blocks();
 
+static int has_another_input(int checkBlock,int checkPort, int checkPin);
+static int has_another_output(int checkBlock,int checkPort, int checkPin);
+
 static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		t_model *user_models, t_model *library_models,
 		boolean read_activity_file, char * activity_file) {
@@ -432,7 +435,7 @@ static void import_t_muxes() {
 		for (l = 0; l < nonOpen >> 1; l++) {
 			index = (*map_block[i]).nets->input_nets[0][l];
 			bnum = (*map_block[i]).nets->output_nets[0][0];
-			printf("Name: %s\n",(*map_block[i]).name);
+
 			int temp = vpack_net[bnum].node_block[1];
 			for(m = 0; m < logical_block[temp].model->inputs->size; m++)
 				if(logical_block[temp].nets->input_nets[0][m] == bnum){
@@ -472,7 +475,10 @@ static void import_t_muxes() {
 		remove_lut((*map_block[i]).index,TRUE);
 
 	}
+	//clean_up();
+
 	print_logical_blocks();
+	printf("\n");
 	print_nets();
 
 }
@@ -486,6 +492,7 @@ static void set_sinks(int pin,int sourceIndex,int sinkIndex)
 	prev = logical_block[sinkIndex].nets;
 	for(cur = logical_block[sinkIndex].nets->next; cur != NULL;prev = cur, cur = cur->next)
 	{
+		printf("name:%s pin: %d\n",logical_block[sinkIndex].name,pin);
 		if(cur->input_nets != NULL)
 			if(cur->input_nets[0][pin] == OPEN){
 				cur->input_nets[0][pin] = logical_block[sourceIndex].nets->output_nets[0][0];
@@ -498,7 +505,7 @@ static void set_sinks(int pin,int sourceIndex,int sinkIndex)
 	temp_nets_input->input_nets = (int **) my_malloc(sizeof(int*));
 	temp_nets_input->input_nets[0] = (int *)my_malloc(logical_block[sinkIndex].model->inputs->size * sizeof(int));
 	temp_nets_input->input_nets[0][pin] = logical_block[sourceIndex].nets->output_nets[0][0];
-	printf("Connection added from: %s to %s\n",logical_block[sourceIndex].name,logical_block[sinkIndex].name);
+	printf("Connection added from: %s to %s\n port: %d pin: %d\n",logical_block[sourceIndex].name,logical_block[sinkIndex].name,0,pin);
 
 	//tempPin = vpack_net[index].node_block_pin[k];
 	/* initialize all the other ports as open */
@@ -537,8 +544,7 @@ static void set_sources(int pin,int sourceIndex,int sinkIndex)
 
 	temp_nets_input->input_nets = NULL;
 	//tempPin = vpack_net[index].node_block_pin[k];
-	printf("Connection added from: %s to %s\n",logical_block[sourceIndex].name,logical_block[sinkIndex].name);
-	cur = temp_nets_input;
+	printf("Connection added from: %s to %s\n port: %d pin: %d\n",logical_block[sourceIndex].name,logical_block[sinkIndex].name,0,pin);	cur = temp_nets_input;
 	prev->next = cur;
 }
 
@@ -576,10 +582,9 @@ static boolean add_lut(int doall, t_model *logic_model) {
 			//exit(1);
 		}*/
 		strcpy(saved_names[i], ptr);
-		printf("%s\n",saved_names[i]);
 		i++;
 	}
-	if(max_t_mux_size < i){
+	if(max_t_mux_size + 1< i){
 		max_t_mux_size = i;
 		printf("Max num: %d\n",max_t_mux_size);
 	}
@@ -632,6 +637,7 @@ static boolean add_lut(int doall, t_model *logic_model) {
 	for (i = 0; i < output_net_index; i++) /* Do inputs */{
 		logical_block[num_logical_blocks - 1].nets->input_nets[0][i] = add_vpack_net(saved_names[i], RECEIVER, num_logical_blocks - 1, 0, i, FALSE,	doall);
 	}
+
 
 	logical_block[num_logical_blocks - 1].nets->output_nets[0][0] = add_vpack_net(saved_names[output_net_index], DRIVER, num_logical_blocks - 1, 0, 0,
 			FALSE, doall);
@@ -1738,10 +1744,20 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 			}
 
 			for (j = 0; j < port->size; j++) {
-				if (logical_block[i].nets->input_nets[port->index][j] == OPEN)
+				//printf("name: %s %d\n",logical_block[i].name,has_another_input(i,port->index,j));
+				if (logical_block[i].nets->input_nets[port->index][j] == OPEN && !has_another_input(i,port->index,j))
 					continue;
+				t_nets* cur;
+				for(cur = logical_block[i].nets; cur != NULL; cur = cur->next)
+					if(cur->input_nets[port->index][j] != OPEN)
+						break;
+				if(cur == NULL)
+				{
+					fprintf(stderr,"It should be another input in another node but is not\n");
+					exit(0);
+				}
 				count_inputs++;
-				inet = logical_block[i].nets->input_nets[port->index][j];
+				inet = cur->input_nets[port->index][j];
 				found = FALSE;
 				for (k = 1; k <= vpack_net[inet].num_sinks; k++) {
 					if (vpack_net[inet].node_block[k] == i) {
@@ -1762,14 +1778,20 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 		port = logical_block[i].model->outputs;
 		while (port) {
 			for (j = 0; j < port->size; j++) {
-				if (logical_block[i].nets->output_nets[port->index][j] == OPEN)
+				if (logical_block[i].nets->output_nets[port->index][j] == OPEN && !has_another_output(i,port->index,j))
 					continue;
+				t_nets* cur;
+				for(cur = logical_block[i].nets; cur != NULL; cur = cur->next)
+					if(cur->output_nets[port->index][j] != OPEN)
+						break;
+				if(cur == NULL){
+					fprintf(stderr,"It should be another output in another node but is not\n");
+					exit(0);
+				}
 				count_outputs++;
 				inet = logical_block[i].nets->output_nets[port->index][j];
 				vpack_net[inet].is_const_gen = FALSE;
-				if (count_inputs == 0 && logical_block[i].type != VPACK_INPAD
-						&& logical_block[i].type != VPACK_OUTPAD
-						&& logical_block[i].clock_net == OPEN) {
+				if (count_inputs == 0 && logical_block[i].type != VPACK_INPAD && logical_block[i].type != VPACK_OUTPAD && logical_block[i].clock_net == OPEN) {
 					vpr_printf(TIO_MESSAGE_INFO,
 							"Net is a constant generator: %s.\n",
 							vpack_net[inet].name);
@@ -2437,8 +2459,8 @@ static void print_logical_blocks()
 			if(cur->input_nets != NULL)
 			{
 				printf(" Inputs from: ");
-				for(j = 0; j < logical_block[i].model->inputs->size; j++)
-					printf(" %s",vpack_net[cur->input_nets[0][j]].name);
+				for(j = 0; j < logical_block[i].model->inputs->size - 1; j++)
+					printf(" %s %d",vpack_net[cur->input_nets[0][j]].name,cur->input_nets[0][j]);
 
 			}
 			if(cur->output_nets != NULL)
@@ -2448,4 +2470,33 @@ static void print_logical_blocks()
 			printf("\n");
 		}
 	}
+}
+static int has_another_input(int checkBlock,int checkPort, int checkPin)
+{
+	/* This is included for the multiple nets in one pin */
+	t_nets *cur;
+	int counter = 0;
+	for(cur = logical_block[checkBlock].nets->next; cur != NULL; cur = cur->next){
+		if(cur->input_nets != NULL){
+			if(cur->input_nets[checkPort][checkPin] != OPEN)
+				//printf("Multiple Inputs: %s\n",logical_block[checkBlock].name);
+				return 1;
+		}
+	}
+	return 0;
+}
+
+static int has_another_output(int checkBlock,int checkPort, int checkPin)
+{
+	/* This is included for the multiple nets in one pin */
+	t_nets *cur;
+	int counter = 0;
+	for(cur = logical_block[checkBlock].nets->next; cur != NULL; cur = cur->next){
+		if(cur->output_nets != NULL){
+			if(cur->output_nets[checkPort][checkPin] != OPEN)
+				//printf("Multiple Inputs: %s\n",logical_block[checkBlock].name);
+				return 1;
+		}
+	}
+	return 0;
 }

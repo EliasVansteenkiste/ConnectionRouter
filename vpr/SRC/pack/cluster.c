@@ -629,6 +629,7 @@ static void check_clocks(boolean *is_clock) {
 		if (logical_block[iblk].type != VPACK_OUTPAD) {
 			port = logical_block[iblk].model->inputs;
 			while (port) {
+				//printf("Port size: %d\n",port->size);
 				for (ipin = 0; ipin < port->size; ipin++) {
 					inet = logical_block[iblk].nets->input_nets[port->index][ipin];
 					if (inet != OPEN) {
@@ -2477,7 +2478,7 @@ static void compute_and_mark_lookahead_pins_used(int ilogical_block) {
 	assert(logical_block[ilogical_block].pb != NULL);
 
 	cur_pb = logical_block[ilogical_block].pb;
-	printf("Checking: %s\n",cur_pb->name);
+	//printf("Checking: %s\n",cur_pb->name);
 	pb_graph_node = cur_pb->pb_graph_node;
 	pb_type = pb_graph_node->pb_type;
 
@@ -2487,6 +2488,7 @@ static void compute_and_mark_lookahead_pins_used(int ilogical_block) {
 	for (i = 0; i < pb_type->num_ports; i++) {
 		prim_port = &pb_type->ports[i];
 		if (prim_port->is_clock) {
+			//printf("clock port \n");
 			assert(prim_port->type == IN_PORT);
 			assert(prim_port->num_pins == 1 && clock_port == 0);
 			/* currently support only one clock for primitives */
@@ -2495,14 +2497,18 @@ static void compute_and_mark_lookahead_pins_used(int ilogical_block) {
 			}
 			clock_port++;
 		} else if (prim_port->type == IN_PORT) {
+			//printf("in port Number of pins: %d\n",prim_port->num_pins);
 			for (j = 0; j < prim_port->num_pins; j++) {
+				//printf("Name of net: %d\n",logical_block[ilogical_block].nets->input_nets[prim_port->model_port->index][j]);
 				if (logical_block[ilogical_block].nets->input_nets[prim_port->model_port->index][j]!= OPEN) {
 					compute_and_mark_lookahead_pins_used_for_pin(&pb_graph_node->input_pins[input_port][j], cur_pb,logical_block[ilogical_block].nets->input_nets[prim_port->model_port->index][j]);
 				}
 			}
 			input_port++;
 		} else if (prim_port->type == OUT_PORT) {
+			//printf("out port Number of pins: %d\n",prim_port->num_pins);
 			for (j = 0; j < prim_port->num_pins; j++) {
+				//printf("Name of net: %s\n",vpack_net[logical_block[ilogical_block].nets->output_nets[prim_port->model_port->index][j]].name);
 				if (logical_block[ilogical_block].nets->output_nets[prim_port->model_port->index][j]!= OPEN) {
 					compute_and_mark_lookahead_pins_used_for_pin(&pb_graph_node->output_pins[output_port][j], cur_pb,logical_block[ilogical_block].nets->output_nets[prim_port->model_port->index][j]);
 				}
@@ -2527,7 +2533,7 @@ static void compute_and_mark_lookahead_pins_used_for_pin(
 	int count;
 
 	boolean skip, found;
-	assert(logical_block[vpack_net[inet].node_block[0]].pb == NULL);
+	//assert(logical_block[vpack_net[inet].node_block[0]].pb == NULL);
 	cur_pb = primitive_pb->parent_pb;
 
 	while (cur_pb) {
@@ -2539,6 +2545,7 @@ static void compute_and_mark_lookahead_pins_used_for_pin(
 			/* find location of net driver if exist in clb, NULL otherwise */
 			output_pb_graph_pin = NULL;
 			if (logical_block[vpack_net[inet].node_block[0]].clb_index == logical_block[primitive_pb->logical_block].clb_index) {
+				//printf("Name: %s\n",logical_block[vpack_net[inet].node_block[0]].name);
 				pb_type = logical_block[vpack_net[inet].node_block[0]].pb->pb_graph_node->pb_type;
 				output_port = 0;
 				found = FALSE;

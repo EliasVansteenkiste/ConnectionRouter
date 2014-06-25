@@ -932,8 +932,7 @@ static boolean try_expand_molecule(INOUTP t_pack_molecule *molecule,
 		/* If the primitive types match, store it, expand it and explore neighbouring nodes */
 		molecule->logical_block_ptrs[current_pattern_block->block_id] =
 				&logical_block[logical_block_index]; /* store that this node has been visited */
-		molecule->num_ext_inputs +=
-				logical_block[logical_block_index].used_input_pins;
+		molecule->num_ext_inputs +=	logical_block[logical_block_index].used_input_pins;
 		
 		cur_pack_pattern_connection = current_pattern_block->connections;
 		while (cur_pack_pattern_connection != NULL && success == TRUE) {
@@ -1148,7 +1147,12 @@ static int find_new_root_atom_for_chain(INP int block_index, INP t_pack_patterns
 
 	/* Assign driver furthest up the chain that matches the root node and is unassigned to a molecule as the root */
 	model_port = root_ipin->port->model_port;
-	driver_net = logical_block[block_index].nets->input_nets[model_port->index][root_ipin->pin_number];
+
+	t_nets * cur;
+	for(cur = logical_block[block_index].nets; cur != NULL; cur = cur->next)
+		if(cur->input_nets[model_port->index][root_ipin->pin_number] != OPEN)
+			driver_net = cur->input_nets[model_port->index][root_ipin->pin_number];
+
 	if(driver_net == OPEN) {
 		/* The current block is the furthest up the chain, return it */
 		return block_index;
