@@ -242,7 +242,7 @@ boolean primitive_type_feasible(int iblk, const t_pb_type *cur_pb_type) {
 	t_model_ports *port;
 	int i, j;
 	boolean second_pass;
-
+	t_nets* cur;
 	if (cur_pb_type == NULL) {
 		return FALSE;
 	}
@@ -260,14 +260,16 @@ boolean primitive_type_feasible(int iblk, const t_pb_type *cur_pb_type) {
 			if (cur_pb_type->ports[i].model_port == port) {
 				for (j = cur_pb_type->ports[i].num_pins; j < port->size; j++) {
 					if (port->dir == IN_PORT && !port->is_clock) {
-						if (logical_block[iblk].nets->input_nets[port->index][j]
-								!= OPEN) {
-							return FALSE;
+						for(cur = logical_block[iblk].nets; cur != NULL; cur = cur->next){
+							if (cur->input_nets[port->index][j] != OPEN) {
+								return FALSE;
+							}
 						}
 					} else if (port->dir == OUT_PORT) {
-						if (logical_block[iblk].nets->output_nets[port->index][j]
-								!= OPEN) {
-							return FALSE;
+						for(cur = logical_block[iblk].nets; cur != NULL; cur = cur->next){
+							if (cur->output_nets[port->index][j] != OPEN) {
+								return FALSE;
+							}
 						}
 					} else {
 						assert(port->dir == IN_PORT && port->is_clock);

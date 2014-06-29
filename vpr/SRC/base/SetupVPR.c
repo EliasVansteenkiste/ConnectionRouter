@@ -165,8 +165,7 @@ void SetupVPR(INP t_options *Options, INP boolean TimingEnabled,
 	SetupPowerOpts(*Options, PowerOpts, Arch);
 
 	if (readArchFile == TRUE) {
-		XmlReadArch(Options->ArchFile, TimingEnabled, Arch, &type_descriptors,
-				&num_types);
+		XmlReadArch(Options->ArchFile, TimingEnabled, Arch, &type_descriptors,&num_types);
 	}
 
 	*user_models = Arch->models;

@@ -1048,6 +1048,7 @@ static t_pb_graph_node *get_expected_lowest_cost_primitive_for_logical_block(INP
 	current = NULL;
 	for(i = 0; i < num_types; i++) {
 		cost = UNDEFINED;
+		/* the type_descriptors come from the architecture */
 		current = get_expected_lowest_cost_primitive_for_logical_block_in_pb_graph_node(ilogical_block, type_descriptors[i].pb_graph_head, &cost);
 		if(cost != UNDEFINED) {
 			if(best_cost == UNDEFINED || best_cost > cost) {
@@ -1069,9 +1070,10 @@ static t_pb_graph_node *get_expected_lowest_cost_primitive_for_logical_block_in_
 	if(curr_pb_graph_node == NULL) {
 		return NULL;
 	}
-	
+
 	if(curr_pb_graph_node->pb_type->blif_model != NULL) {
 		if(primitive_type_feasible(ilogical_block, curr_pb_graph_node->pb_type)) {
+			printf("Feasible: %s\n",logical_block[ilogical_block].name);
 			cur_cost = compute_primitive_base_cost(curr_pb_graph_node);
 			if(best_cost == UNDEFINED || best_cost > cur_cost) {
 				best_cost = cur_cost;

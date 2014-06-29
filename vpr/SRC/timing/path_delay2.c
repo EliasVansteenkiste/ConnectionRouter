@@ -40,7 +40,6 @@ alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
 
 	for (inode = 0; inode < num_tnodes; inode++) {
 		num_edges = tnode[inode].num_edges;
-
 		if (num_edges > 0) {
 			tedge = tnode[inode].out_edges;
 			for (iedge = 0; iedge < num_edges; iedge++) {
@@ -51,8 +50,8 @@ alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
 							inode, iedge, to_node);
 					error++;
 				}
-
 				tnode_num_fanin[to_node]++;
+				printf("edge: %d fanin: node:%s amount:%d to_node: %d\n",iedge,logical_block[tnode[to_node].block].name,tnode_num_fanin[to_node],to_node);
 			}
 		}
 
@@ -103,8 +102,7 @@ int alloc_and_load_timing_graph_levels(void) {
 	 * Temporarily need one extra level on the end because I look at the first  *
 	 * empty level.                                                             */
 
-	tnodes_at_level = (struct s_ivec *) my_malloc(
-			(num_tnodes + 1) * sizeof(struct s_ivec));
+	tnodes_at_level = (struct s_ivec *) my_malloc((num_tnodes + 1) * sizeof(struct s_ivec));
 
 	/* Scan through the timing graph, putting all the primary input nodes (no    *
 	 * fanin) into level 0 of the level structure.                               */
@@ -113,14 +111,13 @@ int alloc_and_load_timing_graph_levels(void) {
 
 	for (inode = 0; inode < num_tnodes; inode++) {
 		if (tnode_fanin_left[inode] == 0) {
+			printf("name of fanin == 0 : %s\n",logical_block[tnode[inode].block].name);
 			num_at_level++;
-			nodes_at_level_head = insert_in_int_list(nodes_at_level_head, inode,
-					&free_list_head);
+			nodes_at_level_head = insert_in_int_list(nodes_at_level_head, inode,&free_list_head);
 		}
 	}
 
-	alloc_ivector_and_copy_int_list(&nodes_at_level_head, num_at_level,
-			&tnodes_at_level[0], &free_list_head);
+	alloc_ivector_and_copy_int_list(&nodes_at_level_head, num_at_level,&tnodes_at_level[0], &free_list_head);
 
 	num_levels = 0;
 
@@ -139,8 +136,8 @@ int alloc_and_load_timing_graph_levels(void) {
 
 				if (tnode_fanin_left[to_node] == 0) {
 					num_at_level++;
-					nodes_at_level_head = insert_in_int_list(
-							nodes_at_level_head, to_node, &free_list_head);
+					printf("Node:%s to_node:%s \n",logical_block[tnode[inode].block].name,logical_block[tnode[to_node].block].name);
+					nodes_at_level_head = insert_in_int_list(nodes_at_level_head, to_node, &free_list_head);
 				}
 			}
 		}
@@ -149,8 +146,7 @@ int alloc_and_load_timing_graph_levels(void) {
 				&tnodes_at_level[num_levels], &free_list_head);
 	}
 
-	tnodes_at_level = (struct s_ivec *) my_realloc(tnodes_at_level,
-			num_levels * sizeof(struct s_ivec));
+	tnodes_at_level = (struct s_ivec *) my_realloc(tnodes_at_level,	num_levels * sizeof(struct s_ivec));
 	num_tnode_levels = num_levels;
 
 	free(tnode_fanin_left);
@@ -225,15 +221,13 @@ float print_critical_path_node(FILE * fp, t_linked_int * critical_path_node) {
 	}
 
 	if (pb_graph_pin != NULL) {
-		fprintf(fp, "Pin: %s.%s[%d] pb (%s)", pb_graph_pin->parent_node->pb_type->name,
-			pb_graph_pin->port->name, pb_graph_pin->pin_number, block[iblk].pb->rr_node_to_pb_mapping[pb_graph_pin->pin_count_in_cluster]->name);
+		fprintf(fp, "Pin: %s.%s[%d] pb (%s)", pb_graph_pin->parent_node->pb_type->name, pb_graph_pin->port->name, pb_graph_pin->pin_number, block[iblk].pb->rr_node_to_pb_mapping[pb_graph_pin->pin_count_in_cluster]->name);
 	}
 	if (type != TN_INPAD_SOURCE && type != TN_OUTPAD_SINK) {
 		fprintf(fp, "\n");
 	}
 
-	fprintf(fp, "T_arr: %g  T_req: %g  ", tnode[inode].T_arr,
-			tnode[inode].T_req);
+	fprintf(fp, "T_arr: %g  T_req: %g  ", tnode[inode].T_arr, tnode[inode].T_req);
 
 	next_crit_node = critical_path_node->next;
 	if (next_crit_node != NULL) {
@@ -246,8 +240,7 @@ float print_critical_path_node(FILE * fp, t_linked_int * critical_path_node) {
 	}
 
 	if (type == TN_CB_OPIN) {
-		inet =
-				block[iblk].pb->rr_graph[pb_graph_pin->pin_count_in_cluster].net_num;
+		inet = block[iblk].pb->rr_graph[pb_graph_pin->pin_count_in_cluster].net_num;
 		inet = vpack_to_clb_net_mapping[inet];
 		fprintf(fp, "External-to-Block Net: #%d (%s).  Pins on net: %d.\n",
 				inet, clb_net[inet].name, (clb_net[inet].num_sinks + 1));

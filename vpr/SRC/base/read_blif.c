@@ -98,6 +98,7 @@ static void print_logical_blocks();
 
 static int has_another_input(int checkBlock,int checkPort, int checkPin);
 static int has_another_output(int checkBlock,int checkPort, int checkPin);
+static int has_multiple_inputs(int checkBlock);
 
 static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		t_model *user_models, t_model *library_models,
@@ -273,15 +274,13 @@ static void get_blif_tok(char *buffer, int doall, boolean *done,
 
 	if (*add_truth_table) {
 		if (ptr[0] == '0' || ptr[0] == '1' || ptr[0] == '-') {
-			data = (struct s_linked_vptr*) my_malloc(
-					sizeof(struct s_linked_vptr));
+			data = (struct s_linked_vptr*) my_malloc(sizeof(struct s_linked_vptr));
 			fn = ptr;
 			ptr = my_strtok(NULL, BLIF_TOKENS, blif, buffer);
 			if (!ptr || strlen(ptr) != 1) {
 				if (strlen(fn) == 1) {
 					/* constant generator */
-					data->next =
-							logical_block[num_logical_blocks - 1].truth_table;
+					data->next = logical_block[num_logical_blocks - 1].truth_table;
 					data->data_vptr = my_malloc(strlen(fn) + 4);
 					sprintf((char*) (data->data_vptr), " %s", fn);
 					logical_block[num_logical_blocks - 1].truth_table = data;
@@ -476,7 +475,6 @@ static void import_t_muxes() {
 
 	}
 	//clean_up();
-
 	print_logical_blocks();
 	printf("\n");
 	print_nets();
@@ -2499,4 +2497,19 @@ static int has_another_output(int checkBlock,int checkPort, int checkPin)
 		}
 	}
 	return 0;
+}
+
+static int has_multiple_inputs(int checkBlock)
+{
+	t_nets *cur;
+	int counter = 0;
+	for(cur = logical_block[checkBlock].nets->next; cur != NULL; cur = cur->next)
+	{
+		if(cur->input_nets != NULL)
+		{
+			//printf("Multiple inputs: %s\n",logical_block[checkBlock].name);
+			counter++;
+		}
+	}
+	return counter;
 }
