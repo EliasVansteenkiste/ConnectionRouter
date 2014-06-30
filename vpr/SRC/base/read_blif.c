@@ -439,7 +439,7 @@ static void import_t_muxes() {
 			for(m = 0; m < logical_block[temp].model->inputs->size; m++)
 				if(logical_block[temp].nets->input_nets[0][m] == bnum){
 					set_sinks(m,vpack_net[index].node_block[0],vpack_net[bnum].node_block[1]);
-					set_sources(m,vpack_net[index].node_block[0],vpack_net[bnum].node_block[1]);
+					//set_sources(m,vpack_net[index].node_block[0],vpack_net[bnum].node_block[1]);
 				}
 
 			/* The output is: */

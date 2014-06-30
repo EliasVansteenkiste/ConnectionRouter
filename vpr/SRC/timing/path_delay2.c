@@ -40,18 +40,18 @@ alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
 
 	for (inode = 0; inode < num_tnodes; inode++) {
 		num_edges = tnode[inode].num_edges;
+		printf("Name: %s\n",logical_block[tnode[inode].block].name);
 		if (num_edges > 0) {
 			tedge = tnode[inode].out_edges;
 			for (iedge = 0; iedge < num_edges; iedge++) {
 				to_node = tedge[iedge].to_node;
 				if (to_node < 0 || to_node >= num_tnodes) {
 					vpr_printf(TIO_MESSAGE_ERROR, "in alloc_and_load_tnode_fanin_and_check_edges:\n");
-					vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d edge #%d goes to illegal node #%d.\n",
-							inode, iedge, to_node);
+					vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d edge #%d goes to illegal node #%d.\n",inode, iedge, to_node);
 					error++;
 				}
 				tnode_num_fanin[to_node]++;
-				printf("edge: %d fanin: node:%s amount:%d to_node: %d\n",iedge,logical_block[tnode[to_node].block].name,tnode_num_fanin[to_node],to_node);
+				printf("edge: %d fanin: node:%s amount:%d from: %d to_node: %d\n",iedge,logical_block[tnode[to_node].block].name,tnode_num_fanin[to_node],inode,to_node);
 			}
 		}
 
@@ -61,8 +61,7 @@ alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
 
 		else {
 			vpr_printf(TIO_MESSAGE_ERROR, "in alloc_and_load_tnode_fanin_and_check_edges:\n");
-			vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d has %d edges.\n", 
-					inode, num_edges);
+			vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d has %d edges.\n", inode, num_edges);
 			error++;
 		}
 
@@ -111,7 +110,7 @@ int alloc_and_load_timing_graph_levels(void) {
 
 	for (inode = 0; inode < num_tnodes; inode++) {
 		if (tnode_fanin_left[inode] == 0) {
-			printf("name of fanin == 0 : %s\n",logical_block[tnode[inode].block].name);
+			printf("name of fanin == 0 : %s %d\n",logical_block[tnode[inode].block].name,inode);
 			num_at_level++;
 			nodes_at_level_head = insert_in_int_list(nodes_at_level_head, inode,&free_list_head);
 		}

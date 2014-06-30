@@ -2533,7 +2533,6 @@ static void compute_and_mark_lookahead_pins_used_for_pin(
 	int count;
 
 	boolean skip, found;
-	//assert(logical_block[vpack_net[inet].node_block[0]].pb == NULL);
 	cur_pb = primitive_pb->parent_pb;
 
 	while (cur_pb) {
@@ -2544,8 +2543,10 @@ static void compute_and_mark_lookahead_pins_used_for_pin(
 		if (pb_graph_pin->port->type == IN_PORT) {
 			/* find location of net driver if exist in clb, NULL otherwise */
 			output_pb_graph_pin = NULL;
+			assert(logical_block[vpack_net[inet].node_block[0]].pb == NULL);
+			printf("index: %d\n",logical_block[vpack_net[inet].node_block[0]].clb_index);
 			if (logical_block[vpack_net[inet].node_block[0]].clb_index == logical_block[primitive_pb->logical_block].clb_index) {
-				//printf("Name: %s\n",logical_block[vpack_net[inet].node_block[0]].name);
+				printf("Name: %s\n",logical_block[vpack_net[inet].node_block[0]].name);
 				pb_type = logical_block[vpack_net[inet].node_block[0]].pb->pb_graph_node->pb_type;
 				output_port = 0;
 				found = FALSE;
@@ -2560,8 +2561,7 @@ static void compute_and_mark_lookahead_pins_used_for_pin(
 					}
 				}
 				assert(found);
-				output_pb_graph_pin =
-						&(logical_block[vpack_net[inet].node_block[0]].pb->pb_graph_node->output_pins[output_port][vpack_net[inet].node_block_pin[0]]);
+				output_pb_graph_pin = &(logical_block[vpack_net[inet].node_block[0]].pb->pb_graph_node->output_pins[output_port][vpack_net[inet].node_block_pin[0]]);
 			}
 
 			skip = FALSE;
