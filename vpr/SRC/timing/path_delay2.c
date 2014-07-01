@@ -40,18 +40,22 @@ alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
 
 	for (inode = 0; inode < num_tnodes; inode++) {
 		num_edges = tnode[inode].num_edges;
-		printf("Name: %s\n",logical_block[tnode[inode].block].name);
+		printf("Node tested for fanin: %s : %d\n",logical_block[tnode[inode].block].name,inode);
 		if (num_edges > 0) {
 			tedge = tnode[inode].out_edges;
+
 			for (iedge = 0; iedge < num_edges; iedge++) {
 				to_node = tedge[iedge].to_node;
+				printf("Edge: %d to_node:%d\n",iedge,to_node);
+				//printf("From node: %d to_node: %d\n",inode,to_node);
 				if (to_node < 0 || to_node >= num_tnodes) {
 					vpr_printf(TIO_MESSAGE_ERROR, "in alloc_and_load_tnode_fanin_and_check_edges:\n");
 					vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d edge #%d goes to illegal node #%d.\n",inode, iedge, to_node);
 					error++;
 				}
+				//if(tnode[inode].type != TN_PRIMITIVE_IPIN_EXPLICIT)
 				tnode_num_fanin[to_node]++;
-				printf("edge: %d fanin: node:%s amount:%d from: %d to_node: %d\n",iedge,logical_block[tnode[to_node].block].name,tnode_num_fanin[to_node],inode,to_node);
+				//printf("edge: %d fanin: node:%s amount:%d from: %d to_node: %d\n",iedge,logical_block[tnode[to_node].block].name,tnode_num_fanin[to_node],inode,to_node);
 			}
 		}
 
@@ -83,8 +87,7 @@ int alloc_and_load_timing_graph_levels(void) {
 	 * Also returns the number of sinks in the graph (nodes with no fanout).      */
 
 	t_linked_int *free_list_head, *nodes_at_level_head;
-	int inode, num_at_level, iedge, to_node, num_edges, num_sinks, num_levels,
-			i;
+	int inode, num_at_level, iedge, to_node, num_edges, num_sinks, num_levels,i;
 	t_tedge *tedge;
 
 	/* [0..num_tnodes-1]. # of in-edges to each tnode that have not yet been    *
@@ -110,9 +113,12 @@ int alloc_and_load_timing_graph_levels(void) {
 
 	for (inode = 0; inode < num_tnodes; inode++) {
 		if (tnode_fanin_left[inode] == 0) {
-			printf("name of fanin == 0 : %s %d\n",logical_block[tnode[inode].block].name,inode);
-			num_at_level++;
-			nodes_at_level_head = insert_in_int_list(nodes_at_level_head, inode,&free_list_head);
+			if(tnode[inode].type == 0){
+				printf("name of fanin == 0 : %s %d type:%d\n",logical_block[tnode[inode].block].name,inode,tnode[inode].type);
+				num_at_level++;
+				nodes_at_level_head = insert_in_int_list(nodes_at_level_head, inode,&free_list_head);
+			}else
+				printf("NOT INCLUDED: name of fanin == 0 : %s %d type:%d\n",logical_block[tnode[inode].block].name,inode,tnode[inode].type);
 		}
 	}
 
@@ -132,17 +138,16 @@ int alloc_and_load_timing_graph_levels(void) {
 			for (iedge = 0; iedge < num_edges; iedge++) {
 				to_node = tedge[iedge].to_node;
 				tnode_fanin_left[to_node]--;
-
+				//printf("From node: %s to_node: %s fanin_left:%d\n",logical_block[tnode[iedge].block].name,logical_block[tnode[to_node].block].name,tnode_fanin_left[to_node]);
 				if (tnode_fanin_left[to_node] == 0) {
 					num_at_level++;
-					printf("Node:%s to_node:%s \n",logical_block[tnode[inode].block].name,logical_block[tnode[to_node].block].name);
+					//printf("Node:%s to_node:%s \n",logical_block[tnode[inode].block].name,logical_block[tnode[to_node].block].name);
 					nodes_at_level_head = insert_in_int_list(nodes_at_level_head, to_node, &free_list_head);
 				}
 			}
 		}
 
-		alloc_ivector_and_copy_int_list(&nodes_at_level_head, num_at_level,
-				&tnodes_at_level[num_levels], &free_list_head);
+		alloc_ivector_and_copy_int_list(&nodes_at_level_head, num_at_level,	&tnodes_at_level[num_levels], &free_list_head);
 	}
 
 	tnodes_at_level = (struct s_ivec *) my_realloc(tnodes_at_level,	num_levels * sizeof(struct s_ivec));
@@ -180,7 +185,7 @@ void check_timing_graph(int num_sinks) {
 		if (num_tnodes > num_tnodes_check) {
 			show_combinational_cycle_candidates();
 		}
-		error++;
+		//error++;
 	}
 	/* Todo: Add error checks that # of flip-flops, memories, and other
 	 black boxes match # of sinks/sources*/

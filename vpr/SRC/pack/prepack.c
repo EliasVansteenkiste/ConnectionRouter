@@ -1073,7 +1073,6 @@ static t_pb_graph_node *get_expected_lowest_cost_primitive_for_logical_block_in_
 
 	if(curr_pb_graph_node->pb_type->blif_model != NULL) {
 		if(primitive_type_feasible(ilogical_block, curr_pb_graph_node->pb_type)) {
-			printf("Feasible: %s\n",logical_block[ilogical_block].name);
 			cur_cost = compute_primitive_base_cost(curr_pb_graph_node);
 			if(best_cost == UNDEFINED || best_cost > cur_cost) {
 				best_cost = cur_cost;

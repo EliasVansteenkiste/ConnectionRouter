@@ -332,6 +332,8 @@ typedef enum {
 	TN_INTERMEDIATE_NODE, /* Used in post-packed timing graph only: 
 	 connection between intra-cluster pins. */
 	TN_PRIMITIVE_IPIN, /* input pin to a primitive (e.g. a LUT) */
+	TN_PRIMITIVE_IPIN_EXPLICIT, /* input dummy pin to a primitive (e.g. a LUT)
+	which will represent a more than one input into the same pin*/
 	TN_PRIMITIVE_OPIN, /* output pin from a primitive (e.g. a LUT) */
 	TN_FF_IPIN, /* input pin to a flip-flop - goes to TN_FF_SINK */
 	TN_FF_OPIN, /* output pin from a flip-flop - comes from TN_FF_SOURCE */

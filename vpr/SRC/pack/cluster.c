@@ -302,11 +302,9 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 	for (i = 0; i < num_types; i++) {
 		if (EMPTY_TYPE == &type_descriptors[i])
 			continue;
-		cur_cluster_size = get_max_primitives_in_pb_type(
-				type_descriptors[i].pb_type);
+		cur_cluster_size = get_max_primitives_in_pb_type(type_descriptors[i].pb_type);
 		cur_pb_depth = get_max_depth_of_pb_type(type_descriptors[i].pb_type);
-		cur_nets_in_pb_type = get_max_nets_in_pb_type(
-				type_descriptors[i].pb_type);
+		cur_nets_in_pb_type = get_max_nets_in_pb_type(type_descriptors[i].pb_type);
 		if (cur_cluster_size > max_cluster_size) {
 			max_cluster_size = cur_cluster_size;
 		}
@@ -319,8 +317,7 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 	}
 
 	if (hill_climbing_flag) {
-		hill_climbing_inputs_avail = (int *) my_calloc(max_cluster_size + 1,
-				sizeof(int));
+		hill_climbing_inputs_avail = (int *) my_calloc(max_cluster_size + 1,sizeof(int));
 	} else {
 		hill_climbing_inputs_avail = NULL; /* if used, die hard */
 	}
@@ -347,8 +344,8 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 	/* Limit maximum number of elements for each cluster */
 
 	if (timing_driven) {
-		slacks = alloc_and_load_pre_packing_timing_graph(block_delay,
-				inter_cluster_net_delay, arch->models, timing_inf);
+		slacks = alloc_and_load_pre_packing_timing_graph(block_delay,inter_cluster_net_delay, arch->models, timing_inf);
+
 		do_timing_analysis(slacks, TRUE, FALSE, FALSE);
 
 		if (getEchoEnabled()) {
@@ -744,8 +741,7 @@ static void alloc_and_init_clustering(boolean global_clocks, float alpha,
 		unclustered_list_head[i].next = NULL;
 	}
 
-	molecule_array = (t_pack_molecule **) my_malloc(
-			num_molecules * sizeof(t_pack_molecule*));
+	molecule_array = (t_pack_molecule **) my_malloc(num_molecules * sizeof(t_pack_molecule*));
 	cur_molecule = molecules_head;
 	for (i = 0; i < num_molecules; i++) {
 		assert(cur_molecule != NULL);
@@ -775,7 +771,9 @@ static void alloc_and_init_clustering(boolean global_clocks, float alpha,
 		driving_blk = vpack_net[inet].node_block[0];
 		for (ipin = 1; ipin <= vpack_net[inet].num_sinks; ipin++) {
 			if (vpack_net[inet].node_block[ipin] == driving_blk) {
+				//This is the place that it counts the nets and allocates space for the clustering... it will maybe need to change
 				net_output_feeds_driving_block_input[inet]++;
+
 			}
 		}
 	}
@@ -2543,8 +2541,6 @@ static void compute_and_mark_lookahead_pins_used_for_pin(
 		if (pb_graph_pin->port->type == IN_PORT) {
 			/* find location of net driver if exist in clb, NULL otherwise */
 			output_pb_graph_pin = NULL;
-			assert(logical_block[vpack_net[inet].node_block[0]].pb == NULL);
-			printf("index: %d\n",logical_block[vpack_net[inet].node_block[0]].clb_index);
 			if (logical_block[vpack_net[inet].node_block[0]].clb_index == logical_block[primitive_pb->logical_block].clb_index) {
 				printf("Name: %s\n",logical_block[vpack_net[inet].node_block[0]].name);
 				pb_type = logical_block[vpack_net[inet].node_block[0]].pb->pb_graph_node->pb_type;
