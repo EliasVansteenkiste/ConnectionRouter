@@ -318,6 +318,10 @@ typedef struct s_cluster_placement_stats {
 typedef struct s_tedge {
 	/* Edge in the timing graph. */
 	int to_node; /* index of node at the sink end of this edge */
+	/* These were added in order to be able to support explicit connections */
+	int to_pin;
+	int to_port;
+
 	float Tdel; /* delay to go to to_node along this edge */
 } t_tedge;
 

@@ -348,18 +348,18 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 
 		do_timing_analysis(slacks, TRUE, FALSE, FALSE);
 
-		if (getEchoEnabled()) {
-			if(isEchoFileEnabled(E_ECHO_PRE_PACKING_TIMING_GRAPH))
+		//if (getEchoEnabled()) {
+		//	if(isEchoFileEnabled(E_ECHO_PRE_PACKING_TIMING_GRAPH))
 				print_timing_graph(getEchoFileName(E_ECHO_PRE_PACKING_TIMING_GRAPH));
 #ifndef PATH_COUNTING
-			if(isEchoFileEnabled(E_ECHO_CLUSTERING_TIMING_INFO))
+		//	if(isEchoFileEnabled(E_ECHO_CLUSTERING_TIMING_INFO))
 				print_clustering_timing_info(getEchoFileName(E_ECHO_CLUSTERING_TIMING_INFO));
 #endif
-			if(isEchoFileEnabled(E_ECHO_PRE_PACKING_SLACK))
+		//	if(isEchoFileEnabled(E_ECHO_PRE_PACKING_SLACK))
 				print_slack(slacks->slack, FALSE, getEchoFileName(E_ECHO_PRE_PACKING_SLACK));
-			if(isEchoFileEnabled(E_ECHO_PRE_PACKING_CRITICALITY))
+		//	if(isEchoFileEnabled(E_ECHO_PRE_PACKING_CRITICALITY))
 				print_criticality(slacks, FALSE, getEchoFileName(E_ECHO_PRE_PACKING_CRITICALITY));
-		}
+		//}
 
 		block_criticality = (float*) my_calloc(num_logical_blocks, sizeof(float));
 
@@ -455,8 +455,7 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 				/*it doesn't make sense to do a timing analysis here since there*
 				 *is only one logical_block clustered it would not change anything      */
 			}
-			cur_cluster_placement_stats_ptr = &cluster_placement_stats[clb[num_clb
-					- 1].type->index];
+			cur_cluster_placement_stats_ptr = &cluster_placement_stats[clb[num_clb - 1].type->index];
 			num_unrelated_clustering_attempts = 0;
 			next_molecule = get_molecule_for_cluster(PACK_BRUTE_FORCE,
 					clb[num_clb - 1].pb, allow_unrelated_clustering,
@@ -765,13 +764,14 @@ static void alloc_and_init_clustering(boolean global_clocks, float alpha,
 
 	/* alloc and load net info */
 	net_output_feeds_driving_block_input = (int *) my_malloc(num_logical_nets * sizeof(int));
-
+	printf("Going to allocate memory for the clusters\n");
 	for (inet = 0; inet < num_logical_nets; inet++) {
 		net_output_feeds_driving_block_input[inet] = 0;
 		driving_blk = vpack_net[inet].node_block[0];
 		for (ipin = 1; ipin <= vpack_net[inet].num_sinks; ipin++) {
 			if (vpack_net[inet].node_block[ipin] == driving_blk) {
 				//This is the place that it counts the nets and allocates space for the clustering... it will maybe need to change
+				printf(" Input: %d driving_blk: %d\n",inet,driving_blk);
 				net_output_feeds_driving_block_input[inet]++;
 
 			}
@@ -1176,8 +1176,7 @@ static enum e_block_pack_status try_pack_molecule(
 				primitives_list, clb_index)) {
 			block_pack_status = BLK_PASSED;
 			
-			for (i = 0; i < molecule_size && block_pack_status == BLK_PASSED;
-					i++) {
+			for (i = 0; i < molecule_size && block_pack_status == BLK_PASSED;i++) {
 				assert(
 						(primitives_list[i] == NULL) == (molecule->logical_block_ptrs[i] == NULL));
 				failed_location = i + 1;
@@ -1992,9 +1991,7 @@ static t_pack_molecule *get_highest_gain_molecule(
 						molecule = (t_pack_molecule *) cur->data_vptr;
 						if (molecule->valid) {
 							success = TRUE;
-							for (j = 0;
-									j < get_array_size_of_molecule(molecule);
-									j++) {
+							for (j = 0;	j < get_array_size_of_molecule(molecule);j++) {
 								if (molecule->logical_block_ptrs[j] != NULL) {
 									assert(
 											molecule->logical_block_ptrs[j]->clb_index == NO_CLUSTER);
@@ -2542,7 +2539,7 @@ static void compute_and_mark_lookahead_pins_used_for_pin(
 			/* find location of net driver if exist in clb, NULL otherwise */
 			output_pb_graph_pin = NULL;
 			if (logical_block[vpack_net[inet].node_block[0]].clb_index == logical_block[primitive_pb->logical_block].clb_index) {
-				printf("Name: %s\n",logical_block[vpack_net[inet].node_block[0]].name);
+				//printf("Name: %s\n",logical_block[vpack_net[inet].node_block[0]].name);
 				pb_type = logical_block[vpack_net[inet].node_block[0]].pb->pb_graph_node->pb_type;
 				output_port = 0;
 				found = FALSE;
