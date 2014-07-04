@@ -546,8 +546,7 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 					}
 				} else
 					/*cluster seed is max input (since there is no timing information)*/
-					istart = get_seed_logical_molecule_with_most_ext_inputs(
-							max_molecule_inputs);
+					istart = get_seed_logical_molecule_with_most_ext_inputs(2222222222222222222max_molecule_inputs);
 				
 				free_pb_stats_recursive(clb[num_clb - 1].pb);
 			} else {

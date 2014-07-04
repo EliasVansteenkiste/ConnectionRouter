@@ -1175,6 +1175,7 @@ static void alloc_and_load_tnodes_from_prepacked_netlist(float block_delay,
 									tnode[inode].num_edges = count;
 									printf("TN_PRIMITIVE_IPIN: %s inode:%d count:%d\n",logical_block[i].name,inode,count);
 									if(cur != logical_block[i].nets){
+										printf("Set explicit node: %d %d\n",inode,inode_explicit);
 										tnode_explicit[inode_explicit] = &tnode[inode];
 										inode_explicit++;
 									}
@@ -1197,8 +1198,6 @@ static void alloc_and_load_tnodes_from_prepacked_netlist(float block_delay,
 									}
 									inode += 2;
 								}
-
-
 							}
 						}
 					}
@@ -1266,10 +1265,11 @@ static void alloc_and_load_tnodes_from_prepacked_netlist(float block_delay,
 							tnode[i].out_edges[j - 1].to_port = vpack_net[inet].node_block_port[j];
 							tnode[i].out_edges[j - 1].to_pin = vpack_net[inet].node_block_pin[j];
 							if(cur != logical_block[vpack_net[inet].node_block[j]].nets){
+								printf("Set explicit node: %d %d to_port:%d to_pin:%d\n",i,inode_explicit,tnode[i].out_edges[j - 1].to_port,tnode[i].out_edges[j - 1].to_pin);
 								tnode_explicit[inode_explicit] = &tnode[i];
 								inode_explicit++;
 							}
-							printf("Other: to_node:%d\n",tnode[i].out_edges[j - 1].to_node);
+							printf("Other: to_node:%d to_port:%d to_pin:%d\n",tnode[i].out_edges[j - 1].to_node,tnode[i].out_edges[j - 1].to_port,tnode[i].out_edges[j - 1].to_pin);
 							check = 1;
 							break;
 						}
@@ -1980,10 +1980,19 @@ static int is_the_same_edge(t_tedge edge_a,t_tedge edge_b)
 		return TRUE;
 	return FALSE;
 }
+
 int max_num_marked_tedge = 10,idx_marked_tedge = 0,first_time = 1;/*  We will mark the inodes that drive the same tnode in order not to count more
 														than once the fanin*/
 t_tedge *marked_tedge;
 
+static int is_marked_edge(t_tedge edge){
+	int i;
+	for(i = 0; i < idx_marked_tedge; i++){
+		if(is_the_same_edge(edge,marked_tedge[i]))
+			return TRUE;
+	}
+	return FALSE;
+}
 static void set_fanin_for_explicit_connections(int ilevel)
 {
 	int inode,inode_explicit,inode_explicit_trav, iedge,iedge_explicit,iedge_explicit_trav, to_node,i,j;
@@ -1999,9 +2008,10 @@ static void set_fanin_for_explicit_connections(int ilevel)
 		marked_tedge = (t_tedge *)my_malloc(max_num_marked_tedge * sizeof(t_tedge));
 		first_time = 0;
 	}
-	for (i = 0; i < num_at_level; i++) {
+
+	for (i = 0; i < num_at_level; i++) { /* For all the tnodes in the particular level */
 		inode = tnodes_at_level[ilevel].list[i];
-		if( (inode_explicit = is_explicit_connection(inode)) != -1 ){
+		if( (inode_explicit = is_explicit_connection(inode)) != -1 ){ /* This node should have an explicit connection */
 			/* If the node has more than one edge that is explicit to another node */
 			for(inode_explicit_trav = 0; inode_explicit_trav < num_tnodes_explicit; inode_explicit_trav++){		/* Compare the above node with all the other nodes that have an explicit connection */
 				for(iedge_explicit = 0; iedge_explicit < tnode[inode_explicit].num_edges; iedge_explicit++)		/* For all the edges of the first node */
@@ -2012,8 +2022,8 @@ static void set_fanin_for_explicit_connections(int ilevel)
 									if(tnode_explicit[inode_explicit_trav]->T_arr + tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav].Tdel < min_value){
 										min_value = tnode_explicit[inode_explicit_trav]->T_arr + tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav].Tdel;
 										min_index = inode_explicit_trav;
-										marked_tedge[i] = tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav];
-										printf("Found new min: %d\n",inode_explicit_trav);
+										marked_tedge[j] = tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav];
+										printf("Found new min: %d to_node:%d port:%d pin:%d\n",inode_explicit_trav,tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav].to_node,tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav].to_port,tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav].to_pin);
 									}else
 										break;
 								}
@@ -2029,7 +2039,8 @@ static void set_fanin_for_explicit_connections(int ilevel)
 									marked_tedge[idx_marked_tedge - 1] = tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav];
 									min_value = tnode_explicit[inode_explicit_trav]->T_arr + temp_tedge.Tdel;
 									min_index = inode_explicit;
-									printf("Found new min: %d\n",inode_explicit_trav);
+									printf("Found new min: %d to_node:%d port:%d pin:%d\n",inode_explicit_trav,tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav].to_node,tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav].to_port,tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav].to_pin);
+
 								}
 						}
 			}
@@ -2112,7 +2123,7 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 	int inode_expl,inode_expl_trav,inode_expl_edge, inode_expl_trav_edge;
 	int min_index;
 	float min_value;
-
+	int is_explicit_con = 0;
 	total = 0;												/* We count up all tnodes to error-check at the end. */
 	for (ilevel = 0; ilevel < num_tnode_levels; ilevel++) {	/* For each level of our levelized timing graph... */
 		num_at_level = tnodes_at_level[ilevel].nelem;		/* ...there are num_at_level tnodes at that level. */
@@ -2123,19 +2134,25 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 
 		for (i = 0; i < num_at_level; i++) {
 			inode = tnodes_at_level[ilevel].list[i];		/* Go through each of the tnodes at the level we're on. */
-			if (tnode[inode].T_arr < NEGATIVE_EPSILON || is_explicit_connection(inode) != -1) {	/* If the arrival time is less than 0 (i.e. HUGE_NEGATIVE_FLOAT)... */
+			if (tnode[inode].T_arr < NEGATIVE_EPSILON ) {	/* If the arrival time is less than 0 (i.e. HUGE_NEGATIVE_FLOAT)... */
 				continue;									/* End this iteration of the num_at_level for loop since
 															this node is not part of the clock domain we're analyzing.
 															(If it were, it would have received an arrival time already.) */
 			}
-
+			if(is_explicit_connection(inode) != -1)
+				is_explicit_con = TRUE;
 			num_edges = tnode[inode].num_edges;				/* Get the number of edges fanning out from the node we're visiting */
 			tedge = tnode[inode].out_edges;					/* Get the list of edges from the node we're visiting */
 #ifndef PATH_COUNTING
+
 			if (is_prepacked && ilevel == 0) {
 				tnode[inode].prepacked_data->num_critical_input_paths = 1;	/* Top-level tnodes have one locally-critical input path. */
 			}
 			for (iedge = 0; iedge < num_edges; iedge++) {
+				if(is_explicit_con && is_marked_edge(tedge[iedge])){
+					printf("Found marked egde: to_node: %d to_port:%d to_pin: %d\n",tedge[iedge].to_node,tedge[iedge].to_port,tedge[iedge].to_pin);
+					continue;
+				}
 				to_node = tedge[iedge].to_node;
 				if (fabs(tnode[to_node].T_arr - (tnode[inode].T_arr + tedge[iedge].Tdel)) < EPSILON) {
 					/* If the "local forward slack" (T_arr(to_node) - T_arr(inode) - T_del) for this edge
@@ -2159,6 +2176,10 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 			and also find the maximum number over all tnodes. */
 			if (is_prepacked) {
 				for (iedge = 0; iedge < num_edges; iedge++) {
+					if(is_explicit_con && is_marked_edge(tedge[iedge])){
+						printf("Found marked egde: to_node: %d to_port:%d to_pin: %d\n",tedge[iedge].to_node,tedge[iedge].to_port,tedge[iedge].to_pin);
+						continue;
+					}
 					to_node = tedge[iedge].to_node;
 					if (fabs(tnode[to_node].T_arr - (tnode[inode].T_arr + tedge[iedge].Tdel)) < EPSILON) {
 						/* If the "local forward slack" (T_arr(to_node) - T_arr(inode) - T_del) for this edge
@@ -2180,7 +2201,10 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 #endif
 			for (iedge = 0; iedge < num_edges; iedge++) {	/* Now go through each edge coming out from this tnode */
 				to_node = tedge[iedge].to_node;				/* Get the index of the destination tnode of this edge. */
-
+				if(is_explicit_con && is_marked_edge(tedge[iedge])){
+					printf("Found marked egde: to_node: %d to_port:%d to_pin: %d\n",tedge[iedge].to_node,tedge[iedge].to_port,tedge[iedge].to_pin);
+					continue;
+				}
 				/* The arrival time T_arr at the destination node is set to the maximum of all
 				the possible arrival times from all edges fanning in to the node. The arrival
 				time represents the latest time that all inputs must arrive at a node. LUT input
@@ -2193,11 +2217,11 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 				max_Tarr = std::max(max_Tarr, tnode[to_node].T_arr);
 			}
 			printf("Node: %d critical_input_paths: %d\n",inode,tnode[inode].prepacked_data->num_critical_input_paths);
+			is_explicit_con = FALSE;
 		}
 	}
-	//remove_explicit_connections();
 
-	/* This assertion breaks due to the extra nodes that we have included for the explicit connections */
+	/* This assertion breaks due to th	e extra nodes that we have included for the explicit connections */
 	//assert(total == num_tnodes);
 	num_dangling_nodes = 0;
 	/* Compute required times with a backward topological traversal from sinks to sources. */
@@ -2207,9 +2231,9 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 		num_at_level = tnodes_at_level[ilevel].nelem;
 		printf("Num at level: %d\n",num_at_level);
 		for (i = 0; i < num_at_level; i++) {
-			if(is_explicit_connection(inode) != -1)
-				continue;
 			inode = tnodes_at_level[ilevel].list[i];
+			if(tnode[inode].pb_graph_pin == NULL)
+				continue;
 			printf("ilevel: %d inode:%s type: %d\n",ilevel,logical_block[tnode[inode].block].name,tnode[inode].type);
 			num_edges = tnode[inode].num_edges;
 			if (ilevel == 0) {
