@@ -2434,14 +2434,15 @@ static void print_nets()
 	for(i = 0; i < num_logical_nets; i++)
 	{
 		for(j = 0; j < temp_num_pins[i]; j++)
-		printf("Name: %s bnum: %d bport: %d bpin: %d nindex: %d j: %d drivers: %d\n",
+		printf("Name: %s bnum: %d bport: %d bpin: %d nindex: %d j: %d drivers: %d sinks: %d\n",
 				vpack_net[i].name,
 				vpack_net[i].node_block[j],
 				vpack_net[i].node_block_port[j],
 				vpack_net[i].node_block_pin[j],
 				i,
 				j,
-				num_driver[i]);
+				num_driver[i],
+				vpack_net[i].num_sinks);
 	}
 }
 

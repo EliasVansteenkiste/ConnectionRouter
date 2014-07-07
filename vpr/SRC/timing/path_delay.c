@@ -2130,7 +2130,7 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 		total += num_at_level;
 
 		set_fanin_for_explicit_connections(ilevel);
-		printf("Number of explicit connections left: %d\n",num_tnodes_explicit);
+		//printf("Number of explicit connections left: %d\n",num_tnodes_explicit);
 
 		for (i = 0; i < num_at_level; i++) {
 			inode = tnodes_at_level[ilevel].list[i];		/* Go through each of the tnodes at the level we're on. */
@@ -2150,7 +2150,7 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 			}
 			for (iedge = 0; iedge < num_edges; iedge++) {
 				if(is_explicit_con && is_marked_edge(tedge[iedge])){
-					printf("Found marked egde: to_node: %d to_port:%d to_pin: %d\n",tedge[iedge].to_node,tedge[iedge].to_port,tedge[iedge].to_pin);
+					//printf("Found marked egde: to_node: %d to_port:%d to_pin: %d\n",tedge[iedge].to_node,tedge[iedge].to_port,tedge[iedge].to_pin);
 					continue;
 				}
 				to_node = tedge[iedge].to_node;
@@ -2177,7 +2177,7 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 			if (is_prepacked) {
 				for (iedge = 0; iedge < num_edges; iedge++) {
 					if(is_explicit_con && is_marked_edge(tedge[iedge])){
-						printf("Found marked egde: to_node: %d to_port:%d to_pin: %d\n",tedge[iedge].to_node,tedge[iedge].to_port,tedge[iedge].to_pin);
+						//printf("Found marked egde: to_node: %d to_port:%d to_pin: %d\n",tedge[iedge].to_node,tedge[iedge].to_port,tedge[iedge].to_pin);
 						continue;
 					}
 					to_node = tedge[iedge].to_node;
@@ -2202,7 +2202,7 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 			for (iedge = 0; iedge < num_edges; iedge++) {	/* Now go through each edge coming out from this tnode */
 				to_node = tedge[iedge].to_node;				/* Get the index of the destination tnode of this edge. */
 				if(is_explicit_con && is_marked_edge(tedge[iedge])){
-					printf("Found marked egde: to_node: %d to_port:%d to_pin: %d\n",tedge[iedge].to_node,tedge[iedge].to_port,tedge[iedge].to_pin);
+					//printf("Found marked egde: to_node: %d to_port:%d to_pin: %d\n",tedge[iedge].to_node,tedge[iedge].to_port,tedge[iedge].to_pin);
 					continue;
 				}
 				/* The arrival time T_arr at the destination node is set to the maximum of all
@@ -2216,7 +2216,7 @@ static float do_timing_analysis_for_constraint(int source_clock_domain, int sink
 				the existing maximum. */
 				max_Tarr = std::max(max_Tarr, tnode[to_node].T_arr);
 			}
-			printf("Node: %d critical_input_paths: %d\n",inode,tnode[inode].prepacked_data->num_critical_input_paths);
+			//printf("Node: %d critical_input_paths: %d\n",inode,tnode[inode].prepacked_data->num_critical_input_paths);
 			is_explicit_con = FALSE;
 		}
 	}

@@ -115,7 +115,7 @@ alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
 		if(is_explicit_connection(inode) != -1)
 			continue;
 		num_edges = tnode[inode].num_edges;
-		printf("Node tested for fanin: %s : %d\n",logical_block[tnode[inode].block].name,inode);
+		//printf("Node tested for fanin: %s : %d\n",logical_block[tnode[inode].block].name,inode);
 		if (num_edges > 0) {
 			tedge = tnode[inode].out_edges;
 
@@ -130,7 +130,7 @@ alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
 				}
 				//if(tnode[inode].type != TN_PRIMITIVE_IPIN_EXPLICIT)
 				tnode_num_fanin[to_node]++;
-				printf("edge: %d fanin: %d node:%s amount:%d from: %d to_node: %d\n",iedge,tnode_num_fanin[to_node],logical_block[tnode[to_node].block].name,tnode_num_fanin[to_node],inode,to_node);
+				//printf("edge: %d fanin: %d node:%s amount:%d from: %d to_node: %d\n",iedge,tnode_num_fanin[to_node],logical_block[tnode[to_node].block].name,tnode_num_fanin[to_node],inode,to_node);
 			}
 		}
 

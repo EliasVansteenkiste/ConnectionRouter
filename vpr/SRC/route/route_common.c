@@ -378,6 +378,8 @@ void pathfinder_update_one_cost(struct s_trace *route_segment_start,
 		return;
 
 	for (;;) {
+		if(tptr == NULL)
+			return;
 		inode = tptr->index;
 
 		occ = rr_node[inode].occ + add_or_sub;
@@ -465,7 +467,7 @@ void init_route_structs(int bb_factor) {
 }
 
 struct s_trace *
-update_traceback(struct s_heap *hptr, int inet) {
+update_traceback(struct s_heap *hptr,int inet) {
 
 	/* This routine adds the most recently finished wire segment to the         *
 	 * traceback linked list.  The first connection starts with the net SOURCE  *
@@ -489,15 +491,19 @@ update_traceback(struct s_heap *hptr, int inet) {
 #endif
 
 	inode = hptr->index;
+	printf("Inode: %d\n",inode);
 
 #ifdef DEBUG
 	rr_type = rr_node[inode].type;
 	if (rr_type != SINK) {
 		vpr_printf(TIO_MESSAGE_ERROR, "in update_traceback. Expected type = SINK (%d).\n", SINK);
-		vpr_printf(TIO_MESSAGE_ERROR, "\tGot type = %d while tracing back net %d.\n", rr_type, inet);
-		exit(1);
+		vpr_printf(TIO_MESSAGE_ERROR, "\tGot type = %d while tracing back net %d in index: %d.\n", rr_type, inet,inode);
+		//exit(1);
+		/* This return means that the cluster contains a connection that is explicit and not active which means tha	 	 	 	 	 it does not have a node to drive to*/
 	}
 #endif
+	if (rr_type != SINK)
+		inode = hptr->u.prev_node;
 
 	tptr = alloc_trace_data(); /* SINK on the end of the connection */
 	tptr->index = inode;
@@ -1100,6 +1106,7 @@ alloc_trace_data(void) {
 #ifdef DEBUG
 	num_trace_allocated++;
 #endif
+	printf("Num trace allocated: %d\n",num_trace_allocated);
 	return (temp_ptr);
 }
 
@@ -1293,6 +1300,7 @@ void reserve_locally_used_opins(float pres_fac, boolean rip_up_local_opins,
 				for (iconn = 0; iconn < num_edges; iconn++) {
 					to_node = rr_node[from_node].edges[iconn];
 					cost = get_rr_cong_cost(to_node);
+					printf("reserve_locally_used_opins Add to heap: %d\n",to_node);
 					node_to_heap(to_node, cost, OPEN, OPEN, 0., 0.);
 				}
 

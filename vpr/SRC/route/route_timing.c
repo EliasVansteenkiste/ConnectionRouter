@@ -490,6 +490,7 @@ static void add_route_tree_to_heap(t_rt_node * rt_node, int target_node,
 				+ astar_fac
 						* get_timing_driven_expected_cost(inode, target_node,
 								target_criticality, R_upstream);
+		printf("add_route_tree_to_heap Add to heap: %d\n",inode);
 		node_to_heap(inode, tot_cost, NO_PREVIOUS, NO_PREVIOUS,
 				backward_path_cost, R_upstream);
 	}
@@ -585,7 +586,7 @@ static void timing_driven_expand_neighbours(struct s_heap *current, int inet,
 				+ astar_fac
 						* get_timing_driven_expected_cost(to_node, target_node,
 								criticality_fac, new_R_upstream);
-
+		printf("timing_driven_expand_neighbours Add to heap: %d\n",to_node);
 		node_to_heap(to_node, new_tot_cost, inode, iconn, new_back_pcost,
 				new_R_upstream);
 
