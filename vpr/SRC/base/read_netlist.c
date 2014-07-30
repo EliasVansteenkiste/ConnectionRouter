@@ -1051,8 +1051,8 @@ static void load_external_nets_and_cb(INP int L_num_blocks,
 						exit(1);
 					}
 					/* This is the place where the connections happen */
-					printf("Name of the block: %s\n",(*ext_nets)[netnum].name);
-					printf("count[netnum]: %d  i: %d\n",count[netnum],i);
+					my_printf(0,"Name of the block: %s\n",(*ext_nets)[netnum].name);
+					my_printf(0,"count[netnum]: %d  i: %d\n",count[netnum],i);
 
 					(*ext_nets)[netnum].node_block[count[netnum]] = i;
 					(*ext_nets)[netnum].node_block_pin[count[netnum]] = j;

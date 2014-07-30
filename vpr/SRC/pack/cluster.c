@@ -348,18 +348,18 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 
 		do_timing_analysis(slacks, TRUE, FALSE, FALSE);
 
-		//if (getEchoEnabled()) {
-		//	if(isEchoFileEnabled(E_ECHO_PRE_PACKING_TIMING_GRAPH))
+		if (getEchoEnabled()) {
+			if(isEchoFileEnabled(E_ECHO_PRE_PACKING_TIMING_GRAPH))
 				print_timing_graph(getEchoFileName(E_ECHO_PRE_PACKING_TIMING_GRAPH));
 #ifndef PATH_COUNTING
-		//	if(isEchoFileEnabled(E_ECHO_CLUSTERING_TIMING_INFO))
+			if(isEchoFileEnabled(E_ECHO_CLUSTERING_TIMING_INFO))
 				print_clustering_timing_info(getEchoFileName(E_ECHO_CLUSTERING_TIMING_INFO));
 #endif
-		//	if(isEchoFileEnabled(E_ECHO_PRE_PACKING_SLACK))
+			if(isEchoFileEnabled(E_ECHO_PRE_PACKING_SLACK))
 				print_slack(slacks->slack, FALSE, getEchoFileName(E_ECHO_PRE_PACKING_SLACK));
-		//	if(isEchoFileEnabled(E_ECHO_PRE_PACKING_CRITICALITY))
+			if(isEchoFileEnabled(E_ECHO_PRE_PACKING_CRITICALITY))
 				print_criticality(slacks, FALSE, getEchoFileName(E_ECHO_PRE_PACKING_CRITICALITY));
-		//}
+		}
 
 		block_criticality = (float*) my_calloc(num_logical_blocks, sizeof(float));
 
@@ -399,12 +399,9 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 			Because we calloc-ed the array criticality, such nodes will have criticality 0, the lowest possible value. */
 			if (has_valid_normalized_T_arr(inode)) {
 				iblk = tnode[inode].block;
-				num_paths_scaling = SCALE_NUM_PATHS
-						* (float) tnode[inode].prepacked_data->normalized_total_critical_paths;
-				distance_scaling = SCALE_DISTANCE_VAL
-						* (float) tnode[inode].prepacked_data->normalized_T_arr;
-				crit = (1 - tnode[inode].prepacked_data->normalized_slack) + num_paths_scaling
-						+ distance_scaling;
+				num_paths_scaling = SCALE_NUM_PATHS	* (float) tnode[inode].prepacked_data->normalized_total_critical_paths;
+				distance_scaling = SCALE_DISTANCE_VAL * (float) tnode[inode].prepacked_data->normalized_T_arr;
+				crit = (1 - tnode[inode].prepacked_data->normalized_slack) + num_paths_scaling + distance_scaling;
 				if (block_criticality[iblk] < crit) {
 					block_criticality[iblk] = crit;
 				}
@@ -421,15 +418,12 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 		if (cluster_seed_type == VPACK_TIMING) {
 			istart = get_most_critical_seed_molecule(&indexofcrit);
 		} else {/*max input seed*/
-			istart = get_seed_logical_molecule_with_most_ext_inputs(
-					max_molecule_inputs);
+			istart = get_seed_logical_molecule_with_most_ext_inputs(max_molecule_inputs);
 		}
 
 	} else /*cluster seed is max input (since there is no timing information)*/ {
-		istart = get_seed_logical_molecule_with_most_ext_inputs(
-				max_molecule_inputs);
+		istart = get_seed_logical_molecule_with_most_ext_inputs(max_molecule_inputs);
 	}
-
 
 	while (istart != NULL) {
 		is_cluster_legal = FALSE;
@@ -438,16 +432,16 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 			reset_legalizer_for_cluster(&clb[num_clb]);
 
 			/* start a new cluster and reset all stats */
+			printf("Start a new cluster\n");
 			start_new_cluster(cluster_placement_stats, primitives_list, arch,
 					&clb[num_clb], num_clb, istart, aspect, num_used_instances_type,
 					num_instances_type, num_models, max_cluster_size,
 					max_nets_in_pb_type, detailed_routing_stage);
-			vpr_printf(TIO_MESSAGE_INFO, "Complex block %d: %s, type: %s\n", 
-					num_clb, clb[num_clb].name, clb[num_clb].type->name);
+			vpr_printf(TIO_MESSAGE_INFO, "Complex block %d: %s, type: %s\n", num_clb, clb[num_clb].name, clb[num_clb].type->name);
 			vpr_printf(TIO_MESSAGE_INFO, "\t");
 			fflush(stdout);
-			update_cluster_stats(istart, num_clb, is_clock, global_clocks, alpha,
-					beta, timing_driven, connection_driven, slacks);
+
+			update_cluster_stats(istart, num_clb, is_clock, global_clocks, alpha,beta, timing_driven, connection_driven, slacks);
 			num_clb++;
 
 			if (timing_driven && !early_exit) {
@@ -457,16 +451,21 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 			}
 			cur_cluster_placement_stats_ptr = &cluster_placement_stats[clb[num_clb - 1].type->index];
 			num_unrelated_clustering_attempts = 0;
+
 			next_molecule = get_molecule_for_cluster(PACK_BRUTE_FORCE,
 					clb[num_clb - 1].pb, allow_unrelated_clustering,
 					&num_unrelated_clustering_attempts,
 					cur_cluster_placement_stats_ptr);
+
 			prev_molecule = istart;
+
 			while (next_molecule != NULL && prev_molecule != next_molecule) {
+
 				block_pack_status = try_pack_molecule(
 						cur_cluster_placement_stats_ptr, next_molecule,
 						primitives_list, clb[num_clb - 1].pb, num_models,
 						max_cluster_size, num_clb - 1, max_nets_in_pb_type, detailed_routing_stage);
+
 				prev_molecule = next_molecule;
 				if (block_pack_status != BLK_PASSED) {
 					if (next_molecule != NULL) {
@@ -523,7 +522,7 @@ void do_clustering(const t_arch *arch, t_pack_molecule *molecule_head,
 			}
 			vpr_printf(TIO_MESSAGE_DIRECT, "\n");
 			if (detailed_routing_stage == (int)E_DETAILED_ROUTE_AT_END_ONLY) {
-				is_cluster_legal = try_breadth_first_route_cluster();
+				is_cluster_legal = try_breadth_first_croute_cluster();
 				if (is_cluster_legal == TRUE) {
 					vpr_printf(TIO_MESSAGE_INFO, "Passed route at end.\n");
 				} else {
@@ -708,6 +707,7 @@ static void add_molecule_to_pb_stats_candidates(t_pack_molecule *molecule,
 }
 
 /*****************************************/
+#define print_alloc_and_init_clustering 0
 static void alloc_and_init_clustering(boolean global_clocks, float alpha,
 		float beta, int max_cluster_size, int max_molecule_inputs,
 		int max_pb_depth, int max_models,
@@ -724,12 +724,17 @@ static void alloc_and_init_clustering(boolean global_clocks, float alpha,
 	t_pack_molecule **molecule_array;
 	int max_molecule_size;
 
+	int print = 0;
+
 	alloc_and_load_cluster_legality_checker();
 	/**cluster_placement_stats = alloc_and_load_cluster_placement_stats();*/
 
+	my_printf(print,"*********** alloc_and_init_clustering *********\n");
 	for (i = 0; i < num_logical_blocks; i++) {
 		logical_block[i].clb_index = NO_CLUSTER;
+		my_printf(print,"index: %d %d\n",i,NO_CLUSTER);
 	}
+	my_printf(print,"*********** end *********\n");
 
 	/* alloc and load list of molecules to pack */
 	unclustered_list_head = (struct s_molecule_link *) my_calloc(max_molecule_inputs + 1, sizeof(struct s_molecule_link));
@@ -1171,13 +1176,11 @@ static enum e_block_pack_status try_pack_molecule(
 
 	while (block_pack_status != BLK_PASSED) {
 		save_and_reset_routing_cluster(); /* save current routing information because speculative packing will change routing*/
-		if (get_next_primitive_list(cluster_placement_stats_ptr, molecule,
-				primitives_list, clb_index)) {
+		if (get_next_primitive_list(cluster_placement_stats_ptr, molecule,primitives_list, clb_index)) {
 			block_pack_status = BLK_PASSED;
 			
 			for (i = 0; i < molecule_size && block_pack_status == BLK_PASSED;i++) {
-				assert(
-						(primitives_list[i] == NULL) == (molecule->logical_block_ptrs[i] == NULL));
+				assert((primitives_list[i] == NULL) == (molecule->logical_block_ptrs[i] == NULL));
 				failed_location = i + 1;
 				if (molecule->logical_block_ptrs[i] != NULL) {
 					if(molecule->type == MOLECULE_FORCED_PACK && molecule->pack_pattern->is_chain && i == molecule->pack_pattern->root_block->block_id) {
@@ -1284,7 +1287,7 @@ static enum e_block_pack_status try_place_logical_block_rec(
 	my_parent = NULL;
 
 	block_pack_status = BLK_PASSED;
-
+	//printf("****** try_place_logical_block_rec ******\n");
 	/* Discover parent */
 	if (pb_graph_node->parent_pb_graph_node != cb->pb_graph_node) {
 		block_pack_status = try_place_logical_block_rec(
@@ -1304,22 +1307,10 @@ static enum e_block_pack_status try_place_logical_block_rec(
 		parent_pb->mode = pb_graph_node->pb_type->parent_mode->index;
 		set_pb_graph_mode(parent_pb->pb_graph_node, 0, 0); /* TODO: default mode is to use mode 0, document this! */
 		set_pb_graph_mode(parent_pb->pb_graph_node, parent_pb->mode, 1);
-		parent_pb->child_pbs =
-				(t_pb **) my_calloc(
-						parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].num_pb_type_children,
-						sizeof(t_pb *));
-		for (i = 0;
-				i
-						< parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].num_pb_type_children;
-				i++) {
-			parent_pb->child_pbs[i] =
-					(t_pb *) my_calloc(
-							parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].pb_type_children[i].num_pb,
-							sizeof(t_pb));
-			for (j = 0;
-					j
-							< parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].pb_type_children[i].num_pb;
-					j++) {
+		parent_pb->child_pbs = (t_pb **) my_calloc(parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].num_pb_type_children,sizeof(t_pb *));
+		for (i = 0;i < parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].num_pb_type_children; i++) {
+			parent_pb->child_pbs[i] = (t_pb *) my_calloc( parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].pb_type_children[i].num_pb,sizeof(t_pb));
+			for (j = 0;j < parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].pb_type_children[i].num_pb; j++) {
 				parent_pb->child_pbs[i][j].parent_pb = parent_pb;
 				parent_pb->child_pbs[i][j].logical_block = OPEN;
 				parent_pb->child_pbs[i][j].pb_graph_node =
@@ -1330,17 +1321,12 @@ static enum e_block_pack_status try_place_logical_block_rec(
 		assert(parent_pb->mode == pb_graph_node->pb_type->parent_mode->index);
 	}
 
-	for (i = 0;
-			i
-					< parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].num_pb_type_children;
-			i++) {
-		if (pb_graph_node->pb_type
-				== &parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].pb_type_children[i]) {
+	for (i = 0;i < parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].num_pb_type_children; i++) {
+		if (pb_graph_node->pb_type == &parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].pb_type_children[i]) {
 			break;
 		}
 	}
-	assert(
-			i < parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].num_pb_type_children);
+	assert(i < parent_pb->pb_graph_node->pb_type->modes[parent_pb->mode].num_pb_type_children);
 	pb = &parent_pb->child_pbs[i][pb_graph_node->placement_index];
 	*parent = pb; /* this pb is parent of it's child that called this function */
 	assert(pb->pb_graph_node == pb_graph_node);
@@ -1352,12 +1338,12 @@ static enum e_block_pack_status try_place_logical_block_rec(
 	is_primitive = (boolean) (pb_type->num_modes == 0);
 
 	if (is_primitive) {
-		assert(
-				pb->logical_block == OPEN && logical_block[ilogical_block].pb == NULL && logical_block[ilogical_block].clb_index == NO_CLUSTER);
+		assert(pb->logical_block == OPEN && logical_block[ilogical_block].pb == NULL && logical_block[ilogical_block].clb_index == NO_CLUSTER);
 		/* try pack to location */
 		pb->name = my_strdup(logical_block[ilogical_block].name);
 		pb->logical_block = ilogical_block;
 		logical_block[ilogical_block].clb_index = clb_index;
+		//printf("index: %d cluster: %d\n",ilogical_block,clb_index);
 		logical_block[ilogical_block].pb = pb;
 
 		if (!primitive_feasible(ilogical_block, pb)) {
@@ -1377,7 +1363,7 @@ static enum e_block_pack_status try_place_logical_block_rec(
 			}
 		}
 	}
-
+	//printf("****** end *******\n");
 	return block_pack_status;
 }
 
@@ -1386,10 +1372,13 @@ static enum e_block_pack_status try_place_logical_block_rec(
 static void revert_place_logical_block(INP int iblock, INP int max_models) {
 	t_pb *pb, *next;
 
+	printf("****** revert_place_logical_block ******\n");
+
 	pb = logical_block[iblock].pb;
 	logical_block[iblock].clb_index = NO_CLUSTER;
+	printf("index: %d cluster: %d\n",iblock,NO_CLUSTER);
 	logical_block[iblock].pb = NULL;
-
+	printf("****** end *******\n");
 	if (pb != NULL) {
 		/* When freeing molecules, the current block might already have been freed by a prior revert 
 		 When this happens, no need to do anything beyond basic book keeping at the logical block
@@ -1622,12 +1611,10 @@ static void mark_and_update_partial_gain(int inet, enum e_gain_update gain_flag,
 					if (logical_block[iblk].clb_index == NO_CLUSTER) {
 
 						if (cur_pb->pb_stats->sharinggain.count(iblk) == 0) {
-							cur_pb->pb_stats->marked_blocks[cur_pb->pb_stats->num_marked_blocks] =
-									iblk;
+							cur_pb->pb_stats->marked_blocks[cur_pb->pb_stats->num_marked_blocks] = iblk;
 							cur_pb->pb_stats->num_marked_blocks++;
 							cur_pb->pb_stats->sharinggain[iblk] = 1;
-							cur_pb->pb_stats->hillgain[iblk] = 1
-									- num_ext_inputs_logical_block(iblk);
+							cur_pb->pb_stats->hillgain[iblk] = 1 - num_ext_inputs_logical_block(iblk);
 						} else {
 							cur_pb->pb_stats->sharinggain[iblk]++;
 							cur_pb->pb_stats->hillgain[iblk]++;
@@ -1637,13 +1624,11 @@ static void mark_and_update_partial_gain(int inet, enum e_gain_update gain_flag,
 			}
 
 			if (connection_driven) {
-				update_connection_gain_values(inet, clustered_block, cur_pb,
-						net_relation_to_clustered_block);
+				update_connection_gain_values(inet, clustered_block, cur_pb, net_relation_to_clustered_block);
 			}
 
 			if (timing_driven) {
-				update_timing_gain_values(inet, clustered_block, cur_pb,
-						net_relation_to_clustered_block, slacks);
+				update_timing_gain_values(inet, clustered_block, cur_pb, net_relation_to_clustered_block, slacks);
 			}
 		}
 		if(cur_pb->pb_stats->num_pins_of_net_in_pb.count(inet) == 0) {
@@ -1757,6 +1742,7 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 	int iblock;
 	t_model_ports *port;
 	t_pb *cur_pb, *cb;
+	int print = 0;
 
 	/* TODO: what a scary comment from Vaughn, we'll have to watch out for this causing problems */
 	/* Output can be open so the check is necessary.  I don't change  *
@@ -1771,7 +1757,7 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 
 	molecule_size = get_array_size_of_molecule(molecule);
 	cb = NULL;
-
+	my_printf(print,"****** update_cluster_stats ******\n");
 	for (iblock = 0; iblock < molecule_size; iblock++) {
 		if (molecule->logical_block_ptrs[iblock] == NULL) {
 			continue;
@@ -1779,7 +1765,7 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 		new_blk = molecule->logical_block_ptrs[iblock]->index;
 
 		logical_block[new_blk].clb_index = clb_index;
-
+		my_printf(print,"new_blk: %d clb_index: %d\n",new_blk,clb_index);
 		cur_pb = logical_block[new_blk].pb->parent_pb;
 		while (cur_pb) {
 			/* reset list of feasible blocks */
@@ -1796,6 +1782,7 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 			for (ipin = 0; ipin < port->size; ipin++) {
 				inet = logical_block[new_blk].nets->output_nets[port->index][ipin]; /* Output pin first. */
 				if (inet != OPEN) {
+					my_printf(print,"output pin: %d\n",inet);
 					if (!is_clock[inet] || !global_clocks)
 						mark_and_update_partial_gain(inet, GAIN, new_blk,
 								port->index, ipin, timing_driven,
@@ -1808,6 +1795,7 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 			}
 			port = port->next;
 		}
+
 		port = logical_block[new_blk].model->inputs;
 		while (port) {
 			if (port->is_clock) {
@@ -1818,6 +1806,7 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 
 				inet = logical_block[new_blk].nets->input_nets[port->index][ipin];
 				if (inet != OPEN) {
+					my_printf(print,"input_pin: %d\n",inet);
 					mark_and_update_partial_gain(inet, GAIN, new_blk,
 							port->index, ipin, timing_driven, connection_driven,
 							INPUT, slacks);
@@ -1826,10 +1815,10 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 			port = port->next;
 		}
 
-		/* Note:  The code below ONLY WORKS when nets that go to clock inputs *
-		 * NEVER go to the input of a VPACK_COMB.  It doesn't really make electrical *
-		 * sense for that to happen, and I check this in the check_clocks     *
-		 * function.  Don't disable that sanity check.                        */
+		/* Note:  The code below ONLY WORKS when nets that go to clock inputs 			*
+		 * NEVER go to the input of a VPACK_COMB.  It doesn't really make electrical 	*
+		 * sense for that to happen, and I check this in the check_clocks     			*
+		 * function.  Don't disable that sanity check.                        			*/
 		inet = logical_block[new_blk].clock_net; /* Clock input pin. */
 		if (inet != OPEN) {
 			if (global_clocks)
@@ -1846,6 +1835,7 @@ static void update_cluster_stats( INP t_pack_molecule *molecule,
 
 		commit_lookahead_pins_used(cb);
 	}
+	my_printf(print,"***** end *****\n");
 
 }
 
@@ -1905,6 +1895,7 @@ static void start_new_cluster(
 									max_nets_in_pb_type, detailed_routing_stage));
 				}
 				if (success) {
+					printf("Molecule packing succeeded... continuing\n");
 					/* TODO: For now, just grab any working cluster, in the future, heuristic needed to grab best complex block based on supply and demand */
 					break;
 				} else {
@@ -1937,6 +1928,7 @@ static void start_new_cluster(
 				nx++;
 				ny = nint(nx / aspect);
 			}
+			vpr_printf(TIO_MESSAGE_INFO,"Clustering failed with those resources. It will do it again with more\n");
 			vpr_printf(TIO_MESSAGE_INFO, "Not enough resources expand FPGA size to x = %d y = %d.\n",
 					nx, ny);
 			if ((nx > MAX_SHORT) || (ny > MAX_SHORT)) {
@@ -2717,14 +2709,9 @@ static void commit_lookahead_pins_used(t_pb *cur_pb) {
 	if (pb_type->num_modes > 0 && cur_pb->name != NULL) {
 		for (i = 0; i < cur_pb->pb_graph_node->num_input_pin_class; i++) {
 			ipin = 0;
-			for (j = 0;
-					j
-							< cur_pb->pb_graph_node->input_pin_class_size[i]
-									* AAPACK_MAX_OVERUSE_LOOKAHEAD_PINS_FAC + AAPACK_MAX_OVERUSE_LOOKAHEAD_PINS_CONST;
-					j++) {
+			for (j = 0; j < cur_pb->pb_graph_node->input_pin_class_size[i] * AAPACK_MAX_OVERUSE_LOOKAHEAD_PINS_FAC + AAPACK_MAX_OVERUSE_LOOKAHEAD_PINS_CONST; j++) {
 				if (cur_pb->pb_stats->lookahead_input_pins_used[i][j] != OPEN) {
-					cur_pb->pb_stats->input_pins_used[i][ipin] =
-							cur_pb->pb_stats->lookahead_input_pins_used[i][j];
+					cur_pb->pb_stats->input_pins_used[i][ipin] = cur_pb->pb_stats->lookahead_input_pins_used[i][j];
 					ipin++;
 				}
 				assert(ipin <= cur_pb->pb_graph_node->input_pin_class_size[i]);
@@ -2733,11 +2720,7 @@ static void commit_lookahead_pins_used(t_pb *cur_pb) {
 
 		for (i = 0; i < cur_pb->pb_graph_node->num_output_pin_class; i++) {
 			ipin = 0;
-			for (j = 0;
-					j
-							< cur_pb->pb_graph_node->output_pin_class_size[i]
-									* AAPACK_MAX_OVERUSE_LOOKAHEAD_PINS_FAC + AAPACK_MAX_OVERUSE_LOOKAHEAD_PINS_CONST;
-					j++) {
+			for (j = 0; j < cur_pb->pb_graph_node->output_pin_class_size[i] * AAPACK_MAX_OVERUSE_LOOKAHEAD_PINS_FAC + AAPACK_MAX_OVERUSE_LOOKAHEAD_PINS_CONST;j++) {
 				if (cur_pb->pb_stats->lookahead_output_pins_used[i][j] != OPEN) {
 					cur_pb->pb_stats->output_pins_used[i][ipin] =
 							cur_pb->pb_stats->lookahead_output_pins_used[i][j];
@@ -2748,13 +2731,9 @@ static void commit_lookahead_pins_used(t_pb *cur_pb) {
 		}
 
 		if (cur_pb->child_pbs != NULL) {
-			for (i = 0; i < pb_type->modes[cur_pb->mode].num_pb_type_children;
-					i++) {
+			for (i = 0; i < pb_type->modes[cur_pb->mode].num_pb_type_children; i++) {
 				if (cur_pb->child_pbs[i] != NULL) {
-					for (j = 0;
-							j
-									< pb_type->modes[cur_pb->mode].pb_type_children[i].num_pb;
-							j++) {
+					for (j = 0;j < pb_type->modes[cur_pb->mode].pb_type_children[i].num_pb; j++) {
 						commit_lookahead_pins_used(&cur_pb->child_pbs[i][j]);
 					}
 				}

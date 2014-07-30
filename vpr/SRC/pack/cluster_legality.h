@@ -17,6 +17,8 @@ void reset_legalizer_for_cluster(t_block *clb);
 void save_and_reset_routing_cluster(void);
 void setup_intracluster_routing_for_molecule(INP t_pack_molecule *molecule, INOUTP t_pb_graph_node **primitives_list);
 boolean try_breadth_first_route_cluster(void);
+boolean try_breadth_first_croute_cluster(void);
+
 void restore_routing_cluster(void);
 void save_cluster_solution(void);
 

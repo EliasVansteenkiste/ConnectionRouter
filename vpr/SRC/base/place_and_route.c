@@ -81,8 +81,7 @@ void place_and_route(enum e_operation operation,
 		read_place(place_file, net_file, arch_file, nx, ny, num_blocks, block);
 		sync_grid_to_blocks(num_blocks, block, nx, ny, grid);
 	} else {
-		assert(
-				(PLACE_ONCE == placer_opts.place_freq) || (PLACE_ALWAYS == placer_opts.place_freq));
+		assert((PLACE_ONCE == placer_opts.place_freq) || (PLACE_ALWAYS == placer_opts.place_freq));
 		begin = clock();
 		try_place(placer_opts, annealing_sched, chan_width_dist, router_opts,
 				det_routing_arch, segment_inf, timing_inf, directs, num_directs);
@@ -115,8 +114,7 @@ void place_and_route(enum e_operation operation,
 		g_solution_inf.channel_width = width_fac;
 		if (det_routing_arch.directionality == UNI_DIRECTIONAL) {
 			if (width_fac % 2 != 0) {
-				vpr_printf(TIO_MESSAGE_ERROR, "in pack_place_and_route.c: Given odd chan width (%d) for udsd architecture.\n",
-						width_fac);
+				vpr_printf(TIO_MESSAGE_ERROR, "in pack_place_and_route.c: Given odd chan width (%d) for udsd architecture.\n",width_fac);
 				exit(1);
 			}
 		}
@@ -127,8 +125,7 @@ void place_and_route(enum e_operation operation,
 		clb_opins_used_locally = alloc_route_structs();
 
 		slacks = alloc_and_load_timing_graph(timing_inf);
-		net_delay = alloc_net_delay(&net_delay_ch, clb_net,
-					num_nets);
+		net_delay = alloc_net_delay(&net_delay_ch, clb_net,num_nets);
 
 		success = try_route(width_fac, router_opts, det_routing_arch,
 				segment_inf, timing_inf, net_delay, slacks, chan_width_dist,
@@ -164,8 +161,7 @@ void place_and_route(enum e_operation operation,
 				print_sink_delays(getEchoFileName(E_ECHO_ROUTING_SINK_DELAYS));
 			}
 
-			sprintf(msg, "Routing succeeded with a channel width factor of %d.\n\n",
-					width_fac);
+			sprintf(msg, "Routing succeeded with a channel width factor of %d.\n\n",width_fac);
 
 
 		}
@@ -588,16 +584,14 @@ void init_chan(int cfactor, t_chan_width_dist chan_width_dist) {
 	if (ny > 1) {
 		separation = 1. / (ny - 2.); /* Norm. distance between two channels. */
 		x = 0.; /* This avoids div by zero if ny = 2. */
-		chan_width_x[1] = (int) floor(
-				cfactor * comp_width(&chan_x_dist, x, separation) + 0.5);
+		chan_width_x[1] = (int) floor( cfactor * comp_width(&chan_x_dist, x, separation) + 0.5);
 
 		/* No zero width channels */
 		chan_width_x[1] = std::max(chan_width_x[1], 1);
 
 		for (i = 1; i < ny - 1; i++) {
 			x = (float) i / ((float) (ny - 2.));
-			chan_width_x[i + 1] = (int) floor(
-					cfactor * comp_width(&chan_x_dist, x, separation) + 0.5);
+			chan_width_x[i + 1] = (int) floor( cfactor * comp_width(&chan_x_dist, x, separation) + 0.5);
 			chan_width_x[i + 1] = std::max(chan_width_x[i + 1], 1);
 		}
 	}
@@ -605,15 +599,13 @@ void init_chan(int cfactor, t_chan_width_dist chan_width_dist) {
 	if (nx > 1) {
 		separation = 1. / (nx - 2.); /* Norm. distance between two channels. */
 		x = 0.; /* Avoids div by zero if nx = 2. */
-		chan_width_y[1] = (int) floor(
-				cfactor * comp_width(&chan_y_dist, x, separation) + 0.5);
+		chan_width_y[1] = (int) floor(cfactor * comp_width(&chan_y_dist, x, separation) + 0.5);
 
 		chan_width_y[1] = std::max(chan_width_y[1], 1);
 
 		for (i = 1; i < nx - 1; i++) {
 			x = (float) i / ((float) (nx - 2.));
-			chan_width_y[i + 1] = (int) floor(
-					cfactor * comp_width(&chan_y_dist, x, separation) + 0.5);
+			chan_width_y[i + 1] = (int) floor(cfactor * comp_width(&chan_y_dist, x, separation) + 0.5);
 			chan_width_y[i + 1] = std::max(chan_width_y[i + 1], 1);
 		}
 	}

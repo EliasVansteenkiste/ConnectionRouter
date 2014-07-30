@@ -145,5 +145,8 @@ extern messagelogger vpr_printf;
 /*********************** Math operations *************************************/
 int ipow(int base, int exp);
 
+/*********************** custom prints   *************************************/
+void my_printf( int print_or_not,const char *fmt, ... );
+
 #endif
 

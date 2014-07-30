@@ -378,11 +378,9 @@ boolean timing_driven_route_net(int inet, float pres_fac, float max_criticality,
 
 		target_criticality = pin_criticality[target_pin];
 
-		highfanout_rlim = mark_node_expansion_by_bin(inet, target_node,
-				rt_root);
+		highfanout_rlim = mark_node_expansion_by_bin(inet, target_node,	rt_root);
 
-		add_route_tree_to_heap(rt_root, target_node, target_criticality,
-				astar_fac);
+		add_route_tree_to_heap(rt_root, target_node, target_criticality,astar_fac);
 
 		current = get_heap_head();
 
@@ -479,28 +477,23 @@ static void add_route_tree_to_heap(t_rt_node * rt_node, int target_node,
 	t_rt_node *child_node;
 	t_linked_rt_edge *linked_rt_edge;
 	float tot_cost, backward_path_cost, R_upstream;
-
+	int print = 0;
 	/* Pre-order depth-first traversal */
 
 	if (rt_node->re_expand) {
 		inode = rt_node->inode;
 		backward_path_cost = target_criticality * rt_node->Tdel;
 		R_upstream = rt_node->R_upstream;
-		tot_cost = backward_path_cost
-				+ astar_fac
-						* get_timing_driven_expected_cost(inode, target_node,
-								target_criticality, R_upstream);
-		printf("add_route_tree_to_heap Add to heap: %d\n",inode);
-		node_to_heap(inode, tot_cost, NO_PREVIOUS, NO_PREVIOUS,
-				backward_path_cost, R_upstream);
+		tot_cost = backward_path_cost + astar_fac * get_timing_driven_expected_cost(inode, target_node, target_criticality, R_upstream);
+		my_printf(print,"add_route_tree_to_heap Add to heap: %d\n",inode);
+		node_to_heap(inode, tot_cost, NO_PREVIOUS, NO_PREVIOUS,backward_path_cost, R_upstream);
 	}
 
 	linked_rt_edge = rt_node->u.child_list;
 
 	while (linked_rt_edge != NULL) {
 		child_node = linked_rt_edge->child;
-		add_route_tree_to_heap(child_node, target_node, target_criticality,
-				astar_fac);
+		add_route_tree_to_heap(child_node, target_node, target_criticality,astar_fac);
 		linked_rt_edge = linked_rt_edge->next;
 	}
 }
@@ -586,9 +579,8 @@ static void timing_driven_expand_neighbours(struct s_heap *current, int inet,
 				+ astar_fac
 						* get_timing_driven_expected_cost(to_node, target_node,
 								criticality_fac, new_R_upstream);
-		printf("timing_driven_expand_neighbours Add to heap: %d\n",to_node);
-		node_to_heap(to_node, new_tot_cost, inode, iconn, new_back_pcost,
-				new_R_upstream);
+//		printf("timing_driven_expand_neighbours Add to heap: %d\n",to_node);
+		node_to_heap(to_node, new_tot_cost, inode, iconn, new_back_pcost,new_R_upstream);
 
 	} /* End for all neighbours */
 }

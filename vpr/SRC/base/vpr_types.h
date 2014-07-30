@@ -325,6 +325,12 @@ typedef struct s_tedge {
 	float Tdel; /* delay to go to to_node along this edge */
 } t_tedge;
 
+typedef struct s_marked_tedge {
+	struct s_tedge m_tedge;
+	int first_time;
+} t_marked_tedge;
+
+
 typedef enum {
 	/* Types of tnodes (timing graph nodes). */
 	TN_INPAD_SOURCE, /* input to an input I/O pad */

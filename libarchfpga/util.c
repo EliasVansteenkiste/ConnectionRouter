@@ -814,3 +814,18 @@ int ipow(int base, int exp) {
 
 	return result;
 }
+
+/* This printf is designed so that we can turn off the prints whenever we want without having to use
+ * the preprocessor.
+ */
+void my_printf( int print_or_not,const char *fmt, ... )
+{
+    va_list args;
+
+    if(!print_or_not)
+    	return;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+

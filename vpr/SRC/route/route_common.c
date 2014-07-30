@@ -372,7 +372,8 @@ void pathfinder_update_one_cost(struct s_trace *route_segment_start,
 
 	struct s_trace *tptr;
 	int inode, occ, capacity;
-
+	/* capacity: it represents the capacity of the node */
+	/* occ: is the occupancy of the node */
 	tptr = route_segment_start;
 	if (tptr == NULL) /* No routing yet. */
 		return;
@@ -391,11 +392,11 @@ void pathfinder_update_one_cost(struct s_trace *route_segment_start,
 		 * the overuse that would result from having ONE MORE net use this routing  *
 		 * node.                                                                    */
 
+		/* pres_cost == p(n) */
 		if (occ < capacity) {
 			rr_node_route_inf[inode].pres_cost = 1.;
 		} else {
-			rr_node_route_inf[inode].pres_cost = 1.
-					+ (occ + 1 - capacity) * pres_fac;
+			rr_node_route_inf[inode].pres_cost = 1.	+ (occ + 1 - capacity) * pres_fac;
 		}
 
 		if (rr_node[inode].type == SINK) {
@@ -426,9 +427,8 @@ void pathfinder_update_cost(float pres_fac, float acc_fac) {
 		capacity = rr_node[inode].capacity;
 
 		if (occ > capacity) {
-			rr_node_route_inf[inode].acc_cost += (occ - capacity) * acc_fac;
-			rr_node_route_inf[inode].pres_cost = 1.
-					+ (occ + 1 - capacity) * pres_fac;
+			rr_node_route_inf[inode].acc_cost += (occ - capacity) * acc_fac; /* This is the h(n) */
+			rr_node_route_inf[inode].pres_cost = 1.	+ (occ + 1 - capacity) * pres_fac;
 		}
 
 		/* If occ == capacity, we don't need to increase acc_cost, but a change    *
@@ -485,25 +485,25 @@ update_traceback(struct s_heap *hptr,int inet) {
 	struct s_trace *tptr, *prevptr, *temptail, *ret_ptr;
 	int inode;
 	short iedge;
+	int print = 0;
 
 #ifdef DEBUG
 	t_rr_type rr_type;
 #endif
 
 	inode = hptr->index;
-	printf("Inode: %d\n",inode);
 
 #ifdef DEBUG
 	rr_type = rr_node[inode].type;
 	if (rr_type != SINK) {
 		vpr_printf(TIO_MESSAGE_ERROR, "in update_traceback. Expected type = SINK (%d).\n", SINK);
 		vpr_printf(TIO_MESSAGE_ERROR, "\tGot type = %d while tracing back net %d in index: %d.\n", rr_type, inet,inode);
-		//exit(1);
-		/* This return means that the cluster contains a connection that is explicit and not active which means tha	 	 	 	 	 it does not have a node to drive to*/
+		exit(1);
+		/* This return means that the cluster contains a connection that is explicit and not active which means that it does not have a node to drive to */
 	}
 #endif
-	if (rr_type != SINK)
-		inode = hptr->u.prev_node;
+
+	my_printf(print,"Inode: %d\n",inode);
 
 	tptr = alloc_trace_data(); /* SINK on the end of the connection */
 	tptr->index = inode;
@@ -1106,7 +1106,9 @@ alloc_trace_data(void) {
 #ifdef DEBUG
 	num_trace_allocated++;
 #endif
+#if PRINTS
 	printf("Num trace allocated: %d\n",num_trace_allocated);
+#endif
 	return (temp_ptr);
 }
 
@@ -1516,7 +1518,7 @@ s_node_entry* remove_node(s_node_hash_map* map, int key){
                         map->no_entries--;
                         //move following entries up if legal
                         int i, loc;
-                        for(i=1;i<map->no_entries;i++){
+                        for(i = 1; i<map->no_entries; i++){
                             loc = (idx + i) % map_size;
                             if(map->node_entries[loc] == NULL) break;
                             else{

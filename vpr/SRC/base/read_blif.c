@@ -464,6 +464,7 @@ static void import_t_muxes() {
 			remove_lut(vpack_net[index].node_block[0],TRUE);
 			rem_vpack_net(index,TRUE,TRUE);
 		}
+		printf("new num_logical_nets: %d\n",num_logical_nets);
 		/* We also have to remove the net that connects the output of the mux with the
 		 * input of the element we want to connect it. It is no longer needed since
 		 * we connect everything directly and we do not use the tmux.
@@ -651,6 +652,16 @@ static boolean add_lut(int doall, t_model *logic_model) {
 	return (boolean) doall;
 }
 
+static void fix_node_blocks_after_removal(int oldEntry,int newEntry){
+	int i,j;
+	for(i = 0; i < num_logical_nets; i++)
+	{
+		for(j = 0; j < temp_num_pins[i]; j++)
+			if (vpack_net[i].node_block[j] == oldEntry)
+				vpack_net[i].node_block[j] = newEntry;
+	}
+}
+
 /* This function removes a lut entry. It is created in order to remove the explicit connections that
  * are represented as lut entries
  */
@@ -665,6 +676,7 @@ static void remove_lut(int noOfEntry,int quick) {
 	}
 
 	if(quick){
+		fix_node_blocks_after_removal(num_logical_blocks - 1,noOfEntry);
 		logical_block[num_logical_blocks - 1].index = logical_block[noOfEntry].index;
 		logical_block_input_count[noOfEntry] = logical_block_input_count[num_logical_blocks - 1];
 		logical_block_input_count[noOfEntry] = logical_block_output_count[num_logical_blocks - 1];
