@@ -470,9 +470,9 @@ static void print_stats(t_block *clb, int num_clusters) {
 	unabsorbable_ffs = 0;
 	for (iblk = 0; iblk < num_logical_blocks; iblk++) {
 		if (strcmp(logical_block[iblk].model->name, "latch") == 0) {
-			if (vpack_net[logical_block[iblk].input_nets[0][0]].num_sinks > 1
+			if (vpack_net[logical_block[iblk].nets->input_nets[0][0]].num_sinks > 1
 					|| strcmp(
-							logical_block[vpack_net[logical_block[iblk].input_nets[0][0]].node_block[0]].model->name,
+							logical_block[vpack_net[logical_block[iblk].nets->input_nets[0][0]].node_block[0]].model->name,
 							"names") != 0) {
 				unabsorbable_ffs++;
 			}

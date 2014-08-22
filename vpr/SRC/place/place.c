@@ -427,12 +427,13 @@ void try_place(struct s_placer_opts placer_opts,
 				for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++)
 					timing_place_crit[inet][ipin] = 0; /*dummy crit values */
 
-			comp_td_costs(&timing_cost, &delay_cost); /*first pass gets delay_cost, which is used 
+			/*first pass gets delay_cost, which is used
 			 * in criticality computations in the next call
 			 * to comp_td_costs. */
+			comp_td_costs(&timing_cost, &delay_cost);
+
 			place_delay_value = delay_cost / num_connections; /*used for computing criticalities */
-			load_constant_net_delay(net_delay, place_delay_value, clb_net,
-					num_nets);
+			load_constant_net_delay(net_delay, place_delay_value, clb_net,num_nets);
 
 		} else
 			place_delay_value = 0;
@@ -482,9 +483,7 @@ void try_place(struct s_placer_opts placer_opts,
 	move_lim = (int) (annealing_sched.inner_num * pow(num_blocks, 1.3333));
 
 	if (placer_opts.inner_loop_recompute_divider != 0)
-		inner_recompute_limit = (int) (0.5
-				+ (float) move_lim
-						/ (float) placer_opts.inner_loop_recompute_divider);
+		inner_recompute_limit = (int) (0.5 + (float) move_lim / (float) placer_opts.inner_loop_recompute_divider);
 	else
 		/*don't do an inner recompute */
 		inner_recompute_limit = move_lim + 1;
@@ -537,7 +536,6 @@ void try_place(struct s_placer_opts placer_opts,
 				|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
 			cost = 1;
 		}
-
 		av_cost = 0.;
 		av_bb_cost = 0.;
 		av_delay_cost = 0.;
@@ -556,10 +554,9 @@ void try_place(struct s_placer_opts placer_opts,
 				place_delay_value = delay_cost / num_connections;
 
 				if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE)
-					load_constant_net_delay(net_delay, place_delay_value,
-							clb_net, num_nets);
-				/*note, for path_based, the net delay is not updated since it is current,
-				 *because it accesses point_to_point_delay array */
+					load_constant_net_delay(net_delay, place_delay_value, clb_net, num_nets);
+				/* note, for path_based, the net delay is not updated since it is current,
+				 * because it accesses point_to_point_delay array */
 
 				load_timing_graph_net_delays(net_delay);
 				do_timing_analysis(slacks, FALSE, FALSE, FALSE);
@@ -602,15 +599,12 @@ void try_place(struct s_placer_opts placer_opts,
 			}
 
 
-			if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
-					|| placer_opts.place_algorithm
-							== PATH_TIMING_DRIVEN_PLACE) {
+			if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE || placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
 
 				/* Do we want to re-timing analyze the circuit to get updated slack and criticality values? 
 				 * We do this only once in a while, since it is expensive.
 				 */
-				if (inner_crit_iter_count >= inner_recompute_limit
-						&& inner_iter != move_lim - 1) { /*on last iteration don't recompute */
+				if (inner_crit_iter_count >= inner_recompute_limit && inner_iter != move_lim - 1) { /*on last iteration don't recompute */
 
 					inner_crit_iter_count = 0;
 #ifdef VERBOSE
@@ -708,17 +702,12 @@ void try_place(struct s_placer_opts placer_opts,
 				critical_path_delay, success_rat, std_dev, rlim, crit_exponent, tot_iter, t / oldt);
 #endif
 
-		sprintf(msg, "Cost: %g  BB Cost %g  TD Cost %g  Temperature: %g",
-				cost, bb_cost, timing_cost, t);
+		sprintf(msg, "Cost: %g  BB Cost %g  TD Cost %g  Temperature: %g", cost, bb_cost, timing_cost, t);
 		update_screen(MINOR, msg, PLACEMENT, FALSE);
 		update_rlim(&rlim, success_rat);
 
-		if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
-				|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
-			crit_exponent = (1 - (rlim - final_rlim) * inverse_delta_rlim)
-					* (placer_opts.td_place_exp_last
-							- placer_opts.td_place_exp_first)
-					+ placer_opts.td_place_exp_first;
+		if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE || placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
+			crit_exponent = (1 - (rlim - final_rlim) * inverse_delta_rlim) * (placer_opts.td_place_exp_last - placer_opts.td_place_exp_first) + placer_opts.td_place_exp_first;
 		}
 #ifdef VERBOSE
 		if (getEchoEnabled()) {
@@ -739,8 +728,7 @@ void try_place(struct s_placer_opts placer_opts,
 			|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
 		/*at each temperature change we update these values to be used     */
 		/*for normalizing the tradeoff between timing and wirelength (bb)  */
-		if (outer_crit_iter_count >= placer_opts.recompute_crit_iter
-				|| placer_opts.inner_loop_recompute_divider != 0) {
+		if (outer_crit_iter_count >= placer_opts.recompute_crit_iter || placer_opts.inner_loop_recompute_divider != 0) {
 
 #ifdef VERBOSE
 			vpr_printf(TIO_MESSAGE_INFO, "Outer loop recompute criticalities\n");
@@ -748,8 +736,7 @@ void try_place(struct s_placer_opts placer_opts,
 			place_delay_value = delay_cost / num_connections;
 
 			if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE)
-				load_constant_net_delay(net_delay, place_delay_value, clb_net,
-						num_nets);
+				load_constant_net_delay(net_delay, place_delay_value, clb_net, num_nets);
 
 			load_timing_graph_net_delays(net_delay);
 			do_timing_analysis(slacks, FALSE, FALSE, FALSE);
@@ -1995,34 +1982,26 @@ static void alloc_and_load_placement_structs(
 			|| placer_opts.enable_timing_computations) {
 		/* Allocate structures associated with timing driven placement */
 		/* [0..num_nets-1][1..num_pins-1]  */
-		point_to_point_delay_cost = (float **) my_malloc(
-				num_nets * sizeof(float *));
-		temp_point_to_point_delay_cost = (float **) my_malloc(
-				num_nets * sizeof(float *));
+		point_to_point_delay_cost = (float **) my_malloc(num_nets * sizeof(float *));
+		temp_point_to_point_delay_cost = (float **) my_malloc(num_nets * sizeof(float *));
 
-		point_to_point_timing_cost = (float **) my_malloc(
-				num_nets * sizeof(float *));
-		temp_point_to_point_timing_cost = (float **) my_malloc(
-				num_nets * sizeof(float *));
+		point_to_point_timing_cost = (float **) my_malloc(num_nets * sizeof(float *));
+		temp_point_to_point_timing_cost = (float **) my_malloc(num_nets * sizeof(float *));
 
 		for (inet = 0; inet < num_nets; inet++) {
 
 			/* In the following, subract one so index starts at *
 			 * 1 instead of 0 */
-			point_to_point_delay_cost[inet] = (float *) my_malloc(
-					clb_net[inet].num_sinks * sizeof(float));
+			point_to_point_delay_cost[inet] = (float *) my_malloc(clb_net[inet].num_sinks * sizeof(float));
 			point_to_point_delay_cost[inet]--;
 
-			temp_point_to_point_delay_cost[inet] = (float *) my_malloc(
-					clb_net[inet].num_sinks * sizeof(float));
+			temp_point_to_point_delay_cost[inet] = (float *) my_malloc(clb_net[inet].num_sinks * sizeof(float));
 			temp_point_to_point_delay_cost[inet]--;
 
-			point_to_point_timing_cost[inet] = (float *) my_malloc(
-					clb_net[inet].num_sinks * sizeof(float));
+			point_to_point_timing_cost[inet] = (float *) my_malloc(clb_net[inet].num_sinks * sizeof(float));
 			point_to_point_timing_cost[inet]--;
 
-			temp_point_to_point_timing_cost[inet] = (float *) my_malloc(
-					clb_net[inet].num_sinks * sizeof(float));
+			temp_point_to_point_timing_cost[inet] = (float *) my_malloc(clb_net[inet].num_sinks * sizeof(float));
 			temp_point_to_point_timing_cost[inet]--;
 		}
 		for (inet = 0; inet < num_nets; inet++) {

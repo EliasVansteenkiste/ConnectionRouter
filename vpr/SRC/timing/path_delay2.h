@@ -2,7 +2,8 @@
 
 extern t_tnode *tnode; /* [0..num_tnodes - 1] */
 extern int num_tnodes; /* Number of nodes in the timing graph */
-
+extern t_tnode **tnode_explicit; /* [0..num_tnodes_explicit - 1] */
+extern int num_tnodes_explicit; /* Number of nodes that do not represent pins but explicit connections */
 extern int num_tnode_levels; /* Number of levels in the timing graph. */
 
 extern struct s_ivec *tnodes_at_level;

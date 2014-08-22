@@ -241,8 +241,7 @@ void vpr_init_pre_place_and_route(INP t_vpr_setup vpr_setup, INP t_arch Arch) {
 
 	/* Read in netlist file for placement and routing */
 	if (vpr_setup.FileNameOpts.NetFile) {
-		read_netlist(vpr_setup.FileNameOpts.NetFile, &Arch, &num_blocks, &block,
-				&num_nets, &clb_net);
+		read_netlist(vpr_setup.FileNameOpts.NetFile, &Arch, &num_blocks, &block,&num_nets, &clb_net);
 		/* This is done so that all blocks have subblocks and can be treated the same */
 		check_netlist();
 	}
@@ -383,15 +382,10 @@ void vpr_pack(INP t_vpr_setup vpr_setup, INP t_arch arch) {
 	 a block through an opin switch to a length-4 wire, then through a wire switch to another
 	 length-4 wire, then through a wire-to-ipin-switch into another block. */
 
-	if (vpr_setup.PackerOpts.timing_driven
-			&& vpr_setup.PackerOpts.auto_compute_inter_cluster_net_delay) {
-		opin_switch_del = get_switch_info(arch.Segments[0].opin_switch,
-				Tdel_opin_switch, R_opin_switch, Cout_opin_switch);
-		wire_switch_del = get_switch_info(arch.Segments[0].wire_switch,
-				Tdel_wire_switch, R_wire_switch, Cout_wire_switch);
-		wtoi_switch_del = get_switch_info(
-				vpr_setup.RoutingArch.wire_to_ipin_switch, Tdel_wtoi_switch,
-				R_wtoi_switch, Cout_wtoi_switch); /* wire-to-ipin switch */
+	if (vpr_setup.PackerOpts.timing_driven && vpr_setup.PackerOpts.auto_compute_inter_cluster_net_delay) {
+		opin_switch_del = get_switch_info(arch.Segments[0].opin_switch, Tdel_opin_switch, R_opin_switch, Cout_opin_switch);
+		wire_switch_del = get_switch_info(arch.Segments[0].wire_switch, Tdel_wire_switch, R_wire_switch, Cout_wire_switch);
+		wtoi_switch_del = get_switch_info( vpr_setup.RoutingArch.wire_to_ipin_switch, Tdel_wtoi_switch, R_wtoi_switch, Cout_wtoi_switch); /* wire-to-ipin switch */
 		Rmetal = arch.Segments[0].Rmetal;
 		Cmetal = arch.Segments[0].Cmetal;
 
@@ -410,12 +404,11 @@ void vpr_pack(INP t_vpr_setup vpr_setup, INP t_arch arch) {
 						+ wtoi_switch_del); /* multiply by 4 to get a more conservative estimate */
 	}
 
-	try_pack(&vpr_setup.PackerOpts, &arch, vpr_setup.user_models,
-			vpr_setup.library_models, vpr_setup.Timing, inter_cluster_delay);
+	try_pack(&vpr_setup.PackerOpts, &arch, vpr_setup.user_models, vpr_setup.library_models, vpr_setup.Timing, inter_cluster_delay);
 	end = clock();
+
 #ifdef CLOCKS_PER_SEC
-	vpr_printf(TIO_MESSAGE_INFO, "Packing took %g seconds.\n",
-			(float) (end - begin) / CLOCKS_PER_SEC);
+	vpr_printf(TIO_MESSAGE_INFO, "Packing took %g seconds.\n",(float) (end - begin) / CLOCKS_PER_SEC);
 	vpr_printf(TIO_MESSAGE_INFO, "Packing completed.\n");
 #else
 	vpr_printf(TIO_MESSAGE_INFO, "Packing took %g seconds.\n", (float)(end - begin) / CLK_PER_SEC);
@@ -425,8 +418,8 @@ void vpr_pack(INP t_vpr_setup vpr_setup, INP t_arch arch) {
 
 void vpr_place_and_route(INP t_vpr_setup vpr_setup, INP t_arch arch) {
 	/* Startup X graphics */
-	set_graphics_state(vpr_setup.ShowGraphics, vpr_setup.GraphPause,
-			vpr_setup.RouterOpts.route_type);
+	set_graphics_state(vpr_setup.ShowGraphics, vpr_setup.GraphPause, vpr_setup.RouterOpts.route_type);
+
 	if (vpr_setup.ShowGraphics) {
 		init_graphics("VPR:  Versatile Place and Route for FPGAs", WHITE);
 		alloc_draw_structs();

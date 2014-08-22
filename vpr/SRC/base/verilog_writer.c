@@ -853,7 +853,7 @@ void sdf_LUT_delay_printing(FILE *SDF , t_pb *pb)
 
   for(j=0 ; j < pb->pb_graph_node->num_input_pins[0] ; j++)/*Assuming that LUTs have a single input port*/
   {
-     if (logical_block[logical_block_index].input_nets[0][j] != OPEN) 
+     if (logical_block[logical_block_index].nets->input_nets[0][j] != OPEN)
       {
 	  
 	  int q;
@@ -861,7 +861,7 @@ void sdf_LUT_delay_printing(FILE *SDF , t_pb *pb)
 	  for (q = 0; q < pb->pb_graph_node->num_input_pins[0]; q++)
 	  {
 	    pin_count = pb->pb_graph_node->input_pins[0][q].pin_count_in_cluster;
-	    if (logical_block[logical_block_index].pb->rr_graph[pin_count].net_num == logical_block[logical_block_index].input_nets[0][j])
+	    if (logical_block[logical_block_index].pb->rr_graph[pin_count].net_num == logical_block[logical_block_index].nets->input_nets[0][j])
 	      break;
 	  }
 	  
@@ -1118,7 +1118,7 @@ conn_list *find_connected_primitives_downhill(int block_num , t_pb *pb , conn_li
           pin_number = pb->pb_graph_node->output_pins[i][j].pin_count_in_cluster;  /*pin count of the output pin*/
           starting_block = pb->logical_block;  /*logical block index for the source primitive*/
 
-	  vpck_net = logical_block[starting_block].output_nets[model_port_index][j]; /*The index for the vpack_net struct corresponding to this source to sink(s) connections*/
+	  vpck_net = logical_block[starting_block].nets->output_nets[model_port_index][j]; /*The index for the vpack_net struct corresponding to this source to sink(s) connections*/
 	 
 	  if (pb->rr_graph[pin_number].net_num != OPEN) /* If this output pin is used*/
 	  { /*Then we will use the logical_block netlist method for finding the connectivity and timing information*/

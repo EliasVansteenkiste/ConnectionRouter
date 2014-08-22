@@ -93,4 +93,7 @@ void print_timing_graph_as_blif (const char *fname, t_model *models);
 extern int num_tnodes; /* Number of nodes (pins) in the timing graph */
 extern t_tnode *tnode; /* [0..num_tnodes - 1] nodes in the timing graph */
 
+extern t_tnode **tnode_explicit; /* [0..num_tnodes_explicit - 1] */
+extern int num_tnodes_explicit; /* Number of nodes that do not represent pins but explicit connections */
+
 #endif

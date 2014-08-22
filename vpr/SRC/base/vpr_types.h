@@ -105,7 +105,7 @@ typedef size_t bitfield;
 
 /* netlist blocks are assigned one of these types */
 enum logical_block_types {
-	VPACK_INPAD = -2, VPACK_OUTPAD, VPACK_COMB, VPACK_LATCH, VPACK_EMPTY
+	VPACK_INPAD = -2, VPACK_OUTPAD, VPACK_COMB, VPACK_LATCH, VPACK_EMPTY, VPACK_MAP
 };
 
 /* Selection algorithm for selecting next seed  */
@@ -202,15 +202,24 @@ typedef struct s_pb {
 
 struct s_tnode;
 
+typedef struct s_nets {
+	int **input_nets; /* [0..num_input_ports-1][0..num_port_pins-1] List of input nets connected to this logical_block. */
+	int **output_nets; /* [0..num_output_ports-1][0..num_port_pins-1] List of output nets connected to this logical_block. */
+	struct s_tnode ***output_net_tnodes; /* [0..num_output_ports-1][0..num_pins -1] correspnding output net tnode */
+	struct s_tnode ***input_net_tnodes;
+
+	struct s_nets *next;
+}t_nets;
+
 /* Technology-mapped user netlist block */
 typedef struct s_logical_block {
 	char *name; /* Taken from the first vpack_net which it drives. */
 	enum logical_block_types type; /* I/O, combinational logic, or latch */
 	t_model* model; /* Technology-mapped type (eg. LUT, Flip-flop, memory slice, inpad, etc) */
 
-	int **input_nets; /* [0..num_input_ports-1][0..num_port_pins-1] List of input nets connected to this logical_block. */
-	int **output_nets; /* [0..num_output_ports-1][0..num_port_pins-1] List of output nets connected to this logical_block. */
 	int clock_net; /* Clock net connected to this logical_block. */
+
+	t_nets *nets;
 
 	int used_input_pins; /* Number of used input pins */
 
@@ -229,6 +238,20 @@ typedef struct s_logical_block {
 
 	t_pb_graph_node *expected_lowest_cost_primitive; /* predicted ideal primitive to use for this logical block */
 } t_logical_block;
+
+
+
+typedef struct s_map_block {
+	char *name;
+
+	t_model* model; /* Technology-mapped type (eg. LUT, Flip-flop, memory slice, inpad, etc) */
+
+	int **connection;
+
+	int index;
+
+}t_map_block;
+
 
 enum e_pack_pattern_molecule_type {
 	MOLECULE_SINGLE_ATOM, MOLECULE_FORCED_PACK
@@ -275,6 +298,7 @@ typedef struct s_cluster_placement_stats {
 #define MODEL_LATCH "latch"
 #define MODEL_INPUT "input"
 #define MODEL_OUTPUT "output"
+#define MODEL_MAP 	"map"
 
 /******************************************************************
  * Timing data types
@@ -294,8 +318,18 @@ typedef struct s_cluster_placement_stats {
 typedef struct s_tedge {
 	/* Edge in the timing graph. */
 	int to_node; /* index of node at the sink end of this edge */
+	/* These were added in order to be able to support explicit connections */
+	int to_pin;
+	int to_port;
+
 	float Tdel; /* delay to go to to_node along this edge */
 } t_tedge;
+
+typedef struct s_marked_tedge {
+	struct s_tedge m_tedge;
+	int first_time;
+} t_marked_tedge;
+
 
 typedef enum {
 	/* Types of tnodes (timing graph nodes). */
@@ -308,6 +342,8 @@ typedef enum {
 	TN_INTERMEDIATE_NODE, /* Used in post-packed timing graph only: 
 	 connection between intra-cluster pins. */
 	TN_PRIMITIVE_IPIN, /* input pin to a primitive (e.g. a LUT) */
+	TN_PRIMITIVE_IPIN_EXPLICIT, /* input dummy pin to a primitive (e.g. a LUT)
+	which will represent a more than one input into the same pin*/
 	TN_PRIMITIVE_OPIN, /* output pin from a primitive (e.g. a LUT) */
 	TN_FF_IPIN, /* input pin to a flip-flop - goes to TN_FF_SINK */
 	TN_FF_OPIN, /* output pin from a flip-flop - comes from TN_FF_SOURCE */
@@ -1054,15 +1090,19 @@ typedef struct s_vpr_setup {
 
 typedef struct s_con {
     char *name;
+
     int net;
+
     int source;
     int source_block;
-    //int source_block_port;
-    //int source_block_pin;
+    int source_block_port;
+    int source_block_pin;
+
     int sink_block;
-    //int sink_block_port;
-    //int sink_block_pin;
-    int target_node;
+    int sink_block_port;
+    int sink_block_pin;
+
+    int target_node; /* sink node */
     
     float previous_total_path_cost;
     float neighborhood;

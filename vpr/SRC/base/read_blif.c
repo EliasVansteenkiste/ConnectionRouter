@@ -9,7 +9,7 @@
 #include "arch_types.h"
 #include "ReadOptions.h"
 #include "hash.h"
-
+#include "logic_types.h"
 /* PRINT_PIN_NETS */
 
 struct s_model_stats {
@@ -18,6 +18,7 @@ struct s_model_stats {
 };
 
 #define MAX_ATOM_PARSE 200000000
+#define MAX_LUT_SIZE 20
 
 /* This source file will read in a FLAT blif netlist consisting     *
  * of .inputs, .outputs, .names and .latch commands.  It currently   *
@@ -38,6 +39,8 @@ static int *num_driver, *temp_num_pins;
 static int *logical_block_input_count, *logical_block_output_count;
 static int num_blif_models;
 static int num_luts = 0, num_latches = 0, num_subckts = 0;
+static int max_t_mux_size = 0;
+char **map_names;
 
 /* # of .input, .output, .model and .end lines */
 static int ilines, olines, model_lines, endlines;
@@ -47,22 +50,32 @@ static FILE *blif;
 
 static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 		boolean is_global, int doall);
+static void rem_vpack_net(int entryIndex, int quick,int output);
+
 static void get_blif_tok(char *buffer, int doall, boolean *done,
 		boolean *add_truth_table, INP t_model* inpad_model,
 		INP t_model* outpad_model, INP t_model* logic_model,
-		INP t_model* latch_model, INP t_model* user_models);
+		INP t_model* latch_model, INP t_model* user_models,
+		INP t_model* map_model);
 static void init_parse(int doall);
 static void check_net(boolean sweep_hanging_nets_and_inputs);
 static void free_parse(void);
 static void io_line(int in_or_out, int doall, t_model *io_model);
 static boolean add_lut(int doall, t_model *logic_model);
+static void remove_lut(int noOfEntry,int quick);
 static void add_latch(int doall, INP t_model *latch_model);
 static void add_subckt(int doall, INP t_model *user_models);
+static void add_map(int doall, INP t_model* map_model);
+
+static void find_t_mux();
+static int is_a_t_mux(char *index);
+
 static void check_and_count_models(int doall, const char* model_name,
 		t_model* user_models);
 static void load_default_models(INP t_model *library_models,
 		OUTP t_model** inpad_model, OUTP t_model** outpad_model,
-		OUTP t_model** logic_model, OUTP t_model** latch_model);
+		OUTP t_model** logic_model, OUTP t_model** latch_model,
+		OUTP t_model** map_model);
 static void read_activity(char * activity_file);
 static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		t_model *user_models, t_model *library_models,
@@ -74,6 +87,19 @@ static void show_blif_stats(t_model *user_models, t_model *library_models);
 static bool add_activity_to_net(char * net_name, float probability,
 		float density);
 
+static void import_t_muxes();
+static void init_s_con();
+
+static void set_sinks(int pin,int sourceIndex,int sinkIndex);
+static void set_sources(int pin,int sourceIndex,int sinkIndex);
+
+static void print_nets();
+static void print_logical_blocks();
+
+static int has_another_input(int checkBlock,int checkPort, int checkPin);
+static int has_another_output(int checkBlock,int checkPort, int checkPin);
+static int has_multiple_inputs(int checkBlock);
+
 static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		t_model *user_models, t_model *library_models,
 		boolean read_activity_file, char * activity_file) {
@@ -81,7 +107,7 @@ static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 	int doall;
 	boolean done;
 	boolean add_truth_table;
-	t_model *inpad_model, *outpad_model, *logic_model, *latch_model;
+	t_model *inpad_model, *outpad_model, *logic_model, *latch_model, *map_model; /*addition of the map model */
 	clock_t begin, end;
 
 	blif = fopen(blif_file, "r");
@@ -91,7 +117,7 @@ static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		exit(1);
 	}
 	load_default_models(library_models, &inpad_model, &outpad_model,
-			&logic_model, &latch_model);
+			&logic_model, &latch_model, &map_model);
 
 	/* doall = 0 means do a counting pass, doall = 1 means allocate and load data structures */
 	for (doall = 0; doall <= 1; doall++) {
@@ -115,8 +141,10 @@ static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 		model_lines = 0;
 		while (my_fgets(buffer, BUFSIZE, blif) != NULL ) {
 			get_blif_tok(buffer, doall, &done, &add_truth_table, inpad_model,
-					outpad_model, logic_model, latch_model, user_models);
+					outpad_model, logic_model, latch_model, user_models,
+					map_model);
 		}
+
 		rewind(blif); /* Start at beginning of file again */
 
 		end = clock();
@@ -126,8 +154,11 @@ static void read_blif(char *blif_file, boolean sweep_hanging_nets_and_inputs,
 #else
 		vpr_printf(TIO_MESSAGE_INFO, "Loop for doall = %d took %g seconds.\n", doall, (float)(end - begin) / CLK_PER_SEC);
 #endif
-
 	}
+
+	find_t_mux();
+	import_t_muxes();
+	init_s_con();
 
 	/*checks how well the hash function is performing*/
 #ifdef VERBOSE
@@ -158,18 +189,19 @@ static void init_parse(int doall) {
 	}
 	/* Allocate memory for second (load) pass */
 	else {
-		vpack_net = (struct s_net *) my_calloc(num_logical_nets,
-				sizeof(struct s_net));
-		logical_block = (struct s_logical_block *) my_calloc(num_logical_blocks,
-				sizeof(struct s_logical_block));
+		vpack_net = (struct s_net *) my_calloc(num_logical_nets,sizeof(struct s_net));
+		logical_block = (struct s_logical_block *) my_calloc(num_logical_blocks,sizeof(struct s_logical_block));
 		num_driver = (int *) my_malloc(num_logical_nets * sizeof(int));
 		temp_num_pins = (int *) my_malloc(num_logical_nets * sizeof(int));
 
-		logical_block_input_count = (int *) my_calloc(num_logical_blocks,
-				sizeof(int));
-		logical_block_output_count = (int *) my_calloc(num_logical_blocks,
-				sizeof(int));
+		logical_block_input_count = (int *) my_calloc(num_logical_blocks,sizeof(int));
+		logical_block_output_count = (int *) my_calloc(num_logical_blocks,sizeof(int));
 
+		/* This is the data structure for the .map type */
+		map_block = (struct s_logical_block **) my_calloc(num_map_blocks,sizeof(struct s_logical_block*));
+
+		map_names = (char **) my_calloc(num_map_blocks, sizeof(char*));
+		num_map_blocks = 0;
 		for (i = 0; i < num_logical_nets; i++) {
 			num_driver[i] = 0;
 			vpack_net[i].num_sinks = 0;
@@ -187,15 +219,13 @@ static void init_parse(int doall) {
 		for (i = 0; i < HASHSIZE; i++) {
 			h_ptr = blif_hash[i];
 			while (h_ptr != NULL ) {
-				vpack_net[h_ptr->index].node_block = (int *) my_malloc(
-						h_ptr->count * sizeof(int));
-				vpack_net[h_ptr->index].node_block_port = (int *) my_malloc(
-						h_ptr->count * sizeof(int));
-				vpack_net[h_ptr->index].node_block_pin = (int *) my_malloc(
-						h_ptr->count * sizeof(int));
+				vpack_net[h_ptr->index].node_block = (int *) my_malloc(h_ptr->count * sizeof(int));
+				vpack_net[h_ptr->index].node_block_port = (int *) my_malloc(h_ptr->count * sizeof(int));
+				vpack_net[h_ptr->index].node_block_pin = (int *) my_malloc(h_ptr->count * sizeof(int));
 
 				/* For avoiding assigning values beyond end of pins array. */
 				temp_num_pins[h_ptr->index] = h_ptr->count;
+
 				vpack_net[h_ptr->index].name = my_strdup(h_ptr->name);
 				h_ptr = h_ptr->next;
 			}
@@ -227,7 +257,8 @@ static void init_parse(int doall) {
 static void get_blif_tok(char *buffer, int doall, boolean *done,
 		boolean *add_truth_table, INP t_model* inpad_model,
 		INP t_model* outpad_model, INP t_model* logic_model,
-		INP t_model* latch_model, INP t_model* user_models) {
+		INP t_model* latch_model, INP t_model* user_models,
+		INP t_model* map_model) {
 
 	/* Figures out which, if any token is at the start of this line and *
 	 * takes the appropriate action.                                    */
@@ -243,15 +274,13 @@ static void get_blif_tok(char *buffer, int doall, boolean *done,
 
 	if (*add_truth_table) {
 		if (ptr[0] == '0' || ptr[0] == '1' || ptr[0] == '-') {
-			data = (struct s_linked_vptr*) my_malloc(
-					sizeof(struct s_linked_vptr));
+			data = (struct s_linked_vptr*) my_malloc(sizeof(struct s_linked_vptr));
 			fn = ptr;
 			ptr = my_strtok(NULL, BLIF_TOKENS, blif, buffer);
 			if (!ptr || strlen(ptr) != 1) {
 				if (strlen(fn) == 1) {
 					/* constant generator */
-					data->next =
-							logical_block[num_logical_blocks - 1].truth_table;
+					data->next = logical_block[num_logical_blocks - 1].truth_table;
 					data->data_vptr = my_malloc(strlen(fn) + 4);
 					sprintf((char*) (data->data_vptr), " %s", fn);
 					logical_block[num_logical_blocks - 1].truth_table = data;
@@ -287,7 +316,7 @@ static void get_blif_tok(char *buffer, int doall, boolean *done,
 		ptr = my_strtok(NULL, TOKENS, blif, buffer);
 		if (doall) {
 			if (ptr != NULL ) {
-				if(model != NULL) {
+				if (model != NULL ) {
 					free(model);
 				}
 				model = (char *) my_malloc((strlen(ptr) + 1) * sizeof(char));
@@ -296,7 +325,7 @@ static void get_blif_tok(char *buffer, int doall, boolean *done,
 					blif_circuit_name = my_strdup(model);
 				}
 			} else {
-				if(model != NULL) {
+				if (model != NULL ) {
 					free(model);
 				}
 				model = (char *) my_malloc(sizeof(char));
@@ -350,9 +379,172 @@ static void get_blif_tok(char *buffer, int doall, boolean *done,
 		add_subckt(doall, user_models);
 	}
 
+	/* New add for the support of the tmux */
+	if (strcmp(ptr, ".map") == 0) {
+		*add_truth_table = FALSE;
+		add_map(doall, map_model);
+	}
+
 	/* Could have numbers following a .names command, so not matching any *
 	 * of the tokens above is not an error.                               */
 
+}
+
+static void init_s_con()
+{
+	int i,j, temp_index_exp_con = 0;
+	char buffer[500];
+
+	/* We should search on the inputs for the connection with the tmux */
+
+	for (i = 0; i < num_logical_nets; i++) {
+		num_exp_con += temp_num_pins[i] - 1;
+	}
+	//printf("Connections found: %d\n",num_exp_con);
+
+	exp_con = (struct s_con *) my_calloc(num_exp_con, sizeof(struct s_con));
+
+	for (i = 0; i < num_logical_nets; i++) {
+		for (j = 1; j < temp_num_pins[i]; j++, temp_index_exp_con++) {
+			sprintf(buffer, "%s->%s", vpack_net[i].name,
+					logical_block[vpack_net[i].node_block[j]].name);
+			exp_con[temp_index_exp_con].name = my_strdup(buffer);
+			//printf("Connection: %s\n",exp_con[temp_index_exp_con].name);
+			exp_con[temp_index_exp_con].source_block = vpack_net[i].node_block[0];
+			exp_con[temp_index_exp_con].source_block_port =	vpack_net[i].node_block_port[0];
+			exp_con[temp_index_exp_con].source_block_pin = vpack_net[i].node_block_pin[0];
+
+			exp_con[temp_index_exp_con].sink_block = vpack_net[i].node_block[j];
+			exp_con[temp_index_exp_con].sink_block_port = vpack_net[i].node_block_port[j];
+			exp_con[temp_index_exp_con].sink_block_pin = vpack_net[i].node_block_pin[j];
+		}
+	}
+}
+
+static void import_t_muxes() {
+	int i = 0, nonOpen = 0, l, k,m;
+	int index, bnum;
+
+	printf("\n");
+	for (i = 0; i < num_map_blocks; i++) {
+		for (l = 0; l < (*map_block[i]).model->inputs->size; l++) {
+			if ((*map_block[i]).nets->input_nets[0][l] != OPEN)
+				nonOpen++;
+		}
+		for (l = 0; l < nonOpen >> 1; l++) {
+			index = (*map_block[i]).nets->input_nets[0][l];
+			bnum = (*map_block[i]).nets->output_nets[0][0];
+
+			int temp = vpack_net[bnum].node_block[1];
+			for(m = 0; m < logical_block[temp].model->inputs->size; m++)
+				if(logical_block[temp].nets->input_nets[0][m] == bnum){
+					set_sinks(m,vpack_net[index].node_block[0],vpack_net[bnum].node_block[1]);
+					//set_sources(m,vpack_net[index].node_block[0],vpack_net[bnum].node_block[1]);
+				}
+
+			/* The output is: */
+			for(k = 1; k < temp_num_pins[index]; k++)
+			{
+				if(vpack_net[index].node_block[k] == vpack_net[bnum].node_block[0])
+				{
+					/* We suppose that the tmux will be a unique one so that will not be more than one */
+					vpack_net[index].node_block[k] 		= vpack_net[bnum].node_block[1];
+					vpack_net[index].node_block_port[k] = vpack_net[bnum].node_block_port[1];
+					vpack_net[index].node_block_pin[k] 	= vpack_net[bnum].node_block_pin[1];
+				}
+			}
+
+		}
+
+		/* At this point we do not need the conditions so we can just remove them from the
+		 * structure that holds the nets
+		 */
+		for (; l < nonOpen; l++) {
+			index = (*map_block[i]).nets->input_nets[0][l];
+			remove_lut(vpack_net[index].node_block[0],TRUE);
+			rem_vpack_net(index,TRUE,TRUE);
+		}
+		printf("new num_logical_nets: %d\n",num_logical_nets);
+		/* We also have to remove the net that connects the output of the mux with the
+		 * input of the element we want to connect it. It is no longer needed since
+		 * we connect everything directly and we do not use the tmux.
+		 */
+		rem_vpack_net((*map_block[i]).nets->output_nets[0][0],TRUE,TRUE);
+
+		/* We also have to remove the lut that represented the tmux */
+		remove_lut((*map_block[i]).index,TRUE);
+
+	}
+	//clean_up();
+	print_logical_blocks();
+	printf("\n");
+	print_nets();
+
+}
+
+static void set_sinks(int pin,int sourceIndex,int sinkIndex)
+{
+	t_nets *cur,*prev;
+	int j;
+	t_nets *temp_nets_input;
+
+	prev = logical_block[sinkIndex].nets;
+	for(cur = logical_block[sinkIndex].nets->next; cur != NULL;prev = cur, cur = cur->next)
+	{
+		printf("name:%s pin: %d\n",logical_block[sinkIndex].name,pin);
+		if(cur->input_nets != NULL)
+			if(cur->input_nets[0][pin] == OPEN){
+				cur->input_nets[0][pin] = logical_block[sourceIndex].nets->output_nets[0][0];
+				return;
+			}
+	}
+
+	temp_nets_input = (t_nets *)my_malloc(sizeof(t_nets));
+	temp_nets_input->next = NULL;
+	temp_nets_input->input_nets = (int **) my_malloc(sizeof(int*));
+	temp_nets_input->input_nets[0] = (int *)my_malloc(logical_block[sinkIndex].model->inputs->size * sizeof(int));
+	temp_nets_input->input_nets[0][pin] = logical_block[sourceIndex].nets->output_nets[0][0];
+	printf("Connection added from: %s to %s\n port: %d pin: %d\n",logical_block[sourceIndex].name,logical_block[sinkIndex].name,0,pin);
+
+	//tempPin = vpack_net[index].node_block_pin[k];
+	/* initialize all the other ports as open */
+	for(j = 0; j < logical_block[sinkIndex].model->inputs->size; j++)
+	{
+		if(j != pin)
+		{
+			temp_nets_input->input_nets[0][j] = OPEN;
+		}
+	}
+	temp_nets_input->output_nets = NULL;
+	cur = temp_nets_input;
+	prev->next = cur;
+}
+
+
+static void set_sources(int pin,int sourceIndex,int sinkIndex)
+{
+	t_nets *cur;
+	t_nets *temp_nets_input,*prev;
+
+	prev = logical_block[sourceIndex].nets;
+	for(cur = logical_block[sourceIndex].nets->next; cur != NULL; prev = cur,cur = cur->next)
+	{
+		if(cur->output_nets != NULL)
+			if(cur->output_nets[0][0] == OPEN){
+				cur->output_nets[0][0] = logical_block[sourceIndex].nets->output_nets[0][0];
+				return;
+			}
+	}
+	temp_nets_input = (t_nets *)my_malloc(sizeof(t_nets));
+	temp_nets_input->next = NULL;
+	temp_nets_input->output_nets = (int **) my_malloc(sizeof(int*));
+	temp_nets_input->output_nets[0] = (int *)my_malloc( sizeof(int) );
+	temp_nets_input->output_nets[0][0] = logical_block[sourceIndex].nets->output_nets[0][0];
+
+	temp_nets_input->input_nets = NULL;
+	//tempPin = vpack_net[index].node_block_pin[k];
+	printf("Connection added from: %s to %s\n port: %d pin: %d\n",logical_block[sourceIndex].name,logical_block[sinkIndex].name,0,pin);	cur = temp_nets_input;
+	prev->next = cur;
 }
 
 void dum_parse(char *buf) {
@@ -373,24 +565,29 @@ static boolean add_lut(int doall, t_model *logic_model) {
 	char *ptr, **saved_names, buf[BUFSIZE];
 	int i, j, output_net_index;
 
-	saved_names = (char**) alloc_matrix(0, logic_model->inputs->size, 0,
-			BUFSIZE - 1, sizeof(char));
-
+	saved_names = (char**) alloc_matrix(0, 500, 0,BUFSIZE - 1, sizeof(char));
+	max_t_mux_size = logic_model->inputs->size;
 	num_logical_blocks++;
 
 	/* Count # nets connecting */
 	i = 0;
 	while ((ptr = my_strtok(NULL, TOKENS, blif, buf)) != NULL ) {
-		if (i > logic_model->inputs->size) {
+		/*if (i > logic_model->inputs->size) {
 			vpr_printf(TIO_MESSAGE_ERROR,
 					"[LINE %d] .names %s ... %s has a LUT size that exceeds the maximum LUT size (%d) of the architecture.\n",
 					file_line_number, saved_names[0], ptr,
 					logic_model->inputs->size);
-			exit(1);
-		}
+
+			//exit(1);
+		}*/
 		strcpy(saved_names[i], ptr);
 		i++;
 	}
+	if(max_t_mux_size + 1< i){
+		max_t_mux_size = i;
+		printf("Max num: %d\n",max_t_mux_size);
+	}
+
 	output_net_index = i - 1;
 	if (strcmp(saved_names[output_net_index], "unconn") == 0) {
 		/* unconn is a keyword to pad unused pins, ignore this block */
@@ -400,15 +597,19 @@ static boolean add_lut(int doall, t_model *logic_model) {
 	}
 
 	if (!doall) { /* Counting pass only ... */
-		for (j = 0; j <= output_net_index; j++)
+		for (j = 0; j <= output_net_index; j++){
+			//printf("%d:Name: %s\n",j,saved_names[j]);
 			/* On this pass it doesn't matter if RECEIVER or DRIVER.  Just checking if in hash.  [0] should be DRIVER */
-			add_vpack_net(saved_names[j], RECEIVER, num_logical_blocks - 1, 0,
-					j, FALSE, doall);
+			add_vpack_net(saved_names[j], RECEIVER, num_logical_blocks - 1, 0, j, FALSE, doall);
+		}
 		free_matrix(saved_names, 0, logic_model->inputs->size, 0, sizeof(char));
 		return FALSE;
 	}
 
 	logical_block[num_logical_blocks - 1].model = logic_model;
+	if(max_t_mux_size > logic_model->inputs->size)
+		logical_block[num_logical_blocks - 1].model->inputs->size = max_t_mux_size;
+
 
 	if (output_net_index > logic_model->inputs->size) {
 		vpr_printf(TIO_MESSAGE_ERROR,
@@ -420,36 +621,131 @@ static boolean add_lut(int doall, t_model *logic_model) {
 	assert(logic_model->outputs->next == NULL);
 	assert(logic_model->outputs->size == 1);
 
-	logical_block[num_logical_blocks - 1].input_nets = (int **) my_malloc(
-			sizeof(int*));
-	logical_block[num_logical_blocks - 1].output_nets = (int **) my_malloc(
-			sizeof(int*));
+	logical_block[num_logical_blocks - 1].nets = (t_nets *)my_malloc(sizeof(t_nets));
+	logical_block[num_logical_blocks - 1].nets->next = NULL;
+	logical_block[num_logical_blocks - 1].nets->input_nets = (int **) my_malloc(sizeof(int*));
+	logical_block[num_logical_blocks - 1].nets->output_nets = (int **) my_malloc(sizeof(int*));
 	logical_block[num_logical_blocks - 1].clock_net = OPEN;
 
-	logical_block[num_logical_blocks - 1].input_nets[0] = (int *) my_malloc(
-			logic_model->inputs->size * sizeof(int));
-	logical_block[num_logical_blocks - 1].output_nets[0] = (int *) my_malloc(
-			sizeof(int));
+	//if(is_a_t_mux(saved_names[output_net_index]))
+	logical_block[num_logical_blocks - 1].nets->input_nets[0] = (int *) my_malloc(max_t_mux_size * sizeof(int));
+
+	logical_block[num_logical_blocks - 1].nets->output_nets[0] = (int *) my_malloc(sizeof(int));
 
 	logical_block[num_logical_blocks - 1].type = VPACK_COMB;
-	for (i = 0; i < output_net_index; i++) /* Do inputs */
-		logical_block[num_logical_blocks - 1].input_nets[0][i] = add_vpack_net(
-				saved_names[i], RECEIVER, num_logical_blocks - 1, 0, i, FALSE,
-				doall);
-	logical_block[num_logical_blocks - 1].output_nets[0][0] = add_vpack_net(
-			saved_names[output_net_index], DRIVER, num_logical_blocks - 1, 0, 0,
+	for (i = 0; i < output_net_index; i++) /* Do inputs */{
+		logical_block[num_logical_blocks - 1].nets->input_nets[0][i] = add_vpack_net(saved_names[i], RECEIVER, num_logical_blocks - 1, 0, i, FALSE,	doall);
+	}
+
+
+	logical_block[num_logical_blocks - 1].nets->output_nets[0][0] = add_vpack_net(saved_names[output_net_index], DRIVER, num_logical_blocks - 1, 0, 0,
 			FALSE, doall);
 
-	for (i = output_net_index; i < logic_model->inputs->size; i++)
-		logical_block[num_logical_blocks - 1].input_nets[0][i] = OPEN;
+	for (i = output_net_index; i < max_t_mux_size; i++)
+		logical_block[num_logical_blocks - 1].nets->input_nets[0][i] = OPEN;
 
-	logical_block[num_logical_blocks - 1].name = my_strdup(
-			saved_names[output_net_index]);
+	logical_block[num_logical_blocks - 1].name = my_strdup(saved_names[output_net_index]);
 	logical_block[num_logical_blocks - 1].truth_table = NULL;
 	num_luts++;
 
-	free_matrix(saved_names, 0, logic_model->inputs->size, 0, sizeof(char));
+	free_matrix(saved_names, 0, 500, 0, sizeof(char));
 	return (boolean) doall;
+}
+
+static void fix_node_blocks_after_removal(int oldEntry,int newEntry){
+	int i,j;
+	for(i = 0; i < num_logical_nets; i++)
+	{
+		for(j = 0; j < temp_num_pins[i]; j++)
+			if (vpack_net[i].node_block[j] == oldEntry)
+				vpack_net[i].node_block[j] = newEntry;
+	}
+}
+
+/* This function removes a lut entry. It is created in order to remove the explicit connections that
+ * are represented as lut entries
+ */
+static void remove_lut(int noOfEntry,int quick) {
+
+	printf("Entry to remove: %s \n", logical_block[noOfEntry].name);
+	if (noOfEntry == num_logical_blocks - 1) {
+		num_logical_blocks--;
+		if (logical_block[noOfEntry].type == VPACK_COMB)
+			num_luts--;
+		return;
+	}
+
+	if(quick){
+		fix_node_blocks_after_removal(num_logical_blocks - 1,noOfEntry);
+		logical_block[num_logical_blocks - 1].index = logical_block[noOfEntry].index;
+		logical_block_input_count[noOfEntry] = logical_block_input_count[num_logical_blocks - 1];
+		logical_block_input_count[noOfEntry] = logical_block_output_count[num_logical_blocks - 1];
+
+		logical_block[noOfEntry] = logical_block[num_logical_blocks - 1];
+		if (logical_block[noOfEntry].type == VPACK_COMB)
+			num_luts--;
+		num_logical_blocks--;
+		return ;
+	}
+	logical_block[noOfEntry].model = logical_block[num_logical_blocks - 1].model;
+
+	if(logical_block[noOfEntry].nets == NULL)
+		logical_block[num_logical_blocks - 1].nets = (t_nets *)my_malloc(sizeof(t_nets));
+		logical_block[num_logical_blocks - 1].nets->next = NULL;
+	if (logical_block[noOfEntry].type == VPACK_COMB) {
+		printf("Type: VPACK_COMB\n");
+		*logical_block[noOfEntry].nets->input_nets = (int *) realloc(
+				logical_block[noOfEntry].nets->input_nets[0],logical_block[num_logical_blocks - 1].model->inputs->size
+						* sizeof(int));
+
+		//	free(logical_block[num_logical_blocks - 1].nets->input_nets);
+
+		num_luts--;
+	} else {
+		if (logical_block[noOfEntry].type == VPACK_OUTPAD) {
+			printf("Type: VPACK_OUTPAD\n");
+			logical_block[noOfEntry].nets->output_nets = (int **) my_malloc(
+					sizeof(int*));
+			logical_block[noOfEntry].nets->output_nets[0] = (int *) my_malloc(
+					logical_block[noOfEntry].model->outputs->size
+							* sizeof(int*));
+
+			logical_block[noOfEntry].nets->input_nets[0] = (int *) my_realloc(
+					logical_block[noOfEntry].nets->input_nets[0],
+					logical_block[num_logical_blocks - 1].model->inputs->size
+							* sizeof(int));
+		} else {
+			printf("Type: VPACK_INPAD\n");
+			logical_block[noOfEntry].nets->input_nets = (int **) my_malloc(
+					sizeof(int*));
+			logical_block[noOfEntry].nets->input_nets[0] = (int *) my_malloc(
+					logical_block[noOfEntry].model->inputs->size
+							* sizeof(int*));
+
+			logical_block[noOfEntry].nets->output_nets[0] = (int *) my_realloc(
+					logical_block[noOfEntry].nets->output_nets[0],
+					logical_block[num_logical_blocks - 1].model->outputs->size
+							* sizeof(int));
+		}
+	}
+
+	my_intdup(logical_block[noOfEntry].nets->output_nets[0],logical_block[num_logical_blocks - 1].nets->output_nets[0], 1);
+	free(logical_block[num_logical_blocks - 1].nets->output_nets[0]);
+
+	my_intdup(logical_block[noOfEntry].nets->input_nets[0], logical_block[num_logical_blocks - 1].nets->input_nets[0], logical_block[noOfEntry].model->inputs->size);
+	free(logical_block[num_logical_blocks - 1].nets->input_nets[0]);
+
+	logical_block[noOfEntry].type = logical_block[num_logical_blocks - 1].type;
+
+	logical_block[noOfEntry].clock_net = logical_block[num_logical_blocks - 1].clock_net;
+
+	logical_block[noOfEntry].name = my_strdup(logical_block[num_logical_blocks - 1].name);
+	free(logical_block[num_logical_blocks - 1].name);
+
+	logical_block[noOfEntry].truth_table = logical_block[num_logical_blocks - 1].truth_table;
+	free(logical_block[num_logical_blocks - 1].truth_table);
+
+	num_logical_blocks--;
 }
 
 static void add_latch(int doall, INP t_model *latch_model) {
@@ -496,19 +792,21 @@ static void add_latch(int doall, INP t_model *latch_model) {
 	logical_block[num_logical_blocks - 1].model = latch_model;
 	logical_block[num_logical_blocks - 1].type = VPACK_LATCH;
 
-	logical_block[num_logical_blocks - 1].input_nets = (int **) my_malloc(
+	logical_block[num_logical_blocks - 1].nets = (t_nets *)my_malloc(sizeof(t_nets));
+	logical_block[num_logical_blocks - 1].nets->next = NULL;
+	logical_block[num_logical_blocks - 1].nets->input_nets = (int **) my_malloc(
 			sizeof(int*));
-	logical_block[num_logical_blocks - 1].output_nets = (int **) my_malloc(
+	logical_block[num_logical_blocks - 1].nets->output_nets = (int **) my_malloc(
 			sizeof(int*));
 
-	logical_block[num_logical_blocks - 1].input_nets[0] = (int *) my_malloc(
+	logical_block[num_logical_blocks - 1].nets->input_nets[0] = (int *) my_malloc(
 			sizeof(int));
-	logical_block[num_logical_blocks - 1].output_nets[0] = (int *) my_malloc(
+	logical_block[num_logical_blocks - 1].nets->output_nets[0] = (int *) my_malloc(
 			sizeof(int));
 
-	logical_block[num_logical_blocks - 1].output_nets[0][0] = add_vpack_net(
+	logical_block[num_logical_blocks - 1].nets->output_nets[0][0] = add_vpack_net(
 			saved_names[1], DRIVER, num_logical_blocks - 1, 0, 0, FALSE, doall); /* Q */
-	logical_block[num_logical_blocks - 1].input_nets[0][0] = add_vpack_net(
+	logical_block[num_logical_blocks - 1].nets->input_nets[0][0] = add_vpack_net(
 			saved_names[0], RECEIVER, num_logical_blocks - 1, 0, 0, FALSE,
 			doall); /* D */
 	logical_block[num_logical_blocks - 1].clock_net = add_vpack_net(
@@ -624,7 +922,10 @@ static void add_subckt(int doall, t_model *user_models) {
 			}
 			port = port->next;
 		}
-		logical_block[num_logical_blocks - 1].input_nets = (int**) my_malloc(
+
+		logical_block[num_logical_blocks - 1].nets = (t_nets *)my_malloc(sizeof(t_nets));
+		logical_block[num_logical_blocks - 1].nets->next = NULL;
+		logical_block[num_logical_blocks - 1].nets->input_nets = (int**) my_malloc(
 				input_port_count * sizeof(int *));
 
 		port = cur_model->inputs;
@@ -635,10 +936,10 @@ static void add_subckt(int doall, t_model *user_models) {
 				continue;
 			}
 			assert(port->size >= 0);
-			logical_block[num_logical_blocks - 1].input_nets[port->index] =
+			logical_block[num_logical_blocks - 1].nets->input_nets[port->index] =
 					(int*) my_malloc(port->size * sizeof(int));
 			for (j = 0; j < port->size; j++) {
-				logical_block[num_logical_blocks - 1].input_nets[port->index][j] =
+				logical_block[num_logical_blocks - 1].nets->input_nets[port->index][j] =
 						OPEN;
 			}
 			port = port->next;
@@ -652,16 +953,16 @@ static void add_subckt(int doall, t_model *user_models) {
 			port = port->next;
 			output_port_count++;
 		}
-		logical_block[num_logical_blocks - 1].output_nets = (int**) my_malloc(
+		logical_block[num_logical_blocks - 1].nets->output_nets = (int**) my_malloc(
 				output_port_count * sizeof(int *));
 
 		port = cur_model->outputs;
 		while (port) {
 			assert(port->size >= 0);
-			logical_block[num_logical_blocks - 1].output_nets[port->index] =
+			logical_block[num_logical_blocks - 1].nets->output_nets[port->index] =
 					(int*) my_malloc(port->size * sizeof(int));
 			for (j = 0; j < port->size; j++) {
-				logical_block[num_logical_blocks - 1].output_nets[port->index][j] =
+				logical_block[num_logical_blocks - 1].nets->output_nets[port->index][j] =
 						OPEN;
 			}
 			port = port->next;
@@ -706,14 +1007,15 @@ static void add_subckt(int doall, t_model *user_models) {
 					found_subckt_signal = TRUE;
 					if (port->is_clock) {
 						assert(
-								logical_block[num_logical_blocks-1].clock_net == OPEN);
+								logical_block[num_logical_blocks - 1].clock_net
+										== OPEN);
 						assert(my_atoi(pin_number) == 0);
 						logical_block[num_logical_blocks - 1].clock_net =
 								add_vpack_net(circuit_signal_name[i], RECEIVER,
 										num_logical_blocks - 1, port->index,
 										my_atoi(pin_number), TRUE, doall);
 					} else {
-						logical_block[num_logical_blocks - 1].input_nets[port->index][my_atoi(
+						logical_block[num_logical_blocks - 1].nets->input_nets[port->index][my_atoi(
 								pin_number)] = add_vpack_net(
 								circuit_signal_name[i], RECEIVER,
 								num_logical_blocks - 1, port->index,
@@ -733,7 +1035,7 @@ static void add_subckt(int doall, t_model *user_models) {
 								subckt_signal_name[i], subckt_name);
 					}
 					found_subckt_signal = TRUE;
-					logical_block[num_logical_blocks - 1].output_nets[port->index][my_atoi(
+					logical_block[num_logical_blocks - 1].nets->output_nets[port->index][my_atoi(
 							pin_number)] = add_vpack_net(circuit_signal_name[i],
 							DRIVER, num_logical_blocks - 1, port->index,
 							my_atoi(pin_number), FALSE, doall);
@@ -747,7 +1049,7 @@ static void add_subckt(int doall, t_model *user_models) {
 			}
 
 			/* record the name to be first output net parsed */
-			if(logical_block[num_logical_blocks - 1].name == NULL) {
+			if (logical_block[num_logical_blocks - 1].name == NULL ) {
 				logical_block[num_logical_blocks - 1].name = my_strdup(
 						subckt_logical_block_name);
 			}
@@ -800,9 +1102,11 @@ static void io_line(int in_or_out, int doall, t_model *io_model) {
 		if (!doall)
 			continue; /* Just counting things when doall == 0 */
 
+		logical_block[num_logical_blocks - 1].nets = (t_nets *)my_malloc(sizeof(t_nets));
+		logical_block[num_logical_blocks - 1].nets->next = NULL;
 		logical_block[num_logical_blocks - 1].clock_net = OPEN;
-		logical_block[num_logical_blocks - 1].input_nets = NULL;
-		logical_block[num_logical_blocks - 1].output_nets = NULL;
+		logical_block[num_logical_blocks - 1].nets->input_nets = NULL;
+		logical_block[num_logical_blocks - 1].nets->output_nets = NULL;
 		logical_block[num_logical_blocks - 1].model = io_model;
 
 		len = strlen(ptr);
@@ -812,31 +1116,31 @@ static void io_line(int in_or_out, int doall, t_model *io_model) {
 					(len + 1 + 4) * sizeof(char)); /* Space for out: at start */
 			strcpy(logical_block[num_logical_blocks - 1].name, "out:");
 			strcat(logical_block[num_logical_blocks - 1].name, ptr);
-			logical_block[num_logical_blocks - 1].input_nets =
+			logical_block[num_logical_blocks - 1].nets->input_nets =
 					(int **) my_malloc(sizeof(int*));
-			logical_block[num_logical_blocks - 1].input_nets[0] =
+			logical_block[num_logical_blocks - 1].nets->input_nets[0] =
 					(int *) my_malloc(sizeof(int));
-			logical_block[num_logical_blocks - 1].input_nets[0][0] = OPEN;
+			logical_block[num_logical_blocks - 1].nets->input_nets[0][0] = OPEN;
 		} else {
 			assert(in_or_out == DRIVER);
 			logical_block[num_logical_blocks - 1].name = (char *) my_malloc(
 					(len + 1) * sizeof(char));
 			strcpy(logical_block[num_logical_blocks - 1].name, ptr);
-			logical_block[num_logical_blocks - 1].output_nets =
+			logical_block[num_logical_blocks - 1].nets->output_nets =
 					(int **) my_malloc(sizeof(int*));
-			logical_block[num_logical_blocks - 1].output_nets[0] =
+			logical_block[num_logical_blocks - 1].nets->output_nets[0] =
 					(int *) my_malloc(sizeof(int));
-			logical_block[num_logical_blocks - 1].output_nets[0][0] = OPEN;
+			logical_block[num_logical_blocks - 1].nets->output_nets[0][0] = OPEN;
 		}
 
 		if (in_or_out == DRIVER) { /* processing .inputs line */
 			num_p_inputs++;
 			logical_block[num_logical_blocks - 1].type = VPACK_INPAD;
-			logical_block[num_logical_blocks - 1].output_nets[0][0] = nindex;
+			logical_block[num_logical_blocks - 1].nets->output_nets[0][0] = nindex;
 		} else { /* processing .outputs line */
 			num_p_outputs++;
 			logical_block[num_logical_blocks - 1].type = VPACK_OUTPAD;
-			logical_block[num_logical_blocks - 1].input_nets[0][0] = nindex;
+			logical_block[num_logical_blocks - 1].nets->input_nets[0][0] = nindex;
 		}
 		logical_block[num_logical_blocks - 1].truth_table = NULL;
 	}
@@ -874,6 +1178,61 @@ static void check_and_count_models(int doall, const char* model_name,
 
 		/* check ports */
 	}
+}
+
+static void add_map(int doall, t_model* map_model) {
+	int i;
+	char *ptr, buf[BUFSIZE];
+	char saved_names[2][BUFSIZE];
+	static int mapSizeMax = 20;
+	num_map_blocks++;
+
+	/* Count # parameters, making sure we don't go over 6 (avoids memory corr.) */
+	/* Note that we can't rely on the tokens being around unless we copy them.  */
+
+	for (i = 0; i < 3; i++) {
+		ptr = my_strtok(NULL, TOKENS, blif, buf);
+		if (ptr == NULL )
+			break;
+		strcpy(saved_names[i], ptr);
+	}
+
+	if (i != 2) {
+		vpr_printf(TIO_MESSAGE_ERROR, ".map does not have 2 parameters.\n");
+		vpr_printf(TIO_MESSAGE_ERROR, "Check netlist, line %d.\n",
+				file_line_number);
+		exit(1);
+	}
+	if(!doall)
+		return;
+/*
+	if(num_map_blocks == 1){
+		map_names = (char **) my_calloc(mapSizeMax, sizeof(char*));
+	}else if(num_map_blocks > mapSizeMax){
+		mapSizeMax = mapSizeMax << 1;
+		map_names = (char **) my_realloc(map_names,mapSizeMax * sizeof(char*));
+	}
+	*/
+	map_names[num_map_blocks - 1] = my_strdup(saved_names[1]);
+}
+
+static void find_t_mux() {
+	int i, j;
+	for (j = 0; j < num_map_blocks; j++)
+		for (i = 0; i < num_logical_blocks; i++) {
+			if (!strcmp(map_names[j], logical_block[i].name)) {
+				printf("Tmux_found: %s\n", map_names[j]);
+				map_block[j] = &logical_block[i];
+			}
+		}
+}
+
+static int is_a_t_mux(char* LUT_name) {
+	int j;
+	for (j = 0; j < num_map_blocks; j++)
+		if (!strcmp(map_names[j], LUT_name))
+			return TRUE;
+	return FALSE;
 }
 
 static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
@@ -934,8 +1293,7 @@ static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 
 				/* num_driver is the number of signal drivers of this vpack_net. *
 				 * should always be zero or 1 unless the netlist is bad.   */
-				if ((vpack_net[nindex].num_sinks - num_driver[nindex])
-						>= temp_num_pins[nindex]) {
+				if ((vpack_net[nindex].num_sinks - num_driver[nindex]) >= temp_num_pins[nindex]) {
 					vpr_printf(TIO_MESSAGE_ERROR,
 							"Net #%d (%s) has no driver and will cause memory corruption.\n",
 							nindex, ptr);
@@ -946,6 +1304,11 @@ static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 			vpack_net[nindex].node_block_port[j] = bport;
 			vpack_net[nindex].node_block_pin[j] = bpin;
 			vpack_net[nindex].is_global = is_global;
+			/*
+			printf(	"Name: %s type: %d bnum: %d bport: %d bpin: %d nindex: %d j: %d\n",
+					h_ptr->name, type, vpack_net[nindex].node_block[j], bport,
+					bpin, nindex, j);
+			*/
 			return (nindex);
 		}
 		prev_ptr = h_ptr;
@@ -964,17 +1327,68 @@ static int add_vpack_net(char *ptr, int type, int bnum, int bport, int bpin,
 	/* Add the vpack_net (only counting pass will add nets to symbol table). */
 
 	num_logical_nets++;
+
 	h_ptr = (struct s_hash *) my_malloc(sizeof(struct s_hash));
 	if (prev_ptr == NULL ) {
 		blif_hash[index] = h_ptr;
+		h_ptr->prev = NULL;
 	} else {
 		prev_ptr->next = h_ptr;
+		h_ptr->prev = prev_ptr;
 	}
 	h_ptr->next = NULL;
 	h_ptr->index = num_logical_nets - 1;
 	h_ptr->count = 1;
 	h_ptr->name = my_strdup(ptr);
 	return (h_ptr->index);
+}
+
+static void rem_vpack_net(int entryIndex, int quick,int output) {
+	int i,j;
+	int size;
+
+	if(quick){
+		if(output)
+		{
+			for(i = 0; i < num_logical_blocks; i++)
+			{
+				if(logical_block[i].nets->input_nets != NULL){
+					if(is_a_t_mux(logical_block[i].name))
+						size = max_t_mux_size;
+					else
+						size = logical_block[i].model->inputs->size;
+					for(j = 0; j < size; j++)
+					{
+						if(logical_block[i].nets->input_nets[0][j] == entryIndex)
+							logical_block[i].nets->input_nets[0][j] = OPEN;
+					}
+				}
+				if(logical_block[i].nets->output_nets != NULL && logical_block[i].nets->output_nets[0][0] == entryIndex)
+					logical_block[i].nets->output_nets[0][0] = OPEN;
+			}
+		}
+		vpack_net[entryIndex] = vpack_net[num_logical_nets - 1];
+
+		for(i = 0; i < num_logical_blocks; i++)
+		{
+			if(logical_block[i].nets->input_nets != NULL){
+				if(is_a_t_mux(logical_block[i].name))
+					size = max_t_mux_size;
+				else
+					size = logical_block[i].model->inputs->size;
+				for(j = 0; j < size; j++)
+				{
+					if(logical_block[i].nets->input_nets[0][j] == num_logical_nets - 1)
+						logical_block[i].nets->input_nets[0][j] = entryIndex;
+				}
+			}
+			if(logical_block[i].nets->output_nets != NULL && logical_block[i].nets->output_nets[0][0] == num_logical_nets - 1)
+				logical_block[i].nets->output_nets[0][0] = entryIndex;
+		}
+		num_driver[entryIndex] = num_driver[num_logical_nets - 1];
+	}
+	num_logical_nets--;
+
 }
 
 void echo_input(char *blif_file, char *echo_file, t_model *library_models) {
@@ -1014,7 +1428,7 @@ void echo_input(char *blif_file, char *echo_file, t_model *library_models) {
 			if (logic_model == NULL )
 				continue;
 			for (j = 0; j < logic_model->inputs[0].size; j++) {
-				if (logical_block[i].input_nets[0][j] == OPEN) {
+				if (logical_block[i].nets->input_nets[0][j] == OPEN) {
 					break;
 				}
 			}
@@ -1022,7 +1436,7 @@ void echo_input(char *blif_file, char *echo_file, t_model *library_models) {
 		} else if (logical_block[i].model == latch_model) {
 			if (latch_model == NULL )
 				continue;
-			inet = logical_block[i].input_nets[0][0];
+			inet = logical_block[i].nets->input_nets[0][0];
 			if (vpack_net[inet].num_sinks == 1
 					&& logical_block[vpack_net[inet].node_block[0]].model
 							== logic_model) {
@@ -1086,11 +1500,11 @@ void echo_input(char *blif_file, char *echo_file, t_model *library_models) {
 		while (port) {
 			fprintf(fp, "\tinput port: %s \t", port->name);
 			for (j = 0; j < port->size; j++) {
-				if (logical_block[i].input_nets[port->index][j] == OPEN)
+				if (logical_block[i].nets->input_nets[port->index][j] == OPEN)
 					fprintf(fp, "OPEN ");
 				else
 					fprintf(fp, "%d ",
-							logical_block[i].input_nets[port->index][j]);
+							logical_block[i].nets->input_nets[port->index][j]);
 			}
 			fprintf(fp, "\n");
 			port = port->next;
@@ -1100,11 +1514,11 @@ void echo_input(char *blif_file, char *echo_file, t_model *library_models) {
 		while (port) {
 			fprintf(fp, "\toutput port: %s \t", port->name);
 			for (j = 0; j < port->size; j++) {
-				if (logical_block[i].output_nets[port->index][j] == OPEN) {
+				if (logical_block[i].nets->output_nets[port->index][j] == OPEN) {
 					fprintf(fp, "OPEN ");
 				} else {
 					fprintf(fp, "%d ",
-							logical_block[i].output_nets[port->index][j]);
+							logical_block[i].nets->output_nets[port->index][j]);
 				}
 			}
 			fprintf(fp, "\n");
@@ -1119,7 +1533,8 @@ void echo_input(char *blif_file, char *echo_file, t_model *library_models) {
 /* load default vpack models (inpad, outpad, logic) */
 static void load_default_models(INP t_model *library_models,
 		OUTP t_model** inpad_model, OUTP t_model** outpad_model,
-		OUTP t_model** logic_model, OUTP t_model** latch_model) {
+		OUTP t_model** logic_model, OUTP t_model** latch_model,
+		OUTP t_model** map_model) {
 	t_model *cur_model;
 	cur_model = library_models;
 	*inpad_model = *outpad_model = *logic_model = *latch_model = NULL;
@@ -1191,13 +1606,18 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 				endlines, explicit_vpack_models);
 		error++;
 	}
-	for (i = 0; i < num_logical_nets; i++) {
 
+	for (i = 0; i < num_logical_nets; i++) {
+		/* The next error checking is the one that we will deactivate in order to support
+		 * the new type of explicit connections that will open the way to multiple connections
+		 * on the same pin.
+		 */
+		/* This is the place that we deactivate the error checking */
 		if (num_driver[i] != 1) {
 			vpr_printf(TIO_MESSAGE_ERROR,
 					"vpack_net %s has %d signals driving it.\n",
 					vpack_net[i].name, num_driver[i]);
-			error++;
+			//error++;
 		}
 
 		if (vpack_net[i].num_sinks == 0) {
@@ -1219,9 +1639,10 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 				if (sweep_hanging_nets_and_inputs) {
 					removed_nets++;
 					vpack_net[i].node_block[0] = OPEN;
+					printf("Removed net: %d\n", vpack_net[i].node_block[0]);
 					vpack_net[i].node_block_port[0] = OPEN;
 					vpack_net[i].node_block_pin[0] = OPEN;
-					logical_block[iblk].output_nets[iport][ipin] = OPEN;
+					logical_block[iblk].nets->output_nets[iport][ipin] = OPEN;
 					logical_block_output_count[iblk]--;
 				} else {
 					vpr_printf(TIO_MESSAGE_WARNING,
@@ -1243,6 +1664,8 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 			iblk = vpack_net[i].node_block[j];
 			iport = vpack_net[i].node_block_port[j];
 			ipin = vpack_net[i].node_block_pin[j];
+
+			//printf("Node_block: %d Node_block_port: %d node_block_pin: %d\n",iblk,iport,ipin);
 			if (ipin == OPEN) {
 				/* Clocks are not connected to regular pins on a block hence open */
 				L_check_net = logical_block[iblk].clock_net;
@@ -1257,29 +1680,36 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 
 			} else {
 				if (j == 0) {
-					L_check_net = logical_block[iblk].output_nets[iport][ipin];
-					if (L_check_net != i) {
-						vpr_printf(TIO_MESSAGE_ERROR,
-								"Output net for block %s #%d is net %s #%d but connecting net is %s #%d.\n",
-								logical_block[iblk].name, iblk,
-								vpack_net[L_check_net].name, L_check_net,
-								vpack_net[i].name, i);
-						error++;
-					}
+					L_check_net = logical_block[iblk].nets->output_nets[iport][ipin];
+					/* The next error checking is the one that we will deactivate in order to support
+					 * the new type of explicit connections that will open the way to multiple connections
+					 * on the same pin.
+					 */
+					/* This is the place that we deactivated one of the error checking mechanisms */
+					 if (L_check_net != i) {
+						 vpr_printf(TIO_MESSAGE_ERROR,
+						 "Output net for block %s #%d is net %s #%d but connecting net is %s #%d.\n",
+						 logical_block[iblk].name, iblk,
+						 vpack_net[L_check_net].name, L_check_net,
+						 vpack_net[i].name, i);
+						 error++;
+					 }
 				} else {
+
 					if (vpack_net[i].is_global) {
 						L_check_net = logical_block[iblk].clock_net;
 					} else {
-						L_check_net =
-								logical_block[iblk].input_nets[iport][ipin];
+						L_check_net = logical_block[iblk].nets->input_nets[iport][ipin];
 					}
 					if (L_check_net != i) {
-						vpr_printf(TIO_MESSAGE_ERROR,
+						/*vpr_printf(TIO_MESSAGE_ERROR,
 								"Input net for block %s #%d is net %s #%d but connecting net is %s #%d.\n",
 								logical_block[iblk].name, iblk,
 								vpack_net[L_check_net].name, L_check_net,
 								vpack_net[i].name, i);
-						error++;
+						//error++;
+						 * */
+
 					}
 				}
 			}
@@ -1289,6 +1719,9 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 			removed_nets);
 	count_unconn_blocks = 0;
 	for (i = 0; i < num_logical_blocks; i++) {
+		if (logical_block[i].type == VPACK_MAP) {
+			continue;
+		}
 		/* This block has no output and is not an output pad so it has no use, hence we remove it */
 		if ((logical_block_output_count[i] == 0)
 				&& (logical_block[i].type != VPACK_OUTPAD)) {
@@ -1321,10 +1754,20 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 			}
 
 			for (j = 0; j < port->size; j++) {
-				if (logical_block[i].input_nets[port->index][j] == OPEN)
+				//printf("name: %s %d\n",logical_block[i].name,has_another_input(i,port->index,j));
+				if (logical_block[i].nets->input_nets[port->index][j] == OPEN && !has_another_input(i,port->index,j))
 					continue;
+				t_nets* cur;
+				for(cur = logical_block[i].nets; cur != NULL; cur = cur->next)
+					if(cur->input_nets[port->index][j] != OPEN)
+						break;
+				if(cur == NULL)
+				{
+					fprintf(stderr,"It should be another input in another node but is not\n");
+					exit(0);
+				}
 				count_inputs++;
-				inet = logical_block[i].input_nets[port->index][j];
+				inet = cur->input_nets[port->index][j];
 				found = FALSE;
 				for (k = 1; k <= vpack_net[inet].num_sinks; k++) {
 					if (vpack_net[inet].node_block[k] == i) {
@@ -1335,24 +1778,30 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 						}
 					}
 				}
-				assert(found == TRUE);
+				//assert(found == TRUE);
 			}
 			port = port->next;
 		}
-		assert(count_inputs == logical_block_input_count[i]);
+		//assert(count_inputs == logical_block_input_count[i]);
 		logical_block[i].used_input_pins = count_inputs;
 
 		port = logical_block[i].model->outputs;
 		while (port) {
 			for (j = 0; j < port->size; j++) {
-				if (logical_block[i].output_nets[port->index][j] == OPEN)
+				if (logical_block[i].nets->output_nets[port->index][j] == OPEN && !has_another_output(i,port->index,j))
 					continue;
+				t_nets* cur;
+				for(cur = logical_block[i].nets; cur != NULL; cur = cur->next)
+					if(cur->output_nets[port->index][j] != OPEN)
+						break;
+				if(cur == NULL){
+					fprintf(stderr,"It should be another output in another node but is not\n");
+					exit(0);
+				}
 				count_outputs++;
-				inet = logical_block[i].output_nets[port->index][j];
+				inet = logical_block[i].nets->output_nets[port->index][j];
 				vpack_net[inet].is_const_gen = FALSE;
-				if (count_inputs == 0 && logical_block[i].type != VPACK_INPAD
-						&& logical_block[i].type != VPACK_OUTPAD
-						&& logical_block[i].clock_net == OPEN) {
+				if (count_inputs == 0 && logical_block[i].type != VPACK_INPAD && logical_block[i].type != VPACK_OUTPAD && logical_block[i].clock_net == OPEN) {
 					vpr_printf(TIO_MESSAGE_INFO,
 							"Net is a constant generator: %s.\n",
 							vpack_net[inet].name);
@@ -1366,11 +1815,11 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 						}
 					}
 				}
-				assert(found == TRUE);
+				//assert(found == TRUE);
 			}
 			port = port->next;
 		}
-		assert(count_outputs == logical_block_output_count[i]);
+		//assert(count_outputs == logical_block_output_count[i]);
 
 		if (logical_block[i].type == VPACK_LATCH) {
 			if (logical_block_input_count[i] != 1) {
@@ -1470,8 +1919,9 @@ static void check_net(boolean sweep_hanging_nets_and_inputs) {
 					logical_block[i].name);
 		}
 	}
-	vpr_printf(TIO_MESSAGE_INFO, "%d unconnected blocks in input netlist.\n", count_unconn_blocks);
-		
+	vpr_printf(TIO_MESSAGE_INFO, "%d unconnected blocks in input netlist.\n",
+			count_unconn_blocks);
+
 	if (error != 0) {
 		vpr_printf(TIO_MESSAGE_ERROR,
 				"Found %d fatal errors in the input netlist.\n", error);
@@ -1495,7 +1945,7 @@ static void free_parse(void) {
 			h_ptr = temp_ptr;
 		}
 	}
-	free((void *) num_driver);
+	//free((void *) num_driver);
 	free((void *) blif_hash);
 	free((void *) temp_num_pins);
 }
@@ -1518,10 +1968,8 @@ static void absorb_buffer_luts(void) {
 						|| strcmp("1 1",
 								(char*) logical_block[bnum].truth_table->data_vptr)
 								== 0) {
-					for (ipin = 0;
-							ipin < logical_block[bnum].model->inputs->size;
-							ipin++) {
-						if (logical_block[bnum].input_nets[0][ipin] == OPEN)
+					for (ipin = 0;ipin < logical_block[bnum].model->inputs->size;ipin++) {
+						if (logical_block[bnum].nets->input_nets[0][ipin] == OPEN)
 							break;
 					}
 					assert(ipin == 1);
@@ -1531,8 +1979,8 @@ static void absorb_buffer_luts(void) {
 					assert(logical_block[bnum].model->outputs->size == 1);
 					assert(logical_block[bnum].model->outputs->next == NULL);
 
-					in_net = logical_block[bnum].input_nets[0][0]; /* Net driving the buffer */
-					out_net = logical_block[bnum].output_nets[0][0]; /* Net the buffer us driving */
+					in_net = logical_block[bnum].nets->input_nets[0][0]; /* Net driving the buffer */
+					out_net = logical_block[bnum].nets->output_nets[0][0]; /* Net the buffer us driving */
 					out_blk = vpack_net[out_net].node_block[1];
 					in_blk = vpack_net[in_net].node_block[0];
 
@@ -1553,14 +2001,17 @@ static void absorb_buffer_luts(void) {
 
 						vpack_net[in_net].node_block[ipin] =
 								vpack_net[out_net].node_block[1]; /* New output */
+						printf("vpack_net[in_net].node_block[ipin]: %d\n",
+								vpack_net[in_net].node_block[ipin]);
 						vpack_net[in_net].node_block_port[ipin] =
 								vpack_net[out_net].node_block_port[1];
 						vpack_net[in_net].node_block_pin[ipin] =
 								vpack_net[out_net].node_block_pin[1];
 
 						assert(
-								logical_block[out_blk].input_nets[vpack_net[out_net].node_block_port[1]][vpack_net[out_net].node_block_pin[1]] == out_net);
-						logical_block[out_blk].input_nets[vpack_net[out_net].node_block_port[1]][vpack_net[out_net].node_block_pin[1]] =
+								logical_block[out_blk].nets->input_nets[vpack_net[out_net].node_block_port[1]][vpack_net[out_net].node_block_pin[1]]
+										== out_net);
+						logical_block[out_blk].nets->input_nets[vpack_net[out_net].node_block_port[1]][vpack_net[out_net].node_block_pin[1]] =
 								in_net;
 
 						vpack_net[out_net].node_block[0] = OPEN; /* This vpack_net disappears; mark. */
@@ -1659,17 +2110,18 @@ static void compress_netlist(void) {
 					for (ipin = 0; ipin < port->size; ipin++) {
 						if (port->is_clock) {
 							assert(
-									port->size == 1 && port->index == 0 && ipin == 0);
+									port->size == 1 && port->index == 0
+											&& ipin == 0);
 							if (logical_block[index].clock_net == OPEN)
 								continue;
 							logical_block[index].clock_net =
 									net_remap[logical_block[index].clock_net];
 						} else {
-							if (logical_block[index].input_nets[port->index][ipin]
+							if (logical_block[index].nets->input_nets[port->index][ipin]
 									== OPEN)
 								continue;
-							logical_block[index].input_nets[port->index][ipin] =
-									net_remap[logical_block[index].input_nets[port->index][ipin]];
+							logical_block[index].nets->input_nets[port->index][ipin] =
+									net_remap[logical_block[index].nets->input_nets[port->index][ipin]];
 						}
 						L_num_nets++;
 					}
@@ -1679,11 +2131,11 @@ static void compress_netlist(void) {
 				port = logical_block[index].model->outputs;
 				while (port) {
 					for (ipin = 0; ipin < port->size; ipin++) {
-						if (logical_block[index].output_nets[port->index][ipin]
+						if (logical_block[index].nets->output_nets[port->index][ipin]
 								== OPEN)
 							continue;
-						logical_block[index].output_nets[port->index][ipin] =
-								net_remap[logical_block[index].output_nets[port->index][ipin]];
+						logical_block[index].nets->output_nets[port->index][ipin] =
+								net_remap[logical_block[index].nets->output_nets[port->index][ipin]];
 						L_num_nets++;
 					}
 					port = port->next;
@@ -1696,32 +2148,32 @@ static void compress_netlist(void) {
 				i = 0;
 				while (port) {
 					if (!port->is_clock) {
-						if (logical_block[iblk].input_nets) {
-							if (logical_block[iblk].input_nets[i]) {
-								free(logical_block[iblk].input_nets[i]);
-								logical_block[iblk].input_nets[i] = NULL;
+						if (logical_block[iblk].nets->input_nets) {
+							if (logical_block[iblk].nets->input_nets[i]) {
+								free(logical_block[iblk].nets->input_nets[i]);
+								logical_block[iblk].nets->input_nets[i] = NULL;
 							}
 						}
 						i++;
 					}
 					port = port->next;
 				}
-				if (logical_block[iblk].input_nets)
-					free(logical_block[iblk].input_nets);
+				if (logical_block[iblk].nets->input_nets)
+					free(logical_block[iblk].nets->input_nets);
 				port = logical_block[iblk].model->outputs;
 				i = 0;
 				while (port) {
-					if (logical_block[iblk].output_nets) {
-						if (logical_block[iblk].output_nets[i]) {
-							free(logical_block[iblk].output_nets[i]);
-							logical_block[iblk].output_nets[i] = NULL;
+					if (logical_block[iblk].nets->output_nets) {
+						if (logical_block[iblk].nets->output_nets[i]) {
+							free(logical_block[iblk].nets->output_nets[i]);
+							logical_block[iblk].nets->output_nets[i] = NULL;
 						}
 					}
 					i++;
 					port = port->next;
 				}
-				if (logical_block[iblk].output_nets)
-					free(logical_block[iblk].output_nets);
+				if (logical_block[iblk].nets->output_nets)
+					free(logical_block[iblk].nets->output_nets);
 				tvptr = logical_block[iblk].truth_table;
 				while (tvptr != NULL ) {
 					if (tvptr->data_vptr)
@@ -1764,7 +2216,8 @@ static void compress_netlist(void) {
  */
 void read_and_process_blif(char *blif_file,
 		boolean sweep_hanging_nets_and_inputs, t_model *user_models,
-		t_model *library_models, boolean read_activity_file, char * activity_file) {
+		t_model *library_models, boolean read_activity_file,
+		char * activity_file) {
 
 	/* begin parsing blif input file */
 	read_blif(blif_file, sweep_hanging_nets_and_inputs, user_models,
@@ -1854,6 +2307,8 @@ static void show_blif_stats(t_model *user_models, t_model *library_models) {
 	/* Gather statistics from circuit */
 	MAX_LUT_INPUTS = 0;
 	for (iblk = 0; iblk < num_logical_blocks; iblk++) {
+		if (logical_block[iblk].type == VPACK_MAP)
+			continue;
 		if (strcmp(logical_block[iblk].model->name, "names") == 0) {
 			MAX_LUT_INPUTS = logical_block[iblk].model->inputs->size;
 			break;
@@ -1862,18 +2317,20 @@ static void show_blif_stats(t_model *user_models, t_model *library_models) {
 	num_lut_of_size = (int*) my_calloc(MAX_LUT_INPUTS + 1, sizeof(int));
 
 	for (i = 0; i < num_logical_blocks; i++) {
+		if (logical_block[iblk].type == VPACK_MAP)
+			continue;
 		for (j = 0; j < num_model_stats; j++) {
 			if (logical_block[i].model == model_stats[j].model) {
 				break;
 			}
 		}
-		assert(j < num_model_stats);
+		//assert(j < num_model_stats);
 		model_stats[j].count++;
 		if (&model_stats[j] == lut_model) {
 			num_pins = 0;
 			for (ipin = 0; ipin < logical_block[i].model->inputs->size;
 					ipin++) {
-				if (logical_block[i].input_nets[0][ipin] != OPEN) {
+				if (logical_block[i].nets->input_nets[0][ipin] != OPEN) {
 					num_pins++;
 				}
 			}
@@ -1894,7 +2351,7 @@ static void show_blif_stats(t_model *user_models, t_model *library_models) {
 				model_stats[i].model->name);
 	}
 
-	free(model_stats);
+	//free(model_stats);
 	free(num_lut_of_size);
 }
 
@@ -1916,7 +2373,8 @@ static void read_activity(char * activity_file) {
 
 	for (net_idx = 0; net_idx < num_logical_nets; net_idx++) {
 		if (!vpack_net[net_idx].net_power) {
-			vpack_net[net_idx].net_power = new t_net_power;
+			vpack_net[net_idx].net_power = new
+			t_net_power;
 		}
 		vpack_net[net_idx].net_power->probability = -1.0;
 		vpack_net[net_idx].net_power->density = -1.0;
@@ -1978,4 +2436,93 @@ bool add_activity_to_net(char * net_name, float probability, float density) {
 			"Error: net %s found in activity file, but it does not exist in the .blif file.\n",
 			net_name);
 	return true;
+}
+
+
+static void print_nets()
+{
+	int i,j;
+
+	for(i = 0; i < num_logical_nets; i++)
+	{
+		for(j = 0; j < temp_num_pins[i]; j++)
+		printf("Name: %s bnum: %d bport: %d bpin: %d nindex: %d j: %d drivers: %d sinks: %d\n",
+				vpack_net[i].name,
+				vpack_net[i].node_block[j],
+				vpack_net[i].node_block_port[j],
+				vpack_net[i].node_block_pin[j],
+				i,
+				j,
+				num_driver[i],
+				vpack_net[i].num_sinks);
+	}
+}
+
+static void print_logical_blocks()
+{
+	int i,j;
+	t_nets *cur;
+	for(i = 0; i < num_logical_blocks; i++)
+	{
+		cur = logical_block[i].nets;
+		printf("Name: %s Model: %s",logical_block[i].name,logical_block[i].model->name);
+		for(cur = logical_block[i].nets; cur != NULL; cur = cur->next ){
+			if(cur->input_nets != NULL)
+			{
+				printf(" Inputs from: ");
+				for(j = 0; j < logical_block[i].model->inputs->size - 1; j++)
+					printf(" %s %d",vpack_net[cur->input_nets[0][j]].name,cur->input_nets[0][j]);
+
+			}
+			if(cur->output_nets != NULL)
+			{
+				printf(" Output to: %s",vpack_net[cur->output_nets[0][0]].name);
+			}
+			printf("\n");
+		}
+	}
+}
+static int has_another_input(int checkBlock,int checkPort, int checkPin)
+{
+	/* This is included for the multiple nets in one pin */
+	t_nets *cur;
+	int counter = 0;
+	for(cur = logical_block[checkBlock].nets->next; cur != NULL; cur = cur->next){
+		if(cur->input_nets != NULL){
+			if(cur->input_nets[checkPort][checkPin] != OPEN)
+				//printf("Multiple Inputs: %s\n",logical_block[checkBlock].name);
+				return 1;
+		}
+	}
+	return 0;
+}
+
+static int has_another_output(int checkBlock,int checkPort, int checkPin)
+{
+	/* This is included for the multiple nets in one pin */
+	t_nets *cur;
+	int counter = 0;
+	for(cur = logical_block[checkBlock].nets->next; cur != NULL; cur = cur->next){
+		if(cur->output_nets != NULL){
+			if(cur->output_nets[checkPort][checkPin] != OPEN)
+				//printf("Multiple Inputs: %s\n",logical_block[checkBlock].name);
+				return 1;
+		}
+	}
+	return 0;
+}
+
+static int has_multiple_inputs(int checkBlock)
+{
+	t_nets *cur;
+	int counter = 0;
+	for(cur = logical_block[checkBlock].nets->next; cur != NULL; cur = cur->next)
+	{
+		if(cur->input_nets != NULL)
+		{
+			//printf("Multiple inputs: %s\n",logical_block[checkBlock].name);
+			counter++;
+		}
+	}
+	return counter;
 }

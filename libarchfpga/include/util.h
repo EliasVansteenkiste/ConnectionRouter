@@ -89,6 +89,8 @@ void free_ivec_matrix3(struct s_ivec ***ivec_matrix3, int nrmin,
 
 void** alloc_matrix(int nrmin, int nrmax, int ncmin, int ncmax,
 		size_t elsize);
+void ** realloc_matrix(char** pointer, int prev , int newSize , int noOfElements);
+
 void ***alloc_matrix3(int nrmin, int nrmax, int ncmin, int ncmax,
 		int ndmin, int ndmax, size_t elsize);
 void ****alloc_matrix4(int nrmin, int nrmax, int ncmin, int ncmax,
@@ -118,6 +120,7 @@ void alloc_ivector_and_copy_int_list(t_linked_int ** list_head_ptr,
 int my_atoi(const char *str);
 
 char* my_strdup(const char *str);
+void my_intdup(int *output,int *input,int size);
 char *my_strncpy(char *dest, const char *src, size_t size);
 char *my_strtok(char *ptr, const char *tokens, FILE * fp, char *buf);
 
@@ -141,6 +144,9 @@ extern messagelogger vpr_printf;
 
 /*********************** Math operations *************************************/
 int ipow(int base, int exp);
+
+/*********************** custom prints   *************************************/
+void my_printf( int print_or_not,const char *fmt, ... );
 
 #endif
 
