@@ -1640,6 +1640,62 @@ t_rr_to_rg_node_entry* add_rr_to_rg_node(t_rr_to_rg_node_hash_map* map, int key,
 
 }
 
+//t_rr_to_rg_node_entry* add_rr_to_rg_node(t_rr_to_rg_node_hash_map* map, int key, t_rg_node* node){
+//    int node_hash_map_size = map->size;
+////    printf("Print Hash Table\n");
+////    int i;
+////    for(i=0;i<node_hash_map_size;i++){
+////        if(node_hash_map->node_entries[i]!=NULL)printf("\t%d - Node: %d, usage: %d\n",i,node_hash_map->node_entries[i]->node,node_hash_map->node_entries[i]->usage);
+////    }
+//    int hashfvalue = key % node_hash_map_size;
+//    if(map->node_entries[hashfvalue] == NULL){
+//        if((map->no_entries+1)*1.0/map->size<0.35){
+//            //Add node
+//        	t_rr_to_rg_node_entry* node_entry_ptr = alloc_rr_to_rg_node_entry();
+//            node_entry_ptr->rr_node = key;
+//            node_entry_ptr->rg_node = node;
+//            node_entry_ptr->usage = 1;
+//            map->node_entries[hashfvalue] = node_entry_ptr;
+//            map->no_entries++;
+//            return node_entry_ptr;
+//        }else{
+//        		increase_rr_to_rg_node_hash_map_size(map);
+//            return add_rr_to_rg_node(map,key,node);
+//        }
+//    }else{
+//        if(key == map->node_entries[hashfvalue]->rr_node){
+//            map->node_entries[hashfvalue]->usage++;
+//            return map->node_entries[hashfvalue];
+//        }else{
+//            int i, idx;
+//            for(i=1;i<node_hash_map_size;i++){
+//                idx = (hashfvalue+i)%node_hash_map_size;
+//                if(map->node_entries[idx] ==  NULL){
+//                    if((map->no_entries+1)*1.0/map->size<0.35){
+//                        //Add node
+//                    	t_rr_to_rg_node_entry* node_entry_ptr = alloc_rr_to_rg_node_entry();
+//                        node_entry_ptr->rr_node = key;
+//                        node_entry_ptr->rg_node = node;
+//                        node_entry_ptr->usage = 1;
+//                        map->node_entries[idx] = node_entry_ptr;
+//                        map->no_entries++;
+//                        return node_entry_ptr;
+//                    }else{
+//                    	increase_rr_to_rg_node_hash_map_size(map);
+//                        return add_rr_to_rg_node(map,key,node);
+//                    }
+//                }else if(key == map->node_entries[idx]->rr_node){
+//                    map->node_entries[idx]->usage++;
+//                    return map->node_entries[idx];
+//                }
+//            }
+//            printf("Warning in add_node: Looped over every hashmap entry, hashmap seems to be full, which is not possible");
+//            return NULL;
+//        }
+//    }
+//
+//}
+
 static void add_rr_to_rg_node_entry(t_rr_to_rg_node_hash_map* map, t_rr_to_rg_node_entry* node_entry_ptr){
     int key = node_entry_ptr->rr_node;
     int value = node_entry_ptr->usage;

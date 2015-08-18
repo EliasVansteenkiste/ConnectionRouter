@@ -378,27 +378,36 @@ static void
 free_timing_driven_route_structs_and_arrays() {
 
     /* Frees all the stuctures needed only by the timing-driven connection router.        */
-    free(node_maps);
 
-	int inet;
+    //printf("EVDBG => 1\n");
+    int inet;
     for(inet = 0; inet<num_nets; inet++){
     		//print_rg(rg_roots[inet],0);
         free_rg(rg_roots[inet]);
-        free(node_maps[inet].node_entries);
+        //printf("EVDBG => 1a\n");
+        if(node_maps[inet].node_entries != NULL) free(node_maps[inet].node_entries);
+        //printf("EVDBG => 1b\n");
     }
+    free(node_maps);
     free_rr_to_rg_node_entries();
-
+    //printf("EVDBG => 2\n");
     free_route_graph_timing_structs();
+    //printf("EVDBG => 3\n");
     free(rg_roots);
+    //printf("EVDBG => 4\n");
     free(rg_sinks);
-
+    //printf("EVDBG => 5\n");
     /*TODO free all trace elements used while routing */
 
     free(trace_head_con);
+    //printf("EVDBG => 6\n");
     free(trace_tail_con);
 
+    //printf("EVDBG => 7\n");
     free(back_trace_head_con);
+    //printf("EVDBG => 8\n");
     free(back_trace_tail_con);
+    //printf("EVDBG => 9\n");
 
 }
 
@@ -474,6 +483,8 @@ timing_driven_route_con(int icon,
 
         /* Cut off con criticality at max_criticality. */
         con_crit = std::min(con_crit, max_criticality);
+
+        if(net==4)printf("con %d crit %f\n",icon,con_crit);
     }
 
     /* Update base costs according to fanout */
@@ -710,6 +721,7 @@ get_timing_driven_expected_cost(int inode,
         C_total = num_segs_same_dir * rr_indexed_data[cost_index].C_load +
                 num_segs_ortho_dir * rr_indexed_data[ortho_cost_index].C_load;
 
+//        printf("C_downstream %e, C_total %e\n",C_downstream,C_total);
 //        if((C_downstream-C_total)>(1.0e-14)){
 //        	C_total = C_downstream;
 //                printf("C_downstream - C_total %e\n",(C_downstream-C_total));
@@ -996,34 +1008,43 @@ update_net_delays_from_route_tree_conr(float *net_delays, int inet)
 
 static void con_to_net() {
     int icon, inet;
-    for (inet = 0; inet < num_nets; inet++){
+    for (inet = 0; inet < num_nets; inet++) {
         trace_head[inet] = NULL;
     }
     for (icon = 0; icon < num_cons; icon++) {
+        //printf("EVDBG -> con %d\n", icon);
         int netnr = cons[icon].net;
-        if(trace_head_con[icon]==NULL){
-        	printf("Warning: trace_head_con of con %d is NULL\n",icon);
-        }else{
-			if (trace_head[cons[icon].net] == NULL) {
-				trace_head[netnr] = trace_head_con[icon];
-				trace_tail[netnr] = trace_tail_con[icon];
-			} else {
-				struct s_trace* netit;
-				struct s_trace* conit = trace_head_con[icon];
-				struct s_trace* conprevit = NULL;
-				for(;conit->next!=NULL;conit=conit->next){
-					for(netit = trace_head[netnr];netit!=NULL;netit = netit->next){
-						if(netit->index == conit->index){
-							conprevit = conit;
-							break;
-						}
-					}
-				}
-				trace_tail[netnr]->next = conprevit;
-				trace_tail[netnr] = trace_tail_con[icon];
-			}
+        if (trace_head_con[icon] == NULL) {
+            printf("EVDBG -> Warning: trace_head_con of con %d is NULL\n", icon);
+        } else {
+            if (trace_head[cons[icon].net] == NULL) {
+                trace_head[netnr] = trace_head_con[icon];
+                //printf("EVDBG -> dbg 2b\n", icon);
+                trace_tail[netnr] = trace_tail_con[icon];
+            } else {
+                //printf("EVDBG -> dbg 3\n", icon);
+                //printf("con %d\n", icon);
+                struct s_trace* netit;
+                struct s_trace* conit = trace_head_con[icon];
+                struct s_trace* conprevit = NULL;
+                for (; conit->next != NULL; conit = conit->next) {
+                    for (netit = trace_head[netnr]; netit != NULL; netit = netit->next) {
+                        if (netit->index == conit->index) {
+                            conprevit = conit;
+                            break;
+                        }
+                    }
+                }
+                trace_tail[netnr]->next = conprevit;
+                trace_tail[netnr] = trace_tail_con[icon];
+            }
         }
     }
+    struct s_trace* netit = trace_head[0];
+    for (; netit->next != NULL; netit = netit->next) {
+        printf("%d, ", netit->index);
+    }
+    printf("\n");
 //#ifdef DEBUG
 //    printf("Check if every node in the connection traces is present in the net traces.\n");
 //    for (icon = 0; icon < num_cons; icon++) {
@@ -1067,7 +1088,7 @@ static void con_to_net() {
 static void add_con_td(int con, int net, float *net_delay, t_rr_to_rg_node_hash_map* node_map, float pres_fac) {
     struct s_trace* route_segment_start = trace_head_con[con];
     struct s_trace* tptr;
-    int inode;
+    int inode, check_sum = 0;
 
     if (route_segment_start == NULL) {/* No routing yet. */
         printf("Error in add_con_fast: no routing in route segment.\n");
@@ -1078,10 +1099,11 @@ static void add_con_td(int con, int net, float *net_delay, t_rr_to_rg_node_hash_
     boolean usage_increases = FALSE;
     int previous_usage =  -1;
 #endif
-    //printf("Path found: ");
+    if(net == 4) printf("Path found for con %d (net %d): ",con,net);
     for (tptr = route_segment_start;;) {
         inode = tptr->index;
-        //printf("%d (%d) (%d) -> ",inode,rr_node[inode].type, rr_node_route_inf[inode].usage);
+        check_sum += inode;
+        if(net == 4) printf("%d (%d) (%d) -> ",inode,rr_node[inode].type, rr_node_route_inf[inode].usage);
 #ifdef DEBUG
         if(previous_usage != -1 && rr_node_route_inf[inode].usage > previous_usage){
             usage_increases = TRUE;
@@ -1097,10 +1119,10 @@ static void add_con_td(int con, int net, float *net_delay, t_rr_to_rg_node_hash_
         }
         tptr = tptr->next;
     } /* End while loop -- did an entire traceback. */
-    //printf("\n");
+    if(net == 4) printf("| check_sum %d \n",check_sum);
 #ifdef DEBUG
     if(usage_increases){
-            //printf("Warning: usage goes up again, loops are induced in the routing graph!\n");
+            //printf("Warning: usage goes up again, loops are introduced in the routing graph!\n");
             printf("*%d*",con);
     }
 #endif

@@ -600,7 +600,7 @@ static float get_timing_driven_expected_cost(int inode, int target_node,
 
 	t_rr_type rr_type;
 	int cost_index, ortho_cost_index, num_segs_same_dir, num_segs_ortho_dir;
-	float expected_cost, cong_cost, Tdel;
+	float expected_cost, cong_cost, Tdel, C_total;
 
 	rr_type = rr_node[inode].type;
 
@@ -629,6 +629,9 @@ static float get_timing_driven_expected_cost(int inode, int target_node,
 										* rr_indexed_data[cost_index].C_load
 										+ num_segs_ortho_dir
 												* rr_indexed_data[ortho_cost_index].C_load);
+
+		C_total = (num_segs_same_dir * rr_indexed_data[cost_index].C_load + num_segs_ortho_dir * rr_indexed_data[ortho_cost_index].C_load);
+		if(C_total>0.0) printf("C_total %e\n",C_total);
 
 		Tdel += rr_indexed_data[IPIN_COST_INDEX].T_linear;
 

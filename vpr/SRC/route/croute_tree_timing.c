@@ -786,7 +786,7 @@ load_Tdel(t_rg_node * subtree_rt_root,
 		    Tchild += switch_inf[iswitch].Tdel;	/* Intrinsic switch delay. */
 			load_Tdel(child_node, Tchild, con);
 		}else{
-			printf("Warning: load_rg_subgraph_Tdel is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d. The node will be discarded.\n");
+//			printf("Warning: load_rg_subgraph_Tdel is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d. The node will be discarded.\n");
 			stumbles_1++;
 
 		}
@@ -811,7 +811,7 @@ update_C_downstream(t_rg_node * rg_node, int icon){
 		    	C += C_downstream;
 		    }
 		}else{
-			printf("Warning: update_C_downstream is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d (net %d). The node will be discarded.\n", icon,cons[icon].net);
+//			printf("Warning: update_C_downstream is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d (net %d). The node will be discarded.\n", icon,cons[icon].net);
 			stumbles_0++;
 		}
         child_link = child_link->next;

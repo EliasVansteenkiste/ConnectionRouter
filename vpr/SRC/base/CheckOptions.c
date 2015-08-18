@@ -62,7 +62,7 @@ void CheckOptions(INP t_options Options, INP boolean TimingEnabled) {
 	/* If routing and timing is enabled, default to a timing router */
 	TimingRouter = (boolean)((Options.Count[OT_ROUTE] || default_flow) && TimingEnabled);
 	if (Options.Count[OT_ROUTER_ALGORITHM] > 0) {
-		if (TIMING_DRIVEN != Options.RouterAlgorithm) {
+		if (TIMING_DRIVEN != Options.RouterAlgorithm && TIMING_DRIVEN_CONR != Options.RouterAlgorithm) {
 			/* Turn off the timing router if they request a different router */
 			TimingRouter = FALSE;
 		}

@@ -1057,29 +1057,29 @@ typedef struct s_con {
     int net;
     int source;
     int source_block;
-    //int source_block_port;
-    //int source_block_pin;
+    int source_block_port;
+    int source_block_pin;
     int sink_block;
-    //int sink_block_port;
-    //int sink_block_pin;
+    int sink_block_port;
+    int sink_block_pin;
     int target_node;
     
     float previous_total_path_cost;
     float neighborhood;
     int previous_total_shares;
-} s_con;
+} t_con;
 
 typedef struct s_node_entry {
     int node;
     short usage;
-} s_node_entry;
+} t_node_entry;
 
 
 typedef struct s_node_hash_map{
-    s_node_entry** node_entries;
+    t_node_entry** node_entries;
     int size;
     int no_entries;
-} s_node_hash_map;
+} t_node_hash_map;
 
 struct s_linked_rg_edge_ref
 {
@@ -1122,13 +1122,18 @@ typedef struct s_rr_to_rg_node_entry {
     int rr_node;
     short usage;
     t_rg_node* rg_node;
-} s_rr_to_rg_node_entry;
+} t_rr_to_rg_node_entry;
+
+typedef struct s_link_chunk_rr_to_rg_nes {
+	t_rr_to_rg_node_entry* top;
+    struct s_link_chunk_rr_to_rg_nes* next;
+} t_link_chunk_rr_to_rg_nes;
 
 typedef struct s_rr_to_rg_node_hash_map{
-    s_rr_to_rg_node_entry** node_entries;
+    t_rr_to_rg_node_entry** node_entries;
     int size;
     int no_entries;
-} s_rr_to_rg_node_hash_map;
+} t_rr_to_rg_node_hash_map;
 
 
 #endif
