@@ -5,6 +5,7 @@ struct s_hash {
 	int index;
 	int count;
 	struct s_hash *next;
+	struct s_hash *prev;
 };
 
 /* name:  The string referred to by this hash entry.                        *

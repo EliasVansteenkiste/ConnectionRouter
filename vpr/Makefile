@@ -10,13 +10,16 @@
 ENABLE_GRAPHICS = false
 # can be true or false
 
-export BUILD_TYPE = release
+export BUILD_TYPE = debug
 # can be debug or release - this option gets inherited by the library libarchfpga 
 # by default, though libarchfpga's build type can be set independently in libarchfpga's Makefile.
 
+# COMPILER = clang++
+# COMPILER = /usr/local/bin/g++-4.8
+# COMPILER = /usr/local/bin/g++-4.9
 COMPILER = g++
 
-OPTIMIZATION_LEVEL_FOR_RELEASE_BUILD = -O3
+OPTIMIZATION_LEVEL_FOR_RELEASE_BUILD = -O0
 # can be -O0 (no optimization) to -O3 (full optimization), or -Os (optimize space)
 
 #############################################################################################
@@ -34,7 +37,7 @@ DEBUG_FLAGS = -g
 OPT_FLAGS = $(OPTIMIZATION_LEVEL_FOR_RELEASE_BUILD)
 INC_FLAGS = -I../libarchfpga/include
 
-FLAGS = $(INC_FLAGS) $(WARN_FLAGS) -D EZXML_NOMMAP -D_POSIX_C_SOURCE
+FLAGS = $(INC_FLAGS) $(DEBUG_FLAGS) $(WARN_FLAGS) -D EZXML_NOMMAP -D_POSIX_C_SOURCE
 
 UNAME := $(shell uname)
 # determine build env

@@ -198,12 +198,8 @@ static void reset_pin_class_scratch_pad_rec(
 	for (i = 0; i < pb_graph_node->pb_type->num_modes; i++) {
 		for (j = 0; j < pb_graph_node->pb_type->modes[i].num_pb_type_children;
 				j++) {
-			for (k = 0;
-					k
-							< pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb;
-					k++) {
-				reset_pin_class_scratch_pad_rec(
-						&pb_graph_node->child_pb_graph_nodes[i][j][k]);
+			for (k = 0; k < pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb; k++) {
+				reset_pin_class_scratch_pad_rec( &pb_graph_node->child_pb_graph_nodes[i][j][k]);
 			}
 		}
 	}
@@ -219,8 +215,7 @@ static void load_pin_class_by_depth(INOUTP t_pb_graph_node *pb_graph_node,
 			/* At primitive, determine which pin class each of its pins belong to */
 			for (i = 0; i < pb_graph_node->num_input_ports; i++) {
 				for (j = 0; j < pb_graph_node->num_input_pins[i]; j++) {
-					if (pb_graph_node->input_pins[i][j].parent_pin_class[depth]
-							== OPEN) {
+					if (pb_graph_node->input_pins[i][j].parent_pin_class[depth]	== OPEN) {
 						expand_pb_graph_node_and_load_pin_class_by_depth(
 								&pb_graph_node->input_pins[i][j],
 								&pb_graph_node->input_pins[i][j], depth,
@@ -231,8 +226,7 @@ static void load_pin_class_by_depth(INOUTP t_pb_graph_node *pb_graph_node,
 			}
 			for (i = 0; i < pb_graph_node->num_output_ports; i++) {
 				for (j = 0; j < pb_graph_node->num_output_pins[i]; j++) {
-					if (pb_graph_node->output_pins[i][j].parent_pin_class[depth]
-							== OPEN) {
+					if (pb_graph_node->output_pins[i][j].parent_pin_class[depth] == OPEN) {
 						expand_pb_graph_node_and_load_pin_class_by_depth(
 								&pb_graph_node->output_pins[i][j],
 								&pb_graph_node->output_pins[i][j], depth,
@@ -243,8 +237,7 @@ static void load_pin_class_by_depth(INOUTP t_pb_graph_node *pb_graph_node,
 			}
 			for (i = 0; i < pb_graph_node->num_clock_ports; i++) {
 				for (j = 0; j < pb_graph_node->num_clock_pins[i]; j++) {
-					if (pb_graph_node->clock_pins[i][j].parent_pin_class[depth]
-							== OPEN) {
+					if (pb_graph_node->clock_pins[i][j].parent_pin_class[depth]	== OPEN) {
 						expand_pb_graph_node_and_load_pin_class_by_depth(
 								&pb_graph_node->clock_pins[i][j],
 								&pb_graph_node->clock_pins[i][j], depth,
@@ -281,13 +274,8 @@ static void load_pin_class_by_depth(INOUTP t_pb_graph_node *pb_graph_node,
 	for (i = 0; i < pb_graph_node->pb_type->num_modes; i++) {
 		for (j = 0; j < pb_graph_node->pb_type->modes[i].num_pb_type_children;
 				j++) {
-			for (k = 0;
-					k
-							< pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb;
-					k++) {
-				load_pin_class_by_depth(
-						&pb_graph_node->child_pb_graph_nodes[i][j][k], depth,
-						input_count, output_count);
+			for (k = 0;k < pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb;k++) {
+				load_pin_class_by_depth(&pb_graph_node->child_pb_graph_nodes[i][j][k], depth, input_count, output_count);
 			}
 		}
 	}

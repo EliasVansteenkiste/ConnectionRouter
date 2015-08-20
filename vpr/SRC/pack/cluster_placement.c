@@ -61,13 +61,9 @@ t_cluster_placement_stats *alloc_and_load_cluster_placement_stats(void) {
 			sizeof(t_cluster_placement_stats));
 	for (i = 0; i < num_types; i++) {
 		if (EMPTY_TYPE != &type_descriptors[i]) {
-			cluster_placement_stats_list[i].valid_primitives = (t_cluster_placement_primitive **) my_calloc(
-					get_max_primitives_in_pb_type(type_descriptors[i].pb_type)
- 							+ 1, sizeof(t_cluster_placement_primitive*)); /* too much memory allocated but shouldn't be a problem */
+			cluster_placement_stats_list[i].valid_primitives = (t_cluster_placement_primitive **) my_calloc(get_max_primitives_in_pb_type(type_descriptors[i].pb_type) + 1, sizeof(t_cluster_placement_primitive*)); /* too much memory allocated but shouldn't be a problem */
 			cluster_placement_stats_list[i].curr_molecule = NULL;
-			load_cluster_placement_stats_for_pb_graph_node(
-					&cluster_placement_stats_list[i],
-					type_descriptors[i].pb_graph_head);
+			load_cluster_placement_stats_for_pb_graph_node(&cluster_placement_stats_list[i],type_descriptors[i].pb_graph_head);
 		}
 	}
 	return cluster_placement_stats_list;
@@ -297,13 +293,11 @@ static void load_cluster_placement_stats_for_pb_graph_node(
 	const t_pb_type *pb_type = pb_graph_node->pb_type;
 	boolean success;
 	if (pb_type->modes == 0) {
-		placement_primitive = (t_cluster_placement_primitive *) my_calloc(1,
-				sizeof(t_cluster_placement_primitive));
+		placement_primitive = (t_cluster_placement_primitive *) my_calloc(1,sizeof(t_cluster_placement_primitive));
 		placement_primitive->pb_graph_node = pb_graph_node;
 		placement_primitive->valid = TRUE;
 		pb_graph_node->cluster_placement_primitive = placement_primitive;
-		placement_primitive->base_cost = compute_primitive_base_cost(
-				pb_graph_node);
+		placement_primitive->base_cost = compute_primitive_base_cost(pb_graph_node);
 		success = FALSE;
 		i = 0;
 		while (success == FALSE) {
@@ -326,11 +320,8 @@ static void load_cluster_placement_stats_for_pb_graph_node(
 	} else {
 		for (i = 0; i < pb_type->num_modes; i++) {
 			for (j = 0; j < pb_type->modes[i].num_pb_type_children; j++) {
-				for (k = 0; k < pb_type->modes[i].pb_type_children[j].num_pb;
-						k++) {
-					load_cluster_placement_stats_for_pb_graph_node(
-							cluster_placement_stats,
-							&pb_graph_node->child_pb_graph_nodes[i][j][k]);
+				for (k = 0; k < pb_type->modes[i].pb_type_children[j].num_pb; k++) {
+					load_cluster_placement_stats_for_pb_graph_node(cluster_placement_stats,&pb_graph_node->child_pb_graph_nodes[i][j][k]);
 				}
 			}
 		}
@@ -396,16 +387,9 @@ void set_mode_cluster_placement_stats(INP t_pb_graph_node *pb_graph_node,
 	int i, j, k;
 	for (i = 0; i < pb_graph_node->pb_type->num_modes; i++) {
 		if (i != mode) {
-			for (j = 0;
-					j < pb_graph_node->pb_type->modes[i].num_pb_type_children;
-					j++) {
-				for (k = 0;
-						k
-								< pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb;
-						k++) {
-					update_primitive_cost_or_status(
-							&pb_graph_node->child_pb_graph_nodes[i][j][k], 0,
-							FALSE);
+			for (j = 0;	j < pb_graph_node->pb_type->modes[i].num_pb_type_children; j++) {
+				for (k = 0; k < pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb; k++) {
+					update_primitive_cost_or_status(&pb_graph_node->child_pb_graph_nodes[i][j][k], 0, FALSE);
 				}
 			}
 		}
@@ -423,8 +407,7 @@ static void update_primitive_cost_or_status(INP t_pb_graph_node *pb_graph_node,
 	t_cluster_placement_primitive *placement_primitive;
 	if (pb_graph_node->pb_type->num_modes == 0) {
 		/* is primitive */
-		placement_primitive =
-				(t_cluster_placement_primitive*) pb_graph_node->cluster_placement_primitive;
+		placement_primitive = (t_cluster_placement_primitive*) pb_graph_node->cluster_placement_primitive;
 		if (valid) {
 			placement_primitive->incremental_cost += incremental_cost;
 		} else {
@@ -432,16 +415,9 @@ static void update_primitive_cost_or_status(INP t_pb_graph_node *pb_graph_node,
 		}
 	} else {
 		for (i = 0; i < pb_graph_node->pb_type->num_modes; i++) {
-			for (j = 0;
-					j < pb_graph_node->pb_type->modes[i].num_pb_type_children;
-					j++) {
-				for (k = 0;
-						k
-								< pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb;
-						k++) {
-					update_primitive_cost_or_status(
-							&pb_graph_node->child_pb_graph_nodes[i][j][k],
-							incremental_cost, valid);
+			for (j = 0;	j < pb_graph_node->pb_type->modes[i].num_pb_type_children;	j++) {
+				for (k = 0;	k < pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb; k++) {
+					update_primitive_cost_or_status(&pb_graph_node->child_pb_graph_nodes[i][j][k],incremental_cost, valid);
 				}
 			}
 		}
@@ -772,7 +748,7 @@ static boolean root_passes_early_filter(INP t_pb_graph_node *root, INP t_pack_mo
 		for(j = 0; feasible && j < root->num_output_pins[i]; j++) {
 			if(root->output_pins[i][j].is_forced_connection) {
 				model_port = root->output_pins[i][j].port->model_port;
-				inet = root_block->output_nets[model_port->index][j];
+				inet = root_block->nets->output_nets[model_port->index][j];
 				if(inet != OPEN) {
 					/* This output pin has a dedicated connection to one output, make sure that molecule works */
 					if(molecule->type == MOLECULE_SINGLE_ATOM) {

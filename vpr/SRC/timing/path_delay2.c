@@ -22,6 +22,76 @@ static int *alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr);
 static void show_combinational_cycle_candidates();
 
 /************************** Subroutine definitions ***************************/
+static int is_explicit_connection(int inode)
+{
+	int i;
+	//printf("Checking: %d with: \n",inode);
+	for(i = 0; i < num_tnodes_explicit; i++ )
+	{
+	//	printf("%d ",i);
+		if(tnode_explicit[i] == &tnode[inode]){
+	//		printf("Found: %d\n",inode);
+			return i;
+		}
+	}
+	//printf("\n");
+	return -1;
+}
+
+static int is_the_same_edge(t_tedge edge_a,t_tedge edge_b)
+{
+	if(edge_a.to_node == edge_b.to_node
+		&& edge_a.to_port == edge_b.to_port
+		&& edge_a.to_pin == edge_b.to_pin)
+		return TRUE;
+	return FALSE;
+}
+
+static void set_fanin_for_explicit_connections(int *tnode_num_fanin)
+{
+	int inode,inode_explicit,inode_explicit_trav, iedge,iedge_explicit,iedge_explicit_trav, to_node, num_edges, error, num_sinks,i;
+	t_tedge *marked_tedge;
+	t_tedge temp_tedge;
+	int max_num_marked_tedge = 10,idx_marked_tedge = 0; /*  We will mark the inodes that drive the same tnode in order not to count more
+								than once the fanin*/
+
+	marked_tedge = (t_tedge *)my_malloc(max_num_marked_tedge * sizeof(t_tedge));
+
+	for (inode = 0; inode < num_tnodes; inode++) { 																/* For all the nodes */
+		if( (inode_explicit = is_explicit_connection(inode)) != -1 ){												/* If the node has more than one edge that is explicit to another node */
+			for(inode_explicit_trav = 0; inode_explicit_trav < num_tnodes_explicit; inode_explicit_trav++){		/* Compare the above node with all the other nodes that have an explicit connection */
+				for(iedge_explicit = 0; iedge_explicit < tnode[inode_explicit].num_edges; iedge_explicit++)		/* For all the edges of the first node */
+					for(iedge_explicit_trav = 0; iedge_explicit_trav < tnode[inode_explicit_trav].num_edges; iedge_explicit_trav++) /* For all the edges of the node that we compare with */
+						if(is_the_same_edge(tnode_explicit[inode_explicit]->out_edges[iedge_explicit],tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav])){ /* If they share an explicit connection to the same node, on the same port and pin	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	 	do not count the fanin for both of them but only for one of them */
+							for(i = 0; i < idx_marked_tedge ;i++)
+								if(is_the_same_edge(tnode_explicit[inode_explicit_trav]->out_edges[iedge_explicit_trav],marked_tedge[i]))
+									break;
+							/* We mark all the edges on each pin and port in order not to count the fanin twice */
+
+							if(i == idx_marked_tedge){
+								/* Then these two are driving the same pin */
+								idx_marked_tedge++;
+								if(idx_marked_tedge == max_num_marked_tedge){
+									max_num_marked_tedge = max_num_marked_tedge << 1;
+									marked_tedge = (t_tedge *)my_realloc(marked_tedge, max_num_marked_tedge * sizeof(t_tedge));
+								}
+								temp_tedge = tnode_explicit[inode_explicit]->out_edges[iedge_explicit];
+								marked_tedge[idx_marked_tedge - 1] = temp_tedge;
+
+								if (temp_tedge.to_node < 0
+										|| temp_tedge.to_node >= num_tnodes) {
+									vpr_printf(TIO_MESSAGE_ERROR, "in alloc_and_load_tnode_fanin_and_check_edges:\n");
+									vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d edge #%d goes to illegal node #%d.\n",inode, iedge, to_node);
+									error++;
+								}
+								printf("Found an explicit edge: to_node:%d to_port:%d to_pin:%d\n",temp_tedge.to_node,temp_tedge.to_port,temp_tedge.to_pin);
+								tnode_num_fanin[temp_tedge.to_node]++;
+							}
+						}
+			}
+		}
+	}
+}
 
 static int *
 alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
@@ -38,21 +108,29 @@ alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
 	error = 0;
 	num_sinks = 0;
 
-	for (inode = 0; inode < num_tnodes; inode++) {
-		num_edges = tnode[inode].num_edges;
+	set_fanin_for_explicit_connections(tnode_num_fanin);
 
+
+	for (inode = 0; inode < num_tnodes; inode++) {
+		if(is_explicit_connection(inode) != -1)
+			continue;
+		num_edges = tnode[inode].num_edges;
+		//printf("Node tested for fanin: %s : %d\n",logical_block[tnode[inode].block].name,inode);
 		if (num_edges > 0) {
 			tedge = tnode[inode].out_edges;
+
 			for (iedge = 0; iedge < num_edges; iedge++) {
 				to_node = tedge[iedge].to_node;
+				//printf("Edge: %d to_node:%d\n",iedge,to_node);
+				//printf("From node: %d to_node: %d\n",inode,to_node);
 				if (to_node < 0 || to_node >= num_tnodes) {
 					vpr_printf(TIO_MESSAGE_ERROR, "in alloc_and_load_tnode_fanin_and_check_edges:\n");
-					vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d edge #%d goes to illegal node #%d.\n",
-							inode, iedge, to_node);
+					vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d edge #%d goes to illegal node #%d.\n",inode, iedge, to_node);
 					error++;
 				}
-
+				//if(tnode[inode].type != TN_PRIMITIVE_IPIN_EXPLICIT)
 				tnode_num_fanin[to_node]++;
+				//printf("edge: %d fanin: %d node:%s amount:%d from: %d to_node: %d\n",iedge,tnode_num_fanin[to_node],logical_block[tnode[to_node].block].name,tnode_num_fanin[to_node],inode,to_node);
 			}
 		}
 
@@ -62,8 +140,7 @@ alloc_and_load_tnode_fanin_and_check_edges(int *num_sinks_ptr) {
 
 		else {
 			vpr_printf(TIO_MESSAGE_ERROR, "in alloc_and_load_tnode_fanin_and_check_edges:\n");
-			vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d has %d edges.\n", 
-					inode, num_edges);
+			vpr_printf(TIO_MESSAGE_ERROR, "\ttnode #%d has %d edges.\n", inode, num_edges);
 			error++;
 		}
 
@@ -85,8 +162,7 @@ int alloc_and_load_timing_graph_levels(void) {
 	 * Also returns the number of sinks in the graph (nodes with no fanout).      */
 
 	t_linked_int *free_list_head, *nodes_at_level_head;
-	int inode, num_at_level, iedge, to_node, num_edges, num_sinks, num_levels,
-			i;
+	int inode, num_at_level, iedge, to_node, num_edges, num_sinks, num_levels,i;
 	t_tedge *tedge;
 
 	/* [0..num_tnodes-1]. # of in-edges to each tnode that have not yet been    *
@@ -103,8 +179,7 @@ int alloc_and_load_timing_graph_levels(void) {
 	 * Temporarily need one extra level on the end because I look at the first  *
 	 * empty level.                                                             */
 
-	tnodes_at_level = (struct s_ivec *) my_malloc(
-			(num_tnodes + 1) * sizeof(struct s_ivec));
+	tnodes_at_level = (struct s_ivec *) my_malloc((num_tnodes + 1) * sizeof(struct s_ivec));
 
 	/* Scan through the timing graph, putting all the primary input nodes (no    *
 	 * fanin) into level 0 of the level structure.                               */
@@ -113,14 +188,16 @@ int alloc_and_load_timing_graph_levels(void) {
 
 	for (inode = 0; inode < num_tnodes; inode++) {
 		if (tnode_fanin_left[inode] == 0) {
-			num_at_level++;
-			nodes_at_level_head = insert_in_int_list(nodes_at_level_head, inode,
-					&free_list_head);
+			//if(tnode[inode].type == 0){
+			//	printf("name of fanin == 0 : %s %d type:%d\n",logical_block[tnode[inode].block].name,inode,tnode[inode].type);
+				num_at_level++;
+				nodes_at_level_head = insert_in_int_list(nodes_at_level_head, inode,&free_list_head);
+			//}else
+				//printf("NOT INCLUDED: name of fanin == 0 : %s %d type:%d\n",logical_block[tnode[inode].block].name,inode,tnode[inode].type);
 		}
 	}
 
-	alloc_ivector_and_copy_int_list(&nodes_at_level_head, num_at_level,
-			&tnodes_at_level[0], &free_list_head);
+	alloc_ivector_and_copy_int_list(&nodes_at_level_head, num_at_level,&tnodes_at_level[0], &free_list_head);
 
 	num_levels = 0;
 
@@ -136,21 +213,19 @@ int alloc_and_load_timing_graph_levels(void) {
 			for (iedge = 0; iedge < num_edges; iedge++) {
 				to_node = tedge[iedge].to_node;
 				tnode_fanin_left[to_node]--;
-
+				//printf("From node: %s to_node: %s fanin_left:%d\n",logical_block[tnode[iedge].block].name,logical_block[tnode[to_node].block].name,tnode_fanin_left[to_node]);
 				if (tnode_fanin_left[to_node] == 0) {
 					num_at_level++;
-					nodes_at_level_head = insert_in_int_list(
-							nodes_at_level_head, to_node, &free_list_head);
+					//printf("Node:%s to_node:%s \n",logical_block[tnode[inode].block].name,logical_block[tnode[to_node].block].name);
+					nodes_at_level_head = insert_in_int_list(nodes_at_level_head, to_node, &free_list_head);
 				}
 			}
 		}
 
-		alloc_ivector_and_copy_int_list(&nodes_at_level_head, num_at_level,
-				&tnodes_at_level[num_levels], &free_list_head);
+		alloc_ivector_and_copy_int_list(&nodes_at_level_head, num_at_level,	&tnodes_at_level[num_levels], &free_list_head);
 	}
 
-	tnodes_at_level = (struct s_ivec *) my_realloc(tnodes_at_level,
-			num_levels * sizeof(struct s_ivec));
+	tnodes_at_level = (struct s_ivec *) my_realloc(tnodes_at_level,	num_levels * sizeof(struct s_ivec));
 	num_tnode_levels = num_levels;
 
 	free(tnode_fanin_left);
@@ -185,7 +260,7 @@ void check_timing_graph(int num_sinks) {
 		if (num_tnodes > num_tnodes_check) {
 			show_combinational_cycle_candidates();
 		}
-		error++;
+		//error++;
 	}
 	/* Todo: Add error checks that # of flip-flops, memories, and other
 	 black boxes match # of sinks/sources*/
@@ -225,15 +300,13 @@ float print_critical_path_node(FILE * fp, t_linked_int * critical_path_node) {
 	}
 
 	if (pb_graph_pin != NULL) {
-		fprintf(fp, "Pin: %s.%s[%d] pb (%s)", pb_graph_pin->parent_node->pb_type->name,
-			pb_graph_pin->port->name, pb_graph_pin->pin_number, block[iblk].pb->rr_node_to_pb_mapping[pb_graph_pin->pin_count_in_cluster]->name);
+		fprintf(fp, "Pin: %s.%s[%d] pb (%s)", pb_graph_pin->parent_node->pb_type->name, pb_graph_pin->port->name, pb_graph_pin->pin_number, block[iblk].pb->rr_node_to_pb_mapping[pb_graph_pin->pin_count_in_cluster]->name);
 	}
 	if (type != TN_INPAD_SOURCE && type != TN_OUTPAD_SINK) {
 		fprintf(fp, "\n");
 	}
 
-	fprintf(fp, "T_arr: %g  T_req: %g  ", tnode[inode].T_arr,
-			tnode[inode].T_req);
+	fprintf(fp, "T_arr: %g  T_req: %g  ", tnode[inode].T_arr, tnode[inode].T_req);
 
 	next_crit_node = critical_path_node->next;
 	if (next_crit_node != NULL) {
@@ -246,8 +319,7 @@ float print_critical_path_node(FILE * fp, t_linked_int * critical_path_node) {
 	}
 
 	if (type == TN_CB_OPIN) {
-		inet =
-				block[iblk].pb->rr_graph[pb_graph_pin->pin_count_in_cluster].net_num;
+		inet = block[iblk].pb->rr_graph[pb_graph_pin->pin_count_in_cluster].net_num;
 		inet = vpack_to_clb_net_mapping[inet];
 		fprintf(fp, "External-to-Block Net: #%d (%s).  Pins on net: %d.\n",
 				inet, clb_net[inet].name, (clb_net[inet].num_sinks + 1));

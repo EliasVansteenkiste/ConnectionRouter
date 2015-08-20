@@ -217,8 +217,6 @@ typedef struct s_logical_block {
 	enum logical_block_types type; /* I/O, combinational logic, or latch */
 	t_model* model; /* Technology-mapped type (eg. LUT, Flip-flop, memory slice, inpad, etc) */
 
-	int **input_nets; /* [0..num_input_ports-1][0..num_port_pins-1] List of input nets connected to this logical_block. */
-	int **output_nets; /* [0..num_output_ports-1][0..num_port_pins-1] List of output nets connected to this logical_block. */
 	int clock_net; /* Clock net connected to this logical_block. */
 
 	t_nets *nets;
@@ -1092,16 +1090,26 @@ typedef struct s_vpr_setup {
 
 typedef struct s_con {
     char *name;
+
     int net;
+
     int source;
     int source_block;
     int source_block_port;
     int source_block_pin;
+<<<<<<< HEAD
+    int sink_block;
+    int sink_block_port;
+    int sink_block_pin;
+    int target_node;
+=======
+
     int sink_block;
     int sink_block_port;
     int sink_block_pin;
 
     int target_node; /* sink node */
+>>>>>>> bd0cba18337a0fb8904260c13cc8ecc5eb636fdd
     
     float previous_total_path_cost;
     float neighborhood;

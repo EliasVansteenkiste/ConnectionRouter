@@ -93,15 +93,12 @@ void alloc_and_load_all_pb_graphs(boolean load_power_structures) {
 	for (i = 0; i < num_types; i++) {
 		if (type_descriptors[i].pb_type) {
 			pin_count_in_cluster = 0;
-			type_descriptors[i].pb_graph_head = (t_pb_graph_node*) my_calloc(1,
-					sizeof(t_pb_graph_node));
-			alloc_and_load_pb_graph(type_descriptors[i].pb_graph_head, NULL,
-					type_descriptors[i].pb_type, 0, load_power_structures);
-			type_descriptors[i].pb_graph_head->total_pb_pins =
-					pin_count_in_cluster;
+			type_descriptors[i].pb_graph_head = (t_pb_graph_node*) my_calloc(1,	sizeof(t_pb_graph_node));
+			/* It initializes the physical blocks */
+			alloc_and_load_pb_graph(type_descriptors[i].pb_graph_head, NULL,type_descriptors[i].pb_type, 0, load_power_structures);
+			type_descriptors[i].pb_graph_head->total_pb_pins = pin_count_in_cluster;
 			alloc_and_load_pin_locations_from_pb_graph(&type_descriptors[i]);
-			load_pin_classes_in_pb_graph_head(
-					type_descriptors[i].pb_graph_head);
+			load_pin_classes_in_pb_graph_head(type_descriptors[i].pb_graph_head);
 		} else {
 			type_descriptors[i].pb_graph_head = NULL;
 			assert(&type_descriptors[i] == EMPTY_TYPE);
@@ -196,25 +193,18 @@ static void alloc_and_load_pb_graph(INOUTP t_pb_graph_node *pb_graph_node,
 			assert(!pb_type->ports[i].is_clock);
 			pb_graph_node->num_output_ports++;
 		} else {
-			assert(
-					pb_type->ports[i].is_clock && pb_type->ports[i].type == IN_PORT);
+			assert(pb_type->ports[i].is_clock && pb_type->ports[i].type == IN_PORT);
 			pb_graph_node->num_clock_ports++;
 		}
 	}
+	/* The number of pins is being read from the architecture */
+	pb_graph_node->num_input_pins = (int*) my_calloc(pb_graph_node->num_input_ports, sizeof(int));
+	pb_graph_node->num_output_pins = (int*) my_calloc(pb_graph_node->num_output_ports, sizeof(int));
+	pb_graph_node->num_clock_pins = (int*) my_calloc(pb_graph_node->num_clock_ports, sizeof(int));
 
-	pb_graph_node->num_input_pins = (int*) my_calloc(
-			pb_graph_node->num_input_ports, sizeof(int));
-	pb_graph_node->num_output_pins = (int*) my_calloc(
-			pb_graph_node->num_output_ports, sizeof(int));
-	pb_graph_node->num_clock_pins = (int*) my_calloc(
-			pb_graph_node->num_clock_ports, sizeof(int));
-
-	pb_graph_node->input_pins = (t_pb_graph_pin**) my_calloc(
-			pb_graph_node->num_input_ports, sizeof(t_pb_graph_pin*));
-	pb_graph_node->output_pins = (t_pb_graph_pin**) my_calloc(
-			pb_graph_node->num_output_ports, sizeof(t_pb_graph_pin*));
-	pb_graph_node->clock_pins = (t_pb_graph_pin**) my_calloc(
-			pb_graph_node->num_clock_ports, sizeof(t_pb_graph_pin*));
+	pb_graph_node->input_pins = (t_pb_graph_pin**) my_calloc(pb_graph_node->num_input_ports, sizeof(t_pb_graph_pin*));
+	pb_graph_node->output_pins = (t_pb_graph_pin**) my_calloc(pb_graph_node->num_output_ports, sizeof(t_pb_graph_pin*));
+	pb_graph_node->clock_pins = (t_pb_graph_pin**) my_calloc(pb_graph_node->num_clock_ports, sizeof(t_pb_graph_pin*));
 
 	i_input = i_output = i_clockport = 0;
 	for (i = 0; i < pb_type->num_ports; i++) {
@@ -224,8 +214,7 @@ static void alloc_and_load_pb_graph(INOUTP t_pb_graph_node *pb_graph_node,
 			assert(pb_type->num_modes != 0 || pb_type->ports[i].is_clock);
 		}
 		if (pb_type->ports[i].type == IN_PORT && !pb_type->ports[i].is_clock) {
-			pb_graph_node->input_pins[i_input] = (t_pb_graph_pin*) my_calloc(
-					pb_type->ports[i].num_pins, sizeof(t_pb_graph_pin));
+			pb_graph_node->input_pins[i_input] = (t_pb_graph_pin*) my_calloc(pb_type->ports[i].num_pins, sizeof(t_pb_graph_pin));
 			pb_graph_node->num_input_pins[i_input] = pb_type->ports[i].num_pins;
 			for (j = 0; j < pb_type->ports[i].num_pins; j++) {
 				pb_graph_node->input_pins[i_input][j].input_edges = NULL;
@@ -234,85 +223,62 @@ static void alloc_and_load_pb_graph(INOUTP t_pb_graph_node *pb_graph_node,
 				pb_graph_node->input_pins[i_input][j].num_output_edges = 0;
 				pb_graph_node->input_pins[i_input][j].pin_number = j;
 				pb_graph_node->input_pins[i_input][j].port = &pb_type->ports[i];
-				pb_graph_node->input_pins[i_input][j].parent_node =
-						pb_graph_node;
-				pb_graph_node->input_pins[i_input][j].pin_count_in_cluster =
-						pin_count_in_cluster;
+				pb_graph_node->input_pins[i_input][j].parent_node = pb_graph_node;
+				pb_graph_node->input_pins[i_input][j].pin_count_in_cluster = pin_count_in_cluster;
 				pb_graph_node->input_pins[i_input][j].type = PB_PIN_NORMAL;
 				if (pb_graph_node->pb_type->blif_model != NULL ) {
-					if (strcmp(pb_graph_node->pb_type->blif_model, ".output")
-							== 0) {
-						pb_graph_node->input_pins[i_input][j].type =
-								PB_PIN_OUTPAD;
+					if (strcmp(pb_graph_node->pb_type->blif_model, ".output") == 0) {
+						pb_graph_node->input_pins[i_input][j].type = PB_PIN_OUTPAD;
 					} else if (pb_graph_node->num_clock_ports != 0) {
-						pb_graph_node->input_pins[i_input][j].type =
-								PB_PIN_SEQUENTIAL;
+						pb_graph_node->input_pins[i_input][j].type = PB_PIN_SEQUENTIAL;
 					} else {
-						pb_graph_node->input_pins[i_input][j].type =
-								PB_PIN_TERMINAL;
+						pb_graph_node->input_pins[i_input][j].type = PB_PIN_TERMINAL;
 					}
 				}
 				pin_count_in_cluster++;
 			}
 			i_input++;
 		} else if (pb_type->ports[i].type == OUT_PORT) {
-			pb_graph_node->output_pins[i_output] = (t_pb_graph_pin*) my_calloc(
-					pb_type->ports[i].num_pins, sizeof(t_pb_graph_pin));
-			pb_graph_node->num_output_pins[i_output] =
-					pb_type->ports[i].num_pins;
+			pb_graph_node->output_pins[i_output] = (t_pb_graph_pin*) my_calloc( pb_type->ports[i].num_pins, sizeof(t_pb_graph_pin));
+			pb_graph_node->num_output_pins[i_output] = pb_type->ports[i].num_pins;
 			for (j = 0; j < pb_type->ports[i].num_pins; j++) {
 				pb_graph_node->output_pins[i_output][j].input_edges = NULL;
 				pb_graph_node->output_pins[i_output][j].num_input_edges = 0;
 				pb_graph_node->output_pins[i_output][j].output_edges = NULL;
 				pb_graph_node->output_pins[i_output][j].num_output_edges = 0;
 				pb_graph_node->output_pins[i_output][j].pin_number = j;
-				pb_graph_node->output_pins[i_output][j].port =
-						&pb_type->ports[i];
-				pb_graph_node->output_pins[i_output][j].parent_node =
-						pb_graph_node;
-				pb_graph_node->output_pins[i_output][j].pin_count_in_cluster =
-						pin_count_in_cluster;
+				pb_graph_node->output_pins[i_output][j].port = &pb_type->ports[i];
+				pb_graph_node->output_pins[i_output][j].parent_node = pb_graph_node;
+				pb_graph_node->output_pins[i_output][j].pin_count_in_cluster = pin_count_in_cluster;
 				pb_graph_node->output_pins[i_output][j].type = PB_PIN_NORMAL;
 				if (pb_graph_node->pb_type->blif_model != NULL ) {
-					if (strcmp(pb_graph_node->pb_type->blif_model, ".input")
-							== 0) {
-						pb_graph_node->output_pins[i_output][j].type =
-								PB_PIN_INPAD;
+					if (strcmp(pb_graph_node->pb_type->blif_model, ".input") == 0) {
+						pb_graph_node->output_pins[i_output][j].type = PB_PIN_INPAD;
 					} else if (pb_graph_node->num_clock_ports != 0) {
-						pb_graph_node->output_pins[i_output][j].type =
-								PB_PIN_SEQUENTIAL;
+						pb_graph_node->output_pins[i_output][j].type = PB_PIN_SEQUENTIAL;
 					} else {
-						pb_graph_node->output_pins[i_output][j].type =
-								PB_PIN_TERMINAL;
+						pb_graph_node->output_pins[i_output][j].type = PB_PIN_TERMINAL;
 					}
 				}
 				pin_count_in_cluster++;
 			}
 			i_output++;
 		} else {
-			assert(
-					pb_type->ports[i].is_clock && pb_type->ports[i].type == IN_PORT);
-			pb_graph_node->clock_pins[i_clockport] =
-					(t_pb_graph_pin*) my_calloc(pb_type->ports[i].num_pins,
-							sizeof(t_pb_graph_pin));
-			pb_graph_node->num_clock_pins[i_clockport] =
-					pb_type->ports[i].num_pins;
+			assert(	pb_type->ports[i].is_clock && pb_type->ports[i].type == IN_PORT);
+			pb_graph_node->clock_pins[i_clockport] = (t_pb_graph_pin*) my_calloc(pb_type->ports[i].num_pins,sizeof(t_pb_graph_pin));
+			pb_graph_node->num_clock_pins[i_clockport] = pb_type->ports[i].num_pins;
 			for (j = 0; j < pb_type->ports[i].num_pins; j++) {
 				pb_graph_node->clock_pins[i_clockport][j].input_edges = NULL;
 				pb_graph_node->clock_pins[i_clockport][j].num_input_edges = 0;
 				pb_graph_node->clock_pins[i_clockport][j].output_edges = NULL;
 				pb_graph_node->clock_pins[i_clockport][j].num_output_edges = 0;
 				pb_graph_node->clock_pins[i_clockport][j].pin_number = j;
-				pb_graph_node->clock_pins[i_clockport][j].port =
-						&pb_type->ports[i];
-				pb_graph_node->clock_pins[i_clockport][j].parent_node =
-						pb_graph_node;
-				pb_graph_node->clock_pins[i_clockport][j].pin_count_in_cluster =
-						pin_count_in_cluster;
+				pb_graph_node->clock_pins[i_clockport][j].port = &pb_type->ports[i];
+				pb_graph_node->clock_pins[i_clockport][j].parent_node = pb_graph_node;
+				pb_graph_node->clock_pins[i_clockport][j].pin_count_in_cluster = pin_count_in_cluster;
 				pb_graph_node->clock_pins[i_clockport][j].type = PB_PIN_NORMAL;
 				if (pb_graph_node->pb_type->blif_model != NULL ) {
-					pb_graph_node->clock_pins[i_clockport][j].type =
-							PB_PIN_CLOCK;
+					pb_graph_node->clock_pins[i_clockport][j].type = PB_PIN_CLOCK;
 				}
 				pin_count_in_cluster++;
 			}
@@ -322,41 +288,28 @@ static void alloc_and_load_pb_graph(INOUTP t_pb_graph_node *pb_graph_node,
 
 	/* Power */
 	if (load_power_structures) {
-		pb_graph_node->pb_node_power = (t_pb_graph_node_power*) my_calloc(1,
-				sizeof(t_pb_graph_node_power));
+		pb_graph_node->pb_node_power = (t_pb_graph_node_power*) my_calloc(1,sizeof(t_pb_graph_node_power));
 		pb_graph_node->pb_node_power->transistor_cnt_buffers = 0.;
 		pb_graph_node->pb_node_power->transistor_cnt_interc = 0.;
 		pb_graph_node->pb_node_power->transistor_cnt_pb_children = 0.;
 	}
 
 	/* Allocate and load child nodes for each mode and create interconnect in each mode */
-	pb_graph_node->child_pb_graph_nodes = (t_pb_graph_node***) my_calloc(
-			pb_type->num_modes, sizeof(t_pb_graph_node **));
+	pb_graph_node->child_pb_graph_nodes = (t_pb_graph_node***) my_calloc(pb_type->num_modes, sizeof(t_pb_graph_node **));
 	for (i = 0; i < pb_type->num_modes; i++) {
-		pb_graph_node->child_pb_graph_nodes[i] = (t_pb_graph_node**) my_calloc(
-				pb_type->modes[i].num_pb_type_children,
-				sizeof(t_pb_graph_node *));
+		pb_graph_node->child_pb_graph_nodes[i] = (t_pb_graph_node**) my_calloc(	pb_type->modes[i].num_pb_type_children,	sizeof(t_pb_graph_node *));
 		for (j = 0; j < pb_type->modes[i].num_pb_type_children; j++) {
-			pb_graph_node->child_pb_graph_nodes[i][j] =
-					(t_pb_graph_node*) my_calloc(
-							pb_type->modes[i].pb_type_children[j].num_pb,
-							sizeof(t_pb_graph_node));
+			pb_graph_node->child_pb_graph_nodes[i][j] =	(t_pb_graph_node*) my_calloc(pb_type->modes[i].pb_type_children[j].num_pb,sizeof(t_pb_graph_node));
 			for (k = 0; k < pb_type->modes[i].pb_type_children[j].num_pb; k++) {
-				alloc_and_load_pb_graph(
-						&pb_graph_node->child_pb_graph_nodes[i][j][k],
-						pb_graph_node, &pb_type->modes[i].pb_type_children[j],
-						k, load_power_structures);
+				alloc_and_load_pb_graph(&pb_graph_node->child_pb_graph_nodes[i][j][k],pb_graph_node, &pb_type->modes[i].pb_type_children[j],k, load_power_structures);
 			}
 		}
 	}
 
-	pb_graph_node->interconnect_pins = (t_interconnect_pins**) my_calloc(
-			pb_type->num_modes, sizeof(t_interconnect_pins *));
+	pb_graph_node->interconnect_pins = (t_interconnect_pins**) my_calloc(pb_type->num_modes, sizeof(t_interconnect_pins *));
 	for (i = 0; i < pb_type->num_modes; i++) {
 		/* Create interconnect for mode */
-		alloc_and_load_mode_interconnect(pb_graph_node,
-				pb_graph_node->child_pb_graph_nodes[i], &pb_type->modes[i],
-				load_power_structures);
+		alloc_and_load_mode_interconnect(pb_graph_node,	pb_graph_node->child_pb_graph_nodes[i], &pb_type->modes[i],	load_power_structures);
 	}
 }
 

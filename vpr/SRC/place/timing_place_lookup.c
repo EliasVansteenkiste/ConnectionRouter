@@ -357,8 +357,7 @@ static void alloc_and_assign_internal_structures(struct s_net **original_net,
 	alloc_block();
 
 	/* [0..num_nets-1][1..num_pins-1] */
-	net_delay = (float **) alloc_matrix(0, NET_COUNT - 1, 1, BLOCK_COUNT - 1,
-			sizeof(float));
+	net_delay = (float **) alloc_matrix(0, NET_COUNT - 1, 1, BLOCK_COUNT - 1, sizeof(float));
 
 	reset_placement();
 }
@@ -441,9 +440,7 @@ static void alloc_routing_structs(struct s_router_opts router_opts,
 	if (router_opts.route_type == GLOBAL) {
 		graph_type = GRAPH_GLOBAL;
 	} else {
-		graph_type = (
-				det_routing_arch.directionality == BI_DIRECTIONAL ?
-						GRAPH_BIDIR : GRAPH_UNIDIR);
+		graph_type = (det_routing_arch.directionality == BI_DIRECTIONAL ? GRAPH_BIDIR : GRAPH_UNIDIR);
 	}
 
 	build_rr_graph(graph_type, num_types, dummy_type_descriptors, nx, ny, grid,
@@ -458,8 +455,7 @@ static void alloc_routing_structs(struct s_router_opts router_opts,
 
 	alloc_and_load_rr_node_route_structs();
 
-	alloc_timing_driven_route_structs(&pin_criticality, &sink_order,
-			&rt_node_of_sink);
+	alloc_timing_driven_route_structs(&pin_criticality, &sink_order, &rt_node_of_sink);
 
 	bb_factor = nx + ny; /*set it to a huge value */
 	init_route_structs(bb_factor);
@@ -993,23 +989,19 @@ void compute_delay_lookup_tables(struct s_router_opts router_opts,
 
 	load_simplified_device();
 
-	alloc_and_assign_internal_structures(&original_net, &original_block,
-			&original_num_nets, &original_num_blocks);
+	alloc_and_assign_internal_structures(&original_net, &original_block, &original_num_nets, &original_num_blocks);
 	setup_chan_width(router_opts, chan_width_dist);
 
-	alloc_routing_structs(router_opts, det_routing_arch, segment_inf,
-			timing_inf, directs, num_directs);
+	alloc_routing_structs(router_opts, det_routing_arch, segment_inf, timing_inf, directs, num_directs);
 
 	longest_length = get_longest_segment_length(det_routing_arch, segment_inf);
 
 	/*now setup and compute the actual arrays */
 	alloc_delta_arrays();
-	compute_delta_arrays(router_opts, det_routing_arch, segment_inf, timing_inf,
-			longest_length);
+	compute_delta_arrays(router_opts, det_routing_arch, segment_inf, timing_inf, longest_length);
 
 	/*free all data structures that are no longer needed */
-	free_routing_structs(router_opts, det_routing_arch, segment_inf,
-			timing_inf);
+	free_routing_structs(router_opts, det_routing_arch, segment_inf, timing_inf);
 
 	restore_original_device();
 

@@ -70,6 +70,8 @@ int main(int argc, char **argv) {
 	
 	/* free data structures */
 	vpr_free_all(Arch, Options, vpr_setup);
+    
+    system( "PAUSE" );
 
 	/* Return 0 to single success to scripts */
 	return 0;

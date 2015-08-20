@@ -113,6 +113,16 @@ my_strdup(const char *str) {
 	return Dst;
 }
 
+void
+my_intdup(int *output,int* input,int size) {
+	int i;
+
+	for(i = 0; i < size; i++)
+	{
+		output[i] = input[i];
+	}
+}
+
 int my_atoi(const char *str) {
 
 	/* Returns the integer represented by the first part of the character       *
@@ -567,6 +577,24 @@ alloc_matrix(int nrmin, int nrmax, int ncmin, int ncmax, size_t elsize) {
 	return ((void **) cptr);
 }
 
+void ** realloc_matrix(char** pointer, int prev , int newSize , int noOfElements){
+
+	/* allocates an generic matrix with nrmax-nrmin + 1 rows and ncmax - *
+	 * ncmin + 1 columns, with each element of size elsize. i.e.         *
+	 * returns a pointer to a storage block [nrmin..nrmax][ncmin..ncmax].*
+	 * Simply cast the returned array pointer to the proper type.        */
+
+	int i;
+	char **cptr;
+
+	cptr = (char **) my_realloc(pointer,newSize * sizeof(char *));
+
+	for (i = prev; i <= newSize; i++)
+		cptr[i] = (char *) my_realloc(pointer,noOfElements * sizeof(char));
+
+	return ((void **) cptr);
+}
+
 /* NB:  need to make the pointer type void * instead of void ** to allow   *
  * any pointer to be passed in without a cast.                             */
 
@@ -786,3 +814,18 @@ int ipow(int base, int exp) {
 
 	return result;
 }
+
+/* This printf is designed so that we can turn off the prints whenever we want without having to use
+ * the preprocessor.
+ */
+void my_printf( int print_or_not,const char *fmt, ... )
+{
+    va_list args;
+
+    if(!print_or_not)
+    	return;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+

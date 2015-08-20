@@ -242,7 +242,7 @@ boolean primitive_type_feasible(int iblk, const t_pb_type *cur_pb_type) {
 	t_model_ports *port;
 	int i, j;
 	boolean second_pass;
-
+	t_nets* cur;
 	if (cur_pb_type == NULL) {
 		return FALSE;
 	}
@@ -260,14 +260,16 @@ boolean primitive_type_feasible(int iblk, const t_pb_type *cur_pb_type) {
 			if (cur_pb_type->ports[i].model_port == port) {
 				for (j = cur_pb_type->ports[i].num_pins; j < port->size; j++) {
 					if (port->dir == IN_PORT && !port->is_clock) {
-						if (logical_block[iblk].input_nets[port->index][j]
-								!= OPEN) {
-							return FALSE;
+						for(cur = logical_block[iblk].nets; cur != NULL; cur = cur->next){
+							if (cur->input_nets[port->index][j] != OPEN) {
+								return FALSE;
+							}
 						}
 					} else if (port->dir == OUT_PORT) {
-						if (logical_block[iblk].output_nets[port->index][j]
-								!= OPEN) {
-							return FALSE;
+						for(cur = logical_block[iblk].nets; cur != NULL; cur = cur->next){
+							if (cur->output_nets[port->index][j] != OPEN) {
+								return FALSE;
+							}
 						}
 					} else {
 						assert(port->dir == IN_PORT && port->is_clock);
@@ -471,14 +473,14 @@ int num_ext_inputs_logical_block(int iblk) {
 	while (port) {
 		if (port->is_clock == FALSE) {
 			for (ipin = 0; ipin < port->size; ipin++) {
-				if (logical_block[iblk].input_nets[port->index][ipin] != OPEN) {
+				if (logical_block[iblk].nets->input_nets[port->index][ipin] != OPEN) {
 					ext_inps++;
 				}
 				out_port = logical_block[iblk].model->outputs;
 				while (out_port) {
 					for (opin = 0; opin < out_port->size; opin++) {
 						output_net =
-								logical_block[iblk].output_nets[out_port->index][opin];
+								logical_block[iblk].nets->output_nets[out_port->index][opin];
 						if (output_net == OPEN)
 							continue;
 						/* TODO: I could speed things up a bit by computing the number of inputs *
@@ -486,7 +488,7 @@ int num_ext_inputs_logical_block(int iblk) {
 						 * clustering and storing them in arrays.  Look into if speed is a      *
 						 * problem.                                                             */
 
-						if (logical_block[iblk].input_nets[port->index][ipin]
+						if (logical_block[iblk].nets->input_nets[port->index][ipin]
 								== output_net) {
 							ext_inps--;
 							break;

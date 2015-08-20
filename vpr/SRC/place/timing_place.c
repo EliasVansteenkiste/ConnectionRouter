@@ -41,8 +41,7 @@ static float ** alloc_crit(t_chunk *chunk_list_ptr) {
 	local_crit = (float **) my_malloc(num_nets * sizeof(float *));
 
 	for (inet = 0; inet < num_nets; inet++) {
-		tmp_ptr = (float *) my_chunk_malloc(
-				(clb_net[inet].num_sinks) * sizeof(float), chunk_list_ptr);
+		tmp_ptr = (float *) my_chunk_malloc( (clb_net[inet].num_sinks) * sizeof(float), chunk_list_ptr);
 		local_crit[inet] = tmp_ptr - 1; /* [1..num_sinks] */
 	}
 
@@ -126,11 +125,9 @@ t_slack * alloc_lookups_and_criticalities(t_chan_width_dist chan_width_dist,
 
 	t_slack * slacks = alloc_and_load_timing_graph(timing_inf);
 
-	(*net_delay) = alloc_net_delay(&net_delay_ch, clb_net,
-			num_nets);
+	(*net_delay) = alloc_net_delay(&net_delay_ch, clb_net, num_nets);
 
-	compute_delay_lookup_tables(router_opts, det_routing_arch, segment_inf,
-			timing_inf, chan_width_dist, directs, num_directs);
+	compute_delay_lookup_tables(router_opts, det_routing_arch, segment_inf,timing_inf, chan_width_dist, directs, num_directs);
 	
 	timing_place_crit = alloc_crit(&timing_place_crit_ch);
 
