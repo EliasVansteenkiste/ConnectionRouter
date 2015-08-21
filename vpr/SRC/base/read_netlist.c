@@ -961,7 +961,7 @@ static void load_external_nets_and_cb(INP int L_num_blocks,
 		/* First determine nets external to complex blocks */
 		assert(
 				block_list[i].type->pb_type->num_input_pins + block_list[i].type->pb_type->num_output_pins + block_list[i].type->pb_type->num_clock_pins == block_list[i].type->num_pins / block_list[i].type->capacity);
-		char tempWriteBuffer[20];
+        char tempWriteBuffer[500]; /*->EV_DBG: When this number is too low it causes hard to debug memory errors, that only pop up at the end of this function, symptoms were sigabrt in xcode, abort trap 6 mentioning when running program, valgrind gives __stack_chk_fail ! TODO maybe change this static buffer to a dynamic one */
 
 
 
@@ -1096,6 +1096,7 @@ static void load_external_nets_and_cb(INP int L_num_blocks,
 	}
 	free(count);
 	free_hash_table(ext_nhash);
+    printf("This shit is going down.\n");
 }
 
 /* Recursive function that fills rr_graph of cb with net numbers starting at the given rr_node */
@@ -1453,8 +1454,10 @@ void free_logical_blocks(void) {
 			}
 			port = port->next;
 		}
-		if (logical_block[iblk].nets->input_net_tnodes) 
+        if (logical_block[iblk].nets->input_net_tnodes){
+        	/*printf("Model name %s\n",logical_block[iblk].model->name);*/
 			free(logical_block[iblk].nets->input_net_tnodes);
+        }
 		
 		tvptr = logical_block[iblk].packed_molecules;
 		while (tvptr != NULL) {

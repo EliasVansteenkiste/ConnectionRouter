@@ -1107,6 +1107,8 @@ static void io_line(int in_or_out, int doall, t_model *io_model) {
 		logical_block[num_logical_blocks - 1].clock_net = OPEN;
 		logical_block[num_logical_blocks - 1].nets->input_nets = NULL;
 		logical_block[num_logical_blocks - 1].nets->output_nets = NULL;
+		logical_block[num_logical_blocks - 1].nets->output_net_tnodes = NULL;
+		logical_block[num_logical_blocks - 1].nets->input_net_tnodes = NULL;
 		logical_block[num_logical_blocks - 1].model = io_model;
 
 		len = strlen(ptr);

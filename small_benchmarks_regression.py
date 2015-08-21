@@ -10,7 +10,7 @@ def ppr(circuitpath):
         f.close
         vpr = "vpr/vpr "
         archfile = " vtr_flow/arch/timing/k6_N10_40nm.xml "
-        options = " -router_algorithm timing_driven_conr -first_iter_pres_fac 0.5 -initial_pres_fac 0.5 "
+        options = " -router_algorithm timing_driven -first_iter_pres_fac 0.5 -initial_pres_fac 0.5 "
 #        subprocess.call(vpr+archfile+circuitpath+options+" 2>&1 ", shell=True)
 #        print(vpr+archfile+circuitpath+options)
         subprocess.call(vpr+archfile+circuitpath+options+" >> "+outputfile, shell=True)
