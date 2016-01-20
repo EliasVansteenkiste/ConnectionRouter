@@ -1,7 +1,9 @@
-/*#include <stdlib.h> */
-#include <stdio.h>
-#include <math.h>
+#include <cstdio>
+#include <cmath>
+using namespace std;
+
 #include <assert.h>
+
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
@@ -61,62 +63,29 @@ enum swap_result {
 	REJECTED, ACCEPTED, ABORTED
 };
 
+struct s_placer_statistics {
+	double av_cost, av_bb_cost, av_timing_cost,
+	       sum_of_squares, av_delay_cost;
+	int success_sum;
+};
+
+typedef struct s_placer_statistics t_placer_statistics;
+
 #define MAX_INV_TIMING_COST 1.e9
 /* Stops inverse timing cost from going to infinity with very lax timing constraints, 
 which avoids multiplying by a gigantic inverse_prev_timing_cost when auto-normalizing. 
 The exact value of this cost has relatively little impact, but should not be
 large enough to be on the order of timing costs for normal constraints. */
 
-/********************** Data Sturcture Definition ***************************/
-/* Stores the information of the move for a block that is       *
- * moved during placement                                       *
- * block_num: the index of the moved block                      *
- * xold: the x_coord that the block is moved from               *
- * xnew: the x_coord that the block is moved to                 *
- * yold: the y_coord that the block is moved from               *
- * xnew: the x_coord that the block is moved to                 *
- */
-typedef struct s_pl_moved_block {
-	int block_num;
-	int xold;
-	int xnew;
-	int yold;
-	int ynew;
-	int zold;
-	int znew;
-	int swapped_to_empty;
-}t_pl_moved_block;
-
-/* Stores the list of blocks to be moved in a swap during       *
- * placement.                                                   *
- * num_moved_blocks: total number of blocks moved when          *
- *                   swapping two blocks.                       *
- * moved blocks: a list of moved blocks data structure with     *
- *               information on the move.                       *
- *               [0...num_moved_blocks-1]                       *
- */
-typedef struct s_pl_blocks_to_be_moved {
-	int num_moved_blocks;
-	t_pl_moved_block * moved_blocks;
-}t_pl_blocks_to_be_moved;
-
-
 /********************** Variables local to place.c ***************************/
 
 /* Cost of a net, and a temporary cost of a net used during move assessment. */
-static float *net_cost = NULL, *temp_net_cost = NULL; /* [0..num_nets-1] */
-
-/* legal positions for type */
-typedef struct s_legal_pos {
-	int x;
-	int y;
-	int z;
-}t_legal_pos;
+static float *net_cost = NULL, *temp_net_cost = NULL; /* [0..g_clbs_nlist.net.size()-1] */
 
 static t_legal_pos **legal_pos = NULL; /* [0..num_types-1][0..type_tsize - 1] */
 static int *num_legal_pos = NULL; /* [0..num_legal_pos-1] */
 
-/* [0...num_nets-1]                                                              *
+/* [0...g_clbs_nlist.net.size()-1]                                               *
  * A flag array to indicate whether the specific bounding box has been updated   *
  * in this particular swap or not. If it has been updated before, the code       *
  * must use the updated data, instead of the out-of-date data passed into the    *
@@ -128,16 +97,16 @@ static int *num_legal_pos = NULL; /* [0..num_legal_pos-1] */
  * particular bounding box cannot be updated incrementally before, hence the     *
  * bounding box is got from scratch, so the bounding box would definitely be     *
  * right, DO NOT update again.                                                   *
- * [0...num_nets-1]                                                              */
+ * [0...g_clbs_nlist.net.size()-1]                                               */
 static char * bb_updated_before = NULL;
 
-/* [0..num_nets-1][1..num_pins-1]. What is the value of the timing   */
+/* [0..g_clbs_nlist.net.size()-1][1..num_pins-1]. What is the value of the timing   */
 /* driven portion of the cost function. These arrays will be set to  */
 /* (criticality * delay) for each point to point connection. */
 static float **point_to_point_timing_cost = NULL;
 static float **temp_point_to_point_timing_cost = NULL;
 
-/* [0..num_nets-1][1..num_pins-1]. What is the value of the delay */
+/* [0..g_clbs_nlist.net.size()-1][1..num_pins-1]. What is the value of the delay */
 /* for each connection in the circuit */
 static float **point_to_point_delay_cost = NULL;
 static float **temp_point_to_point_delay_cost = NULL;
@@ -148,7 +117,7 @@ static float **temp_point_to_point_delay_cost = NULL;
 /* each net */
 static int **net_pin_index = NULL;
 
-/* [0..num_nets-1].  Store the bounding box coordinates and the number of    *
+/* [0..g_clbs_nlist.net.size()-1].  Store the bounding box coordinates and the number of    *
  * blocks on each of a net's bounding box (to allow efficient updates),      *
  * respectively.                                                             */
 
@@ -171,7 +140,7 @@ static t_pl_blocks_to_be_moved blocks_affected;
 static float **chanx_place_cost_fac, **chany_place_cost_fac;
 
 /* The following arrays are used by the try_swap function for speed.   */
-/* [0...num_nets-1] */
+/* [0...g_clbs_nlist.net.size()-1] */
 static struct s_bb *ts_bb_coord_new = NULL;
 static struct s_bb *ts_bb_edge_new = NULL;
 static int *ts_nets_to_update = NULL;
@@ -209,7 +178,7 @@ static const float cross_count[50] = { /* [0..49] */1.0, 1.0, 1.0, 1.0828, 1.153
 static void alloc_and_load_placement_structs(
 		float place_cost_exp, float ***old_region_occ_x,
 		float ***old_region_occ_y, struct s_placer_opts placer_opts,
-		t_direct_inf *directs, int num_directs);
+		t_direct_inf *directs, int num_directs, int num_segments);
 
 static void alloc_and_load_try_swap_structs();
 
@@ -228,11 +197,14 @@ static void free_legal_placements();
 
 static int check_macro_can_be_placed(int imacro, int itype, int x, int y, int z);
 
-static int try_place_macro(int itype, int ichoice, int imacro, int * free_locations);
+static int try_place_macro(int itype, int ipos, int imacro, int * free_locations);
 
 static void initial_placement_pl_macros(int macros_max_num_tries, int * free_locations);
 
-static void initial_placement_blocks(int * free_locations, enum e_pad_loc_type pad_loc_type);
+static void initial_placement_blocks(int * free_locations, enum e_pad_loc_type pad_loc_type, 
+		bool apply_placement_regions = false);
+static void initial_placement_location(int * free_locations, int iblk,
+		int *pipos, int *px, int *py, int *pz);
 
 static void initial_placement(enum e_pad_loc_type pad_loc_type,
 		char *pad_loc_file);
@@ -286,7 +258,12 @@ static void comp_td_costs(float *timing_cost, float *connection_delay_sum);
 
 static enum swap_result assess_swap(float delta_c, float t);
 
-static boolean find_to(int x_from, int y_from, t_type_ptr type, float rlim, int *x_to, int *y_to);
+static bool find_to(t_type_ptr type, float rlim, 
+		int iblk_from, int x_from, int y_from, 
+		int *px_to, int *py_to, int *pz_to);
+static void find_to_location(t_type_ptr type, float rlim,
+		int iblk_from, int x_from, int y_from, 
+		int *px_to, int *py_to, int *pz_to);
 
 static void get_non_updateable_bb(int inet, struct s_bb *bb_coord_new);
 
@@ -304,13 +281,24 @@ static double get_net_wirelength_estimate(int inet, struct s_bb *bbptr);
 
 static void free_try_swap_arrays(void);
 
+static void outer_loop_recompute_criticalities(struct s_placer_opts placer_opts,
+	int num_connections, t_slack * slacks, float crit_exponent, float bb_cost,
+	float * place_delay_value, float * timing_cost, float * delay_cost,
+	int * outer_crit_iter_count, float * inverse_prev_timing_cost,
+	float * inverse_prev_bb_cost, float ** net_delay, const t_timing_inf &timing_inf);
+
+static void placement_inner_loop(float t, float rlim, struct s_placer_opts placer_opts,
+	float inverse_prev_bb_cost, float inverse_prev_timing_cost, int move_lim,
+	int num_connections, t_slack * slacks, float crit_exponent, int inner_recompute_limit,
+	t_placer_statistics *stats, float * cost, float * bb_cost, float * timing_cost,
+	float ** old_region_occ_x, float ** old_region_occ_y, float * delay_cost,
+    float * place_delay_value, float ** net_delay, const t_timing_inf &timing_inf);
 
 /*****************************************************************************/
-/* RESEARCH TODO: Bounding Box and rlim need to be redone for heterogeneous to prevent a QoR penalty */
 void try_place(struct s_placer_opts placer_opts,
 		struct s_annealing_sched annealing_sched,
 		t_chan_width_dist chan_width_dist, struct s_router_opts router_opts,
-		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf,
+		struct s_det_routing_arch *det_routing_arch, t_segment_inf * segment_inf,
 		t_timing_inf timing_inf, t_direct_inf *directs, int num_directs) {
 
 	/* Does almost all the work of placing a circuit.  Width_fac gives the   *
@@ -318,20 +306,21 @@ void try_place(struct s_placer_opts placer_opts,
 	 * width should be taken to when calculating costs.  This allows a       *
 	 * greater bias for anisotropic architectures.                           */
 
-	int tot_iter, inner_iter, success_sum, move_lim, moves_since_cost_recompute, width_fac,
-		num_connections, inet, ipin, outer_crit_iter_count, inner_crit_iter_count,
-		inner_recompute_limit, swap_result;
+	int tot_iter, move_lim, moves_since_cost_recompute, width_fac, num_connections,
+		outer_crit_iter_count, inner_recompute_limit;
+	unsigned int ipin, inet;
 	float t, success_rat, rlim, cost, timing_cost, bb_cost, new_bb_cost, new_timing_cost,
 		delay_cost, new_delay_cost, place_delay_value, inverse_prev_bb_cost, inverse_prev_timing_cost,
 		oldt, **old_region_occ_x, **old_region_occ_y, **net_delay = NULL, crit_exponent,
 		first_rlim, final_rlim, inverse_delta_rlim, critical_path_delay = UNDEFINED,
 		**remember_net_delay_original_ptr; /*used to free net_delay if it is re-assigned */
-	double av_cost, av_bb_cost, av_timing_cost, av_delay_cost, sum_of_squares, std_dev;
+	double std_dev;
 	int total_swap_attempts;
 	float reject_rate;
 	float accept_rate;
 	float abort_rate;
 	char msg[BUFSIZE];
+	t_placer_statistics stats;
 	t_slack * slacks = NULL;
 
 	/* Allocated here because it goes into timing critical code where each memory allocation is expensive */
@@ -367,16 +356,16 @@ void try_place(struct s_placer_opts placer_opts,
 		else
 		place_delay_value = delta_clb_to_clb[nx][ny];
 
-		vpr_printf(TIO_MESSAGE_INFO, "\n");
-		vpr_printf(TIO_MESSAGE_INFO, "Lower bound assuming delay of %g\n", place_delay_value);
+		vpr_printf_info("\n");
+		vpr_printf_info("Lower bound assuming delay of %g\n", place_delay_value);
 
 		load_constant_net_delay(net_delay, place_delay_value);
 		load_timing_graph_net_delays(net_delay);
-		do_timing_analysis(slacks, FALSE, FALSE, TRUE);
+		do_timing_analysis(slacks, timing_inf, false, true);
 
 		if (getEchoEnabled()) {
 			if(isEchoFileEnabled(E_ECHO_PLACEMENT_CRITICAL_PATH))
-				print_critical_path(getEchoFileName(E_ECHO_PLACEMENT_CRITICAL_PATH));
+				print_critical_path(getEchoFileName(E_ECHO_PLACEMENT_CRITICAL_PATH), timing_inf);
 			if(isEchoFileEnabled(E_ECHO_PLACEMENT_LOWER_BOUND_SINK_DELAYS))
 				print_sink_delays(getEchoFileName(E_ECHO_PLACEMENT_LOWER_BOUND_SINK_DELAYS));
 			if(isEchoFileEnabled(E_ECHO_PLACEMENT_LOGIC_SINK_DELAYS))
@@ -388,7 +377,7 @@ void try_place(struct s_placer_opts placer_opts,
 
 		load_constant_net_delay(net_delay, 0);
 		load_timing_graph_net_delays(net_delay);
-		do_timing_analysis(slacks, FALSE, FALSE, TRUE);
+		do_timing_analysis(slacks, timing_inf, false, true);
 
 #endif
 
@@ -396,12 +385,12 @@ void try_place(struct s_placer_opts placer_opts,
 
 	width_fac = placer_opts.place_chan_width;
 
-	init_chan(width_fac, chan_width_dist);
+	init_chan(width_fac, &router_opts.fixed_channel_width, chan_width_dist);
 
 	alloc_and_load_placement_structs(
 			placer_opts.place_cost_exp,
 			&old_region_occ_x, &old_region_occ_y, placer_opts,
-			directs, num_directs);
+			directs, num_directs, det_routing_arch->num_segment);
 
 	initial_placement(placer_opts.pad_loc_type, placer_opts.pad_loc_file);
 	init_draw_coords((float) width_fac);
@@ -418,22 +407,21 @@ void try_place(struct s_placer_opts placer_opts,
 		crit_exponent = placer_opts.td_place_exp_first; /*this will be modified when rlim starts to change */
 
 		num_connections = count_connections();
-		vpr_printf(TIO_MESSAGE_INFO, "\n");
-		vpr_printf(TIO_MESSAGE_INFO, "There are %d point to point connections in this circuit.\n", num_connections);
-		vpr_printf(TIO_MESSAGE_INFO, "\n");
+		vpr_printf_info("\n");
+		vpr_printf_info("There are %d point to point connections in this circuit.\n", num_connections);
+		vpr_printf_info("\n");
 
 		if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE) {
-			for (inet = 0; inet < num_nets; inet++)
-				for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++)
+			for (inet = 0; inet < g_clbs_nlist.net.size(); inet++)
+				for (ipin = 1; ipin < g_clbs_nlist.net[inet].pins.size(); ipin++)
 					timing_place_crit[inet][ipin] = 0; /*dummy crit values */
 
-			/*first pass gets delay_cost, which is used
+			comp_td_costs(&timing_cost, &delay_cost); /*first pass gets delay_cost, which is used 
 			 * in criticality computations in the next call
 			 * to comp_td_costs. */
-			comp_td_costs(&timing_cost, &delay_cost);
-
 			place_delay_value = delay_cost / num_connections; /*used for computing criticalities */
-			load_constant_net_delay(net_delay, place_delay_value, clb_net,num_nets);
+			load_constant_net_delay(net_delay, place_delay_value, g_clbs_nlist.net,
+				g_clbs_nlist.net.size());
 
 		} else
 			place_delay_value = 0;
@@ -447,20 +435,25 @@ void try_place(struct s_placer_opts placer_opts,
 		}
 
 		load_timing_graph_net_delays(net_delay);
-		do_timing_analysis(slacks, FALSE, FALSE, FALSE);
+		do_timing_analysis(slacks, timing_inf, false, false);
 		load_criticalities(slacks, crit_exponent);
 		if (getEchoEnabled()) {
 			if(isEchoFileEnabled(E_ECHO_INITIAL_PLACEMENT_TIMING_GRAPH))
 				print_timing_graph(getEchoFileName(E_ECHO_INITIAL_PLACEMENT_TIMING_GRAPH));
 			if(isEchoFileEnabled(E_ECHO_INITIAL_PLACEMENT_SLACK))
-				print_slack(slacks->slack, FALSE, getEchoFileName(E_ECHO_INITIAL_PLACEMENT_SLACK));
+				print_slack(slacks->slack, false, getEchoFileName(E_ECHO_INITIAL_PLACEMENT_SLACK));
 			if(isEchoFileEnabled(E_ECHO_INITIAL_PLACEMENT_CRITICALITY))
-				print_criticality(slacks, FALSE, getEchoFileName(E_ECHO_INITIAL_PLACEMENT_CRITICALITY));
+				print_criticality(slacks, getEchoFileName(E_ECHO_INITIAL_PLACEMENT_CRITICALITY));
 		}
 		outer_crit_iter_count = 1;
 
 		/*now we can properly compute costs  */
 		comp_td_costs(&timing_cost, &delay_cost); /*also vpr_printf proper values into point_to_point_delay_cost */
+
+		/* Timing cost appears to be 0 for small circuits without any critical paths, this will cause costs to be
+		indefinite values later, so set timing_cost to a small number to prevent it						*/
+		if (timing_cost == 0)
+			timing_cost = 1e-9;
 
 		inverse_prev_timing_cost = 1 / timing_cost;
 		inverse_prev_bb_cost = 1 / bb_cost;
@@ -483,7 +476,8 @@ void try_place(struct s_placer_opts placer_opts,
 	move_lim = (int) (annealing_sched.inner_num * pow(num_blocks, 1.3333));
 
 	if (placer_opts.inner_loop_recompute_divider != 0)
-		inner_recompute_limit = (int) (0.5 + (float) move_lim / (float) placer_opts.inner_loop_recompute_divider);
+		inner_recompute_limit = (int) 
+			(0.5 + (float) move_lim	/ (float) placer_opts.inner_loop_recompute_divider);
 	else
 		/*don't do an inner recompute */
 		inner_recompute_limit = move_lim + 1;
@@ -496,148 +490,57 @@ void try_place(struct s_placer_opts placer_opts,
 	if (move_lim <= 0)
 		move_lim = 1;
 
-	rlim = (float) std::max(nx + 1, ny + 1);
+	rlim = (float) max(nx + 1, ny + 1);
 
 	first_rlim = rlim; /*used in timing-driven placement for exponent computation */
 	final_rlim = 1;
 	inverse_delta_rlim = 1 / (first_rlim - final_rlim);
 
-	t = starting_t(&cost, &bb_cost, &timing_cost,
-			old_region_occ_x, old_region_occ_y,
+	t = starting_t(&cost, &bb_cost, &timing_cost, old_region_occ_x, old_region_occ_y,
 			annealing_sched, move_lim, rlim,
 			placer_opts.place_algorithm, placer_opts.timing_tradeoff,
 			inverse_prev_bb_cost, inverse_prev_timing_cost, &delay_cost);
+
 	tot_iter = 0;
 	moves_since_cost_recompute = 0;
-	vpr_printf(TIO_MESSAGE_INFO, "Initial placement cost: %g bb_cost: %g td_cost: %g delay_cost: %g\n",
-				cost, bb_cost, timing_cost, delay_cost);
-	vpr_printf(TIO_MESSAGE_INFO, "\n");
+	vpr_printf_info("Initial placement cost: %g bb_cost: %g td_cost: %g delay_cost: %g\n",
+			cost, bb_cost, timing_cost, delay_cost);
+	vpr_printf_info("\n");
 
 #ifndef SPEC
-	vpr_printf(TIO_MESSAGE_INFO, "%9s %9s %11s %11s %11s %11s %8s %8s %7s %7s %7s %9s %7s\n",
-			"---------", "---------", "-----------", "-----------", "-----------", "-----------", 
-			"--------", "--------", "-------", "-------", "-------", "---------", "-------");
-	vpr_printf(TIO_MESSAGE_INFO, "%9s %9s %11s %11s %11s %11s %8s %8s %7s %7s %7s %9s %7s\n",
+	vpr_printf_info("%7s %7s %10s %10s %10s %10s %7s %7s %7s %7s %6s %9s %6s\n",
+			"-------", "-------", "----------", "----------", "----------", "----------", 
+			"-------", "-------", "-------", "-------", "------", "---------", "------");
+	vpr_printf_info("%7s %7s %10s %10s %10s %10s %7s %7s %7s %7s %6s %9s %6s\n",
 			"T", "Cost", "Av BB Cost", "Av TD Cost", "Av Tot Del",
 			"P to P Del", "d_max", "Ac Rate", "Std Dev", "R limit", "Exp",
 			"Tot Moves", "Alpha");
-	vpr_printf(TIO_MESSAGE_INFO, "%9s %9s %11s %11s %11s %11s %8s %8s %7s %7s %7s %9s %7s\n",
-			"---------", "---------", "-----------", "-----------", "-----------", "-----------", 
-			"--------", "--------", "-------", "-------", "-------", "---------", "-------");
+	vpr_printf_info("%7s %7s %10s %10s %10s %10s %7s %7s %7s %7s %6s %9s %6s\n",
+			"-------", "-------", "----------", "----------", "----------", "----------", 
+			"-------", "-------", "-------", "-------", "------", "---------", "------");
 #endif
 
 	sprintf(msg, "Initial Placement.  Cost: %g  BB Cost: %g  TD Cost %g  Delay Cost: %g \t Channel Factor: %d", 
 		cost, bb_cost, timing_cost, delay_cost, width_fac);
-	update_screen(MAJOR, msg, PLACEMENT, FALSE);
+	update_screen(MAJOR, msg, PLACEMENT, false, timing_inf);
 
+
+	/* Outer loop of the simmulated annealing begins */
 	while (exit_crit(t, cost, annealing_sched) == 0) {
 
 		if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
 				|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
 			cost = 1;
 		}
-		av_cost = 0.;
-		av_bb_cost = 0.;
-		av_delay_cost = 0.;
-		av_timing_cost = 0.;
-		sum_of_squares = 0.;
-		success_sum = 0;
 
-		if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
-				|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
+		outer_loop_recompute_criticalities(placer_opts, num_connections, slacks,
+			crit_exponent, bb_cost, &place_delay_value, &timing_cost, &delay_cost,
+			&outer_crit_iter_count, &inverse_prev_timing_cost, &inverse_prev_bb_cost, net_delay, timing_inf);
 
-			if (outer_crit_iter_count >= placer_opts.recompute_crit_iter
-					|| placer_opts.inner_loop_recompute_divider != 0) {
-#ifdef VERBOSE
-				vpr_printf(TIO_MESSAGE_INFO, "Outer loop recompute criticalities\n");
-#endif
-				place_delay_value = delay_cost / num_connections;
-
-				if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE)
-					load_constant_net_delay(net_delay, place_delay_value, clb_net, num_nets);
-				/* note, for path_based, the net delay is not updated since it is current,
-				 * because it accesses point_to_point_delay array */
-
-				load_timing_graph_net_delays(net_delay);
-				do_timing_analysis(slacks, FALSE, FALSE, FALSE);
-				load_criticalities(slacks, crit_exponent);
-				/*recompute costs from scratch, based on new criticalities */
-				comp_td_costs(&timing_cost, &delay_cost);
-				outer_crit_iter_count = 0;
-			}
-			outer_crit_iter_count++;
-
-			/*at each temperature change we update these values to be used     */
-			/*for normalizing the tradeoff between timing and wirelength (bb)  */
-			inverse_prev_bb_cost = 1 / bb_cost;
-			/*Prevent inverse timing cost from going to infinity */
-			inverse_prev_timing_cost = std::min(1 / timing_cost, (float)MAX_INV_TIMING_COST);
-		}
-
-		inner_crit_iter_count = 1;
-
-		for (inner_iter = 0; inner_iter < move_lim; inner_iter++) {
-			swap_result = try_swap(t, &cost, &bb_cost, &timing_cost, rlim,
-					old_region_occ_x,
-					old_region_occ_y, 
-					placer_opts.place_algorithm, placer_opts.timing_tradeoff,
-					inverse_prev_bb_cost, inverse_prev_timing_cost, &delay_cost);
-			if (swap_result == ACCEPTED) {
-
-				/* Move was accepted.  Update statistics that are useful for the annealing schedule. */
-				success_sum++;
-				av_cost += cost;
-				av_bb_cost += bb_cost;
-				av_timing_cost += timing_cost;
-				av_delay_cost += delay_cost;
-				sum_of_squares += cost * cost;
-				num_swap_accepted++;
-			} else if (swap_result == ABORTED) {
-				num_swap_aborted++;
-			} else { // swap_result == REJECTED
-				num_swap_rejected++;
-			}
-
-
-			if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE || placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
-
-				/* Do we want to re-timing analyze the circuit to get updated slack and criticality values? 
-				 * We do this only once in a while, since it is expensive.
-				 */
-				if (inner_crit_iter_count >= inner_recompute_limit && inner_iter != move_lim - 1) { /*on last iteration don't recompute */
-
-					inner_crit_iter_count = 0;
-#ifdef VERBOSE
-					vpr_printf(TIO_MESSAGE_TRACE, "Inner loop recompute criticalities\n");
-#endif
-					if (placer_opts.place_algorithm
-							== NET_TIMING_DRIVEN_PLACE) {
-					    /* Use a constant delay per connection as the delay estimate, rather than
-						 * estimating based on the current placement.  Not a great idea, but not the 
-						 * default.
-						 */
-						place_delay_value = delay_cost / num_connections;
-						load_constant_net_delay(net_delay, place_delay_value,
-								clb_net, num_nets);
-					}
-
-					/* Using the delays in net_delay, do a timing analysis to update slacks and
-					 * criticalities; then update the timing cost since it will change.
-					 */
-					load_timing_graph_net_delays(net_delay);
-					do_timing_analysis(slacks, FALSE, FALSE, FALSE);
-					load_criticalities(slacks, crit_exponent);
-					comp_td_costs(&timing_cost, &delay_cost);
-				}
-				inner_crit_iter_count++;
-			}
-#ifdef VERBOSE
-			vpr_printf(TIO_MESSAGE_TRACE, "t = %g  cost = %g   bb_cost = %g timing_cost = %g move = %d dmax = %g\n",
-					t, cost, bb_cost, timing_cost, inner_iter, delay_cost);
-			if (fabs(bb_cost - comp_bb_cost(CHECK)) > bb_cost * ERROR_TOL)
-				exit(1);
-#endif
-		}
+		placement_inner_loop(t, rlim, placer_opts, inverse_prev_bb_cost, inverse_prev_timing_cost, 
+			move_lim, num_connections, slacks, crit_exponent, inner_recompute_limit, &stats, 
+			&cost, &bb_cost, &timing_cost, old_region_occ_x, old_region_occ_y, &delay_cost,
+			&place_delay_value, net_delay, timing_inf);
 
 		/* Lines below prevent too much round-off error from accumulating *
 		 * in the cost over many iterations.  This round-off can lead to  *
@@ -648,9 +551,9 @@ void try_place(struct s_placer_opts placer_opts,
 		if (moves_since_cost_recompute > MAX_MOVES_BEFORE_RECOMPUTE) {
 			new_bb_cost = recompute_bb_cost();
 			if (fabs(new_bb_cost - bb_cost) > bb_cost * ERROR_TOL) {
-				vpr_printf(TIO_MESSAGE_ERROR, "in try_place: new_bb_cost = %g, old bb_cost = %g\n", 
+				vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,
+						"in try_place: new_bb_cost = %g, old bb_cost = %g\n", 
 						new_bb_cost, bb_cost);
-				exit(1);
 			}
 			bb_cost = new_bb_cost;
 
@@ -659,14 +562,14 @@ void try_place(struct s_placer_opts placer_opts,
 							== PATH_TIMING_DRIVEN_PLACE) {
 				comp_td_costs(&new_timing_cost, &new_delay_cost);
 				if (fabs(new_timing_cost - timing_cost) > timing_cost * ERROR_TOL) {
-					vpr_printf(TIO_MESSAGE_ERROR, "in try_place: new_timing_cost = %g, old timing_cost = %g\n",
-							new_timing_cost, timing_cost);
-					exit(1);
+					vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,
+							"in try_place: new_timing_cost = %g, old timing_cost = %g, ERROR_TOL = %g\n",
+							new_timing_cost, timing_cost, ERROR_TOL);
 				}
 				if (fabs(new_delay_cost - delay_cost) > delay_cost * ERROR_TOL) {
-					vpr_printf(TIO_MESSAGE_ERROR, "in try_place: new_delay_cost = %g, old delay_cost = %g\n",
-							new_delay_cost, delay_cost);
-					exit(1);
+					vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,
+							"in try_place: new_delay_cost = %g, old delay_cost = %g, ERROR_TOL = %g\n",
+							new_delay_cost, delay_cost, ERROR_TOL);
 				}
 				timing_cost = new_timing_cost;
 			}
@@ -678,36 +581,53 @@ void try_place(struct s_placer_opts placer_opts,
 		}
 
 		tot_iter += move_lim;
-		success_rat = ((float) success_sum) / move_lim;
-		if (success_sum == 0) {
-			av_cost = cost;
-			av_bb_cost = bb_cost;
-			av_timing_cost = timing_cost;
-			av_delay_cost = delay_cost;
+		success_rat = ((float) stats.success_sum) / move_lim;
+		if (stats.success_sum == 0) {
+			stats.av_cost = cost;
+			stats.av_bb_cost = bb_cost;
+			stats.av_timing_cost = timing_cost;
+			stats.av_delay_cost = delay_cost;
 		} else {
-			av_cost /= success_sum;
-			av_bb_cost /= success_sum;
-			av_timing_cost /= success_sum;
-			av_delay_cost /= success_sum;
+			stats.av_cost /= stats.success_sum;
+			stats.av_bb_cost /= stats.success_sum;
+			stats.av_timing_cost /= stats.success_sum;
+			stats.av_delay_cost /= stats.success_sum;
 		}
-		std_dev = get_std_dev(success_sum, sum_of_squares, av_cost);
+		std_dev = get_std_dev(stats.success_sum, stats.sum_of_squares, stats.av_cost);
 
 		oldt = t; /* for finding and printing alpha. */
 		update_t(&t, std_dev, rlim, success_rat, annealing_sched);
 
 #ifndef SPEC
 		critical_path_delay = get_critical_path_delay();
-		vpr_printf(TIO_MESSAGE_INFO, "%9.5f %9.5g %11.6g %11.6g %11.6g %11.6g %8.4f %8.4f %7.4f %7.4f %7.4f %9d %7.4f\n",
-				oldt, av_cost, av_bb_cost, av_timing_cost, av_delay_cost, place_delay_value, 
-				critical_path_delay, success_rat, std_dev, rlim, crit_exponent, tot_iter, t / oldt);
+		if(oldt >= 100.0 - EPSILON) {
+			vpr_printf_info("%7.3f %7.5f %10.4f %-10.5g %-10.5g %-10.5g %7.4f %7.4f %7.4f %7.4f %6.3f %9d %6.3f\n",
+					oldt, stats.av_cost, stats.av_bb_cost, stats.av_timing_cost, 
+					stats.av_delay_cost, place_delay_value, critical_path_delay, 
+					success_rat, std_dev, rlim, crit_exponent, tot_iter, t / oldt);
+		} else if(oldt >= 10.0 - EPSILON) {
+			vpr_printf_info("%7.4f %7.5f %10.4f %-10.5g %-10.5g %-10.5g %7.4f %7.4f %7.4f %7.4f %6.3f %9d %6.3f\n",
+					oldt, stats.av_cost, stats.av_bb_cost, stats.av_timing_cost, 
+					stats.av_delay_cost, place_delay_value, critical_path_delay, 
+					success_rat, std_dev, rlim, crit_exponent, tot_iter, t / oldt);
+		} else {
+			vpr_printf_info("%7.5f %7.5f %10.4f %-10.5g %-10.5g %-10.5g %7.4f %7.4f %7.4f %7.4f %6.3f %9d %6.3f\n",
+					oldt, stats.av_cost, stats.av_bb_cost, stats.av_timing_cost, 
+					stats.av_delay_cost, place_delay_value, critical_path_delay, 
+					success_rat, std_dev, rlim, crit_exponent, tot_iter, t / oldt);
+		}
 #endif
 
-		sprintf(msg, "Cost: %g  BB Cost %g  TD Cost %g  Temperature: %g", cost, bb_cost, timing_cost, t);
-		update_screen(MINOR, msg, PLACEMENT, FALSE);
+		sprintf(msg, "Cost: %g  BB Cost %g  TD Cost %g  Temperature: %g",
+				cost, bb_cost, timing_cost, t);
+		update_screen(MINOR, msg, PLACEMENT, false, timing_inf);
 		update_rlim(&rlim, success_rat);
 
-		if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE || placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
-			crit_exponent = (1 - (rlim - final_rlim) * inverse_delta_rlim) * (placer_opts.td_place_exp_last - placer_opts.td_place_exp_first) + placer_opts.td_place_exp_first;
+		if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
+				|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
+			crit_exponent = (1 - (rlim - final_rlim) * inverse_delta_rlim)
+					* (placer_opts.td_place_exp_last - placer_opts.td_place_exp_first)
+					+ placer_opts.td_place_exp_first;
 		}
 #ifdef VERBOSE
 		if (getEchoEnabled()) {
@@ -715,122 +635,47 @@ void try_place(struct s_placer_opts placer_opts,
 		}
 #endif
 	}
+	/* Outer loop of the simmulated annealing ends */
+
+
+	outer_loop_recompute_criticalities(placer_opts, num_connections, slacks,
+			crit_exponent, bb_cost, &place_delay_value, &timing_cost, &delay_cost,
+			&outer_crit_iter_count, &inverse_prev_timing_cost, &inverse_prev_bb_cost, net_delay, timing_inf);
 
 	t = 0; /* freeze out */
-	av_cost = 0.;
-	av_bb_cost = 0.;
-	av_timing_cost = 0.;
-	sum_of_squares = 0.;
-	av_delay_cost = 0.;
-	success_sum = 0;
 
-	if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
-			|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
-		/*at each temperature change we update these values to be used     */
-		/*for normalizing the tradeoff between timing and wirelength (bb)  */
-		if (outer_crit_iter_count >= placer_opts.recompute_crit_iter || placer_opts.inner_loop_recompute_divider != 0) {
+	/* Run inner loop again with temperature = 0 so as to accept only swaps
+	 * which reduce the cost of the placement */
+	placement_inner_loop(t, rlim, placer_opts, inverse_prev_bb_cost, inverse_prev_timing_cost, 
+			move_lim, num_connections, slacks, crit_exponent, inner_recompute_limit, &stats, 
+			&cost, &bb_cost, &timing_cost, old_region_occ_x, old_region_occ_y, &delay_cost,
+			&place_delay_value, net_delay, timing_inf);
 
-#ifdef VERBOSE
-			vpr_printf(TIO_MESSAGE_INFO, "Outer loop recompute criticalities\n");
-#endif
-			place_delay_value = delay_cost / num_connections;
-
-			if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE)
-				load_constant_net_delay(net_delay, place_delay_value, clb_net, num_nets);
-
-			load_timing_graph_net_delays(net_delay);
-			do_timing_analysis(slacks, FALSE, FALSE, FALSE);
-			load_criticalities(slacks, crit_exponent);
-			/*recompute criticaliies */
-			comp_td_costs(&timing_cost, &delay_cost);
-			outer_crit_iter_count = 0;
-		}
-		outer_crit_iter_count++;
-
-		inverse_prev_bb_cost = 1 / (bb_cost);
-		/*Prevent inverse timing cost from going to infinity */		
-		inverse_prev_timing_cost = std::min(1 / timing_cost, (float)MAX_INV_TIMING_COST);
-	}
-
-	inner_crit_iter_count = 1;
-
-	for (inner_iter = 0; inner_iter < move_lim; inner_iter++) {
-		swap_result = try_swap(t, &cost, &bb_cost, &timing_cost, rlim,
-				old_region_occ_x, old_region_occ_y,
-				placer_opts.place_algorithm, placer_opts.timing_tradeoff,
-				inverse_prev_bb_cost, inverse_prev_timing_cost, &delay_cost);
-		
-		if (swap_result == ACCEPTED) {
-			success_sum++;
-			av_cost += cost;
-			av_bb_cost += bb_cost;
-			av_delay_cost += delay_cost;
-			av_timing_cost += timing_cost;
-			sum_of_squares += cost * cost;
-
-			if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
-					|| placer_opts.place_algorithm
-							== PATH_TIMING_DRIVEN_PLACE) {
-
-				if (inner_crit_iter_count >= inner_recompute_limit
-						&& inner_iter != move_lim - 1) {
-
-					inner_crit_iter_count = 0;
-#ifdef VERBOSE
-					vpr_printf(TIO_MESSAGE_TRACE, "Inner loop recompute criticalities\n");
-#endif
-					if (placer_opts.place_algorithm
-							== NET_TIMING_DRIVEN_PLACE) {
-						place_delay_value = delay_cost / num_connections;
-						load_constant_net_delay(net_delay, place_delay_value,
-								clb_net, num_nets);
-					}
-
-					load_timing_graph_net_delays(net_delay);
-					do_timing_analysis(slacks, FALSE, FALSE, FALSE);
-					load_criticalities(slacks, crit_exponent);
-					comp_td_costs(&timing_cost, &delay_cost);
-				}
-				inner_crit_iter_count++;
-			}
-			num_swap_accepted++;
-		} else if (swap_result == ABORTED) {
-			num_swap_aborted++;
-		} else {
-			num_swap_rejected++;
-		}
-
-#ifdef VERBOSE
-		vpr_printf(TIO_MESSAGE_INFO, "t = %g, cost = %g, move = %d\n", t, cost, tot_iter);
-#endif
-	}
 	tot_iter += move_lim;
-	success_rat = ((float) success_sum) / move_lim;
-	if (success_sum == 0) {
-		av_cost = cost;
-		av_bb_cost = bb_cost;
-		av_delay_cost = delay_cost;
-		av_timing_cost = timing_cost;
+	success_rat = ((float) stats.success_sum) / move_lim;
+	if (stats.success_sum == 0) {
+		stats.av_cost = cost;
+		stats.av_bb_cost = bb_cost;
+		stats.av_delay_cost = delay_cost;
+		stats.av_timing_cost = timing_cost;
 	} else {
-		av_cost /= success_sum;
-		av_bb_cost /= success_sum;
-		av_delay_cost /= success_sum;
-		av_timing_cost /= success_sum;
+		stats.av_cost /= stats.success_sum;
+		stats.av_bb_cost /= stats.success_sum;
+		stats.av_delay_cost /= stats.success_sum;
+		stats.av_timing_cost /= stats.success_sum;
 	}
 
-	std_dev = get_std_dev(success_sum, sum_of_squares, av_cost);
+	std_dev = get_std_dev(stats.success_sum, stats.sum_of_squares, stats.av_cost);
 
 #ifndef SPEC
-	vpr_printf(TIO_MESSAGE_INFO, "%9.5f %9.5g %11.6g %11.6g %11.6g %11.6g %8s %8.4f %7.4f %7.4f %7.4f %9d\n",
-			t, av_cost, av_bb_cost, av_timing_cost, av_delay_cost, place_delay_value, 
+	vpr_printf_info("%7.5f %7.5f %10.4f %-10.5g %-10.5g %-10.5g %7s %7.4f %7.4f %7.4f %6.3f %9d\n",
+			t, stats.av_cost, stats.av_bb_cost, stats.av_timing_cost, stats.av_delay_cost, place_delay_value, 
 			" ", success_rat, std_dev, rlim, crit_exponent, tot_iter);
 #endif
 
 	// TODO:  
 	// 1. print a message about number of aborted moves.
 	// 2. add some subroutine hierarchy!  Too big!
-	// 3. put statistics counters (av_cost, success_sum, etc.) in a struct so a 
-	// pointer to it can be passed around. 
 
 #ifdef VERBOSE
 	if (getEchoEnabled() && isEchoFileEnabled(E_ECHO_END_CLB_PLACEMENT)) {
@@ -845,8 +690,8 @@ void try_place(struct s_placer_opts placer_opts,
 			&& placer_opts.place_algorithm == BOUNDING_BOX_PLACE) {
 		/*need this done since the timing data has not been kept up to date*
 		 *in bounding_box mode */
-		for (inet = 0; inet < num_nets; inet++)
-			for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++)
+		for (inet = 0; inet < g_clbs_nlist.net.size(); inet++)
+			for (ipin = 1; ipin < g_clbs_nlist.net[inet].pins.size(); ipin++)
 				timing_place_crit[inet][ipin] = 0; /*dummy crit values */
 		comp_td_costs(&timing_cost, &delay_cost); /*computes point_to_point_delay_cost */
 	}
@@ -858,46 +703,46 @@ void try_place(struct s_placer_opts placer_opts,
 		 *the same values that the placer is using*/
 		load_timing_graph_net_delays(net_delay);
 
-		do_timing_analysis(slacks, FALSE, FALSE, FALSE);
+		do_timing_analysis(slacks, timing_inf, false, false);
 
 		if (getEchoEnabled()) {
 			if(isEchoFileEnabled(E_ECHO_PLACEMENT_SINK_DELAYS))
 				print_sink_delays(getEchoFileName(E_ECHO_PLACEMENT_SINK_DELAYS));
 			if(isEchoFileEnabled(E_ECHO_FINAL_PLACEMENT_SLACK))
-				print_slack(slacks->slack, FALSE, getEchoFileName(E_ECHO_FINAL_PLACEMENT_SLACK));
+				print_slack(slacks->slack, false, getEchoFileName(E_ECHO_FINAL_PLACEMENT_SLACK));
 			if(isEchoFileEnabled(E_ECHO_FINAL_PLACEMENT_CRITICALITY))
-				print_criticality(slacks, FALSE, getEchoFileName(E_ECHO_FINAL_PLACEMENT_CRITICALITY));
+				print_criticality(slacks, getEchoFileName(E_ECHO_FINAL_PLACEMENT_CRITICALITY));
 			if(isEchoFileEnabled(E_ECHO_FINAL_PLACEMENT_TIMING_GRAPH))
 				print_timing_graph(getEchoFileName(E_ECHO_FINAL_PLACEMENT_TIMING_GRAPH));
 			if(isEchoFileEnabled(E_ECHO_PLACEMENT_CRIT_PATH))
-				print_critical_path(getEchoFileName(E_ECHO_PLACEMENT_CRIT_PATH));
+				print_critical_path(getEchoFileName(E_ECHO_PLACEMENT_CRIT_PATH), timing_inf);
 		}
 
 		/* Print critical path delay. */
 		critical_path_delay = get_critical_path_delay();
-		vpr_printf(TIO_MESSAGE_INFO, "\n");
-		vpr_printf(TIO_MESSAGE_INFO, "Placement estimated critical path delay: %g ns\n", critical_path_delay);
+		vpr_printf_info("\n");
+		vpr_printf_info("Placement estimated critical path delay: %g ns\n", critical_path_delay);
 	}
 
 	sprintf(msg, "Placement. Cost: %g  bb_cost: %g td_cost: %g Channel Factor: %d",
 			cost, bb_cost, timing_cost, width_fac);
-	vpr_printf(TIO_MESSAGE_INFO, "Placement cost: %g, bb_cost: %g, td_cost: %g, delay_cost: %g\n", 
+	vpr_printf_info("Placement cost: %g, bb_cost: %g, td_cost: %g, delay_cost: %g\n", 
 			cost, bb_cost, timing_cost, delay_cost);
-	update_screen(MAJOR, msg, PLACEMENT, FALSE);
+	update_screen(MAJOR, msg, PLACEMENT, false, timing_inf);
 	 
 	// Print out swap statistics
 	total_swap_attempts = num_swap_rejected + num_swap_accepted + num_swap_aborted;
 	reject_rate = num_swap_rejected / total_swap_attempts;
 	accept_rate = num_swap_accepted / total_swap_attempts;
 	abort_rate = num_swap_aborted / total_swap_attempts;
-	vpr_printf(TIO_MESSAGE_INFO, "Placement total # of swap attempts: %d\n", total_swap_attempts);
-	vpr_printf(TIO_MESSAGE_INFO, "\tSwap reject rate: %g\n", reject_rate);
-	vpr_printf(TIO_MESSAGE_INFO, "\tSwap accept rate: %g\n", accept_rate);
-	vpr_printf(TIO_MESSAGE_INFO, "\tSwap abort rate: %g\n",	abort_rate);
+	vpr_printf_info("Placement total # of swap attempts: %d\n", total_swap_attempts);
+	vpr_printf_info("\tSwap reject rate: %g\n", reject_rate);
+	vpr_printf_info("\tSwap accept rate: %g\n", accept_rate);
+	vpr_printf_info("\tSwap abort rate: %g\n",	abort_rate);
 	
 
 #ifdef SPEC
-	vpr_printf(TIO_MESSAGE_INFO, "Total moves attempted: %d.0\n", tot_iter);
+	vpr_printf_info("Total moves attempted: %d.0\n", tot_iter);
 #endif
 
 	free_placement_structs(
@@ -914,19 +759,149 @@ void try_place(struct s_placer_opts placer_opts,
 	free_try_swap_arrays();
 }
 
+/* Function to recompute the criticalities before the inner loop of the annealing */
+static void outer_loop_recompute_criticalities(struct s_placer_opts placer_opts,
+	int num_connections, t_slack * slacks, float crit_exponent, float bb_cost,
+	float * place_delay_value, float * timing_cost, float * delay_cost,
+	int * outer_crit_iter_count, float * inverse_prev_timing_cost,
+	float * inverse_prev_bb_cost, float ** net_delay, const t_timing_inf &timing_inf) {
+
+	if (placer_opts.place_algorithm != NET_TIMING_DRIVEN_PLACE
+			&& placer_opts.place_algorithm != PATH_TIMING_DRIVEN_PLACE)
+		return;
+
+	/*at each temperature change we update these values to be used     */
+	/*for normalizing the tradeoff between timing and wirelength (bb)  */
+	if (*outer_crit_iter_count >= placer_opts.recompute_crit_iter
+			|| placer_opts.inner_loop_recompute_divider != 0) {
+#ifdef VERBOSE
+		vpr_printf_info("Outer loop recompute criticalities\n");
+#endif
+		*place_delay_value = (*delay_cost) / num_connections;
+
+		if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE)
+			load_constant_net_delay(net_delay, *place_delay_value,
+				g_clbs_nlist.net, g_clbs_nlist.net.size());
+		/*note, for path_based, the net delay is not updated since it is current,
+		 *because it accesses point_to_point_delay array */
+
+		load_timing_graph_net_delays(net_delay);
+		do_timing_analysis(slacks, timing_inf, false, false);
+		load_criticalities(slacks, crit_exponent);
+		/*recompute costs from scratch, based on new criticalities */
+		comp_td_costs(timing_cost, delay_cost);
+		*outer_crit_iter_count = 0;
+	}
+	(*outer_crit_iter_count)++;
+
+	/*at each temperature change we update these values to be used     */
+	/*for normalizing the tradeoff between timing and wirelength (bb)  */
+	*inverse_prev_bb_cost = 1 / bb_cost;
+	/*Prevent inverse timing cost from going to infinity */
+	*inverse_prev_timing_cost = min(1 / (*timing_cost), (float)MAX_INV_TIMING_COST);
+}
+
+/* Function which contains the inner loop of the simulated annealing */
+static void placement_inner_loop(float t, float rlim, struct s_placer_opts placer_opts,
+	float inverse_prev_bb_cost, float inverse_prev_timing_cost, int move_lim,
+	int num_connections, t_slack * slacks, float crit_exponent, int inner_recompute_limit,
+	t_placer_statistics *stats, float * cost, float * bb_cost, float * timing_cost,
+	float ** old_region_occ_x, float ** old_region_occ_y, float * delay_cost,
+	float * place_delay_value, float ** net_delay, const t_timing_inf &timing_inf) {
+
+	int inner_crit_iter_count, inner_iter;
+	int swap_result;
+
+	stats->av_cost = 0.;
+	stats->av_bb_cost = 0.;
+	stats->av_delay_cost = 0.;
+	stats->av_timing_cost = 0.;
+	stats->sum_of_squares = 0.;
+	stats->success_sum = 0;
+
+	inner_crit_iter_count = 1;
+
+	/* Inner loop begins */
+	for (inner_iter = 0; inner_iter < move_lim; inner_iter++) {
+		swap_result = try_swap(t, cost, bb_cost, timing_cost, rlim,
+				old_region_occ_x, old_region_occ_y, 
+				placer_opts.place_algorithm, placer_opts.timing_tradeoff,
+				inverse_prev_bb_cost, inverse_prev_timing_cost, delay_cost);
+
+		if (swap_result == ACCEPTED) {
+			/* Move was accepted.  Update statistics that are useful for the annealing schedule. */
+			stats->success_sum++;
+			stats->av_cost += *cost;
+			stats->av_bb_cost += *bb_cost;
+			stats->av_timing_cost += *timing_cost;
+			stats->av_delay_cost += *delay_cost;
+			stats->sum_of_squares += (*cost) * (*cost);
+			num_swap_accepted++;
+		} else if (swap_result == ABORTED) {
+			num_swap_aborted++;
+		} else { // swap_result == REJECTED
+			num_swap_rejected++;
+		}
+
+
+		if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
+				|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
+
+			/* Do we want to re-timing analyze the circuit to get updated slack and criticality values? 
+			 * We do this only once in a while, since it is expensive.
+			 */
+			if (inner_crit_iter_count >= inner_recompute_limit
+					&& inner_iter != move_lim - 1) { /*on last iteration don't recompute */
+
+				inner_crit_iter_count = 0;
+#ifdef VERBOSE
+				vpr_printf_trace("Inner loop recompute criticalities\n");
+#endif
+				if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE) {
+					/* Use a constant delay per connection as the delay estimate, rather than
+					 * estimating based on the current placement.  Not a great idea, but not the 
+					 * default.
+					 */
+					(*place_delay_value) = (*delay_cost) / num_connections;
+					load_constant_net_delay(net_delay, *place_delay_value,
+							g_clbs_nlist.net, g_clbs_nlist.net.size());
+				}
+
+				/* Using the delays in net_delay, do a timing analysis to update slacks and
+				 * criticalities; then update the timing cost since it will change.
+				 */
+				load_timing_graph_net_delays(net_delay);
+				do_timing_analysis(slacks, timing_inf, false, false);
+				load_criticalities(slacks, crit_exponent);
+				comp_td_costs(timing_cost, delay_cost);
+			}
+			inner_crit_iter_count++;
+		}
+#ifdef VERBOSE
+		vpr_printf_trace("t = %g  cost = %g   bb_cost = %g timing_cost = %g move = %d dmax = %g\n",
+				t, *cost, *bb_cost, *timing_cost, inner_iter, *delay_cost);
+		if (fabs((*bb_cost) - comp_bb_cost(CHECK)) > (*bb_cost) * ERROR_TOL)
+			vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,
+				"fabs((*bb_cost) - comp_bb_cost(CHECK)) > (*bb_cost) * ERROR_TOL");
+#endif
+	}
+	/* Inner loop ends */
+}
+
 static int count_connections() {
 	/*only count non-global connections */
 
-	int count, inet;
+	int count;
+	unsigned int inet;
 
 	count = 0;
 
-	for (inet = 0; inet < num_nets; inet++) {
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
 
-		if (clb_net[inet].is_global)
+		if (g_clbs_nlist.net[inet].is_global)
 			continue;
 
-		count += clb_net[inet].num_sinks;
+		count += g_clbs_nlist.net[inet].num_sinks();
 	}
 	return (count);
 }
@@ -961,9 +936,9 @@ static void update_rlim(float *rlim, float success_rat) {
 	float upper_lim;
 
 	*rlim = (*rlim) * (1. - 0.44 + success_rat);
-	upper_lim = std::max(nx + 1, ny + 1);
-	*rlim = std::min(*rlim, upper_lim);
-	*rlim = std::max(*rlim, (float)1.);
+	upper_lim = max(nx + 1, ny + 1);
+	*rlim = min(*rlim, upper_lim);
+	*rlim = max(*rlim, (float)1.);
 }
 
 /* Update the temperature according to the annealing schedule selected. */
@@ -1022,7 +997,7 @@ static int exit_crit(float t, float cost,
 
 	/* Automatic annealing schedule */
 
-	if (t < 0.005 * cost / num_nets) {
+	if (t < 0.005 * cost / g_clbs_nlist.net.size()) {
 		return (1);
 	} else {
 		return (0);
@@ -1045,7 +1020,7 @@ static float starting_t(float *cost_ptr, float *bb_cost_ptr,
 	if (annealing_sched.type == USER_SCHED)
 		return (annealing_sched.init_t);
 
-	move_lim = std::min(max_moves, num_blocks);
+	move_lim = min(max_moves, num_blocks);
 
 	num_accepted = 0;
 	av = 0.;
@@ -1080,12 +1055,13 @@ static float starting_t(float *cost_ptr, float *bb_cost_ptr,
 
 #ifdef DEBUG
 	if (num_accepted != move_lim) {
-		vpr_printf(TIO_MESSAGE_WARNING, "Starting t: %d of %d configurations accepted.\n", num_accepted, move_lim);
+		vpr_printf_warning(__FILE__, __LINE__, 
+				"Starting t: %d of %d configurations accepted.\n", num_accepted, move_lim);
 	}
 #endif
 
 #ifdef VERBOSE
-	vpr_printf(TIO_MESSAGE_INFO, "std_dev: %g, average cost: %g, starting temp: %g\n", std_dev, av, 20. * std_dev);
+	vpr_printf_info("std_dev: %g, average cost: %g, starting temp: %g\n", std_dev, av, 20. * std_dev);
 #endif
 
 	/* Set the initial temperature to 20 times the standard of deviation */
@@ -1101,7 +1077,7 @@ static int setup_blocks_affected(int b_from, int x_to, int y_to, int z_to) {
 
 	int imoved_blk, imacro;
 	int x_from, y_from, z_from, b_to;
-	int abort_swap = FALSE;
+	int abort_swap = false;
 
 	x_from = block[b_from].x;
 	y_from = block[b_from].y;
@@ -1126,15 +1102,16 @@ static int setup_blocks_affected(int b_from, int x_to, int y_to, int z_to) {
 		blocks_affected.moved_blocks[imoved_blk].ynew = y_to;
 		blocks_affected.moved_blocks[imoved_blk].zold = z_from;
 		blocks_affected.moved_blocks[imoved_blk].znew = z_to;
-		blocks_affected.moved_blocks[imoved_blk].swapped_to_empty = TRUE;
+		blocks_affected.moved_blocks[imoved_blk].swapped_to_was_empty = true;
+		blocks_affected.moved_blocks[imoved_blk].swapped_from_is_empty = true;
 		blocks_affected.num_moved_blocks ++;
 				
-	} else {
+	} else if (b_to != INVALID ) {
 
 		// Does not allow a swap with a macro yet
 		get_imacro_from_iblk(&imacro, b_to, pl_macros, num_pl_macros);
 		if (imacro != -1) {
-			abort_swap = TRUE;
+			abort_swap = true;
 			return (abort_swap);
 		}
 
@@ -1156,7 +1133,8 @@ static int setup_blocks_affected(int b_from, int x_to, int y_to, int z_to) {
 		blocks_affected.moved_blocks[imoved_blk].ynew = y_to;
 		blocks_affected.moved_blocks[imoved_blk].zold = z_from;
 		blocks_affected.moved_blocks[imoved_blk].znew = z_to;
-		blocks_affected.moved_blocks[imoved_blk].swapped_to_empty = FALSE;
+		blocks_affected.moved_blocks[imoved_blk].swapped_to_was_empty = false;
+		blocks_affected.moved_blocks[imoved_blk].swapped_from_is_empty = false;
 		blocks_affected.num_moved_blocks ++;
 				
 		imoved_blk = blocks_affected.num_moved_blocks;
@@ -1167,7 +1145,8 @@ static int setup_blocks_affected(int b_from, int x_to, int y_to, int z_to) {
 		blocks_affected.moved_blocks[imoved_blk].ynew = y_from;
 		blocks_affected.moved_blocks[imoved_blk].zold = z_to;
 		blocks_affected.moved_blocks[imoved_blk].znew = z_from;
-		blocks_affected.moved_blocks[imoved_blk].swapped_to_empty = FALSE;
+		blocks_affected.moved_blocks[imoved_blk].swapped_to_was_empty = false;
+		blocks_affected.moved_blocks[imoved_blk].swapped_from_is_empty = false;
 		blocks_affected.num_moved_blocks ++;
 
 	} // Finish swapping the blocks and setting up blocks_affected
@@ -1182,15 +1161,13 @@ static int find_affected_blocks(int b_from, int x_to, int y_to, int z_to) {
 	 * Returns abort_swap. */
 
 	int imacro, imember;
-	int x_swap_offset, y_swap_offset, z_swap_offset, x_from, y_from, z_from, b_to;
-	int curr_b_from, curr_x_from, curr_y_from, curr_z_from, curr_b_to, curr_x_to, curr_y_to, curr_z_to;
-	int abort_swap = FALSE;
+	int x_swap_offset, y_swap_offset, z_swap_offset, x_from, y_from, z_from;
+	int curr_b_from, curr_x_from, curr_y_from, curr_z_from, curr_x_to, curr_y_to, curr_z_to;
+	int abort_swap = false;
 	
 	x_from = block[b_from].x;
 	y_from = block[b_from].y;
 	z_from = block[b_from].z;
-
-	b_to = grid[x_to][y_to].blocks[z_to];
 
 	get_imacro_from_iblk(&imacro, b_from, pl_macros, num_pl_macros);
 	if ( imacro != -1) {
@@ -1201,7 +1178,7 @@ static int find_affected_blocks(int b_from, int x_to, int y_to, int z_to) {
 		y_swap_offset = y_to - y_from;
 		z_swap_offset = z_to - z_from;
 		
-		for (imember = 0; imember < pl_macros[imacro].num_blocks && abort_swap == FALSE; imember++) {
+		for (imember = 0; imember < pl_macros[imacro].num_blocks && abort_swap == false; imember++) {
 
 			// Gets the new from and to info for every block in the macro
 			// cannot use the old from and to info
@@ -1217,16 +1194,13 @@ static int find_affected_blocks(int b_from, int x_to, int y_to, int z_to) {
 			
 			// Make sure that the swap_to location is still on the chip
 			if (curr_x_to < 1 || curr_x_to > nx || curr_y_to < 1 || curr_y_to > ny || curr_z_to < 0) {
-				abort_swap = TRUE;
+				abort_swap = true;
 			} else {
-				curr_b_to = grid[curr_x_to][curr_y_to].blocks[curr_z_to];
 				abort_swap = setup_blocks_affected(curr_b_from, curr_x_to, curr_y_to, curr_z_to);
 			}
-
 		} // Finish going through all the blocks in the macro
 
 	} else { 
-		
 		// This is not a macro - I could use the from and to info from before
 		abort_swap = setup_blocks_affected(b_from, x_to, y_to, z_to);
 
@@ -1254,7 +1228,7 @@ static enum swap_result try_swap(float t, float *cost, float *bb_cost, float *ti
 	int num_nets_affected;
 	float delta_c, bb_delta_c, timing_delta_c, delay_delta_c;
 	int inet, iblk, bnum, iblk_pin, inet_affected;
-	int abort_swap = FALSE;
+	int abort_swap = false;
 
 	num_ts_called ++;
 
@@ -1275,7 +1249,7 @@ static enum swap_result try_swap(float t, float *cost, float *bb_cost, float *ti
 	 * but this shouldn't cause any significant slowdown and won't be *
 	 * broken if I ever change the parser so that the pins aren't     *
 	 * necessarily at the start of the block list.                    */
-	while (block[b_from].isFixed == TRUE) {
+	while (block[b_from].is_fixed == true) {
 		b_from = my_irand(num_blocks - 1);
 	}
 
@@ -1283,14 +1257,15 @@ static enum swap_result try_swap(float t, float *cost, float *bb_cost, float *ti
 	y_from = block[b_from].y;
 	z_from = block[b_from].z;
 
-	if (!find_to(x_from, y_from, block[b_from].type, rlim, &x_to,
-			&y_to))
+	if (!find_to(block[b_from].type, rlim, b_from, x_from, y_from, &x_to, &y_to, &z_to))
 		return REJECTED;
 
-	z_to = 0;
-	if (grid[x_to][y_to].type->capacity > 1) {
-		z_to = my_irand(grid[x_to][y_to].type->capacity - 1);
-	}
+#if 0
+	int b_to = grid[x_to][y_to].blocks[z_to];
+	vpr_printf_info( "swap [%d][%d][%d] %s \"%s\" <=> [%d][%d][%d] %s \"%s\"\n",
+		x_from, y_from, z_from, grid[x_from][y_from].type->name, b_from != -1 ? block[b_from].name : "",
+		x_to, y_to, z_to, grid[x_to][y_to].type->name, b_to != -1 ? block[b_to].name : "");
+#endif
 
 	/* Make the switch in order to make computing the new bounding *
 	 * box simpler.  If the cost increase is too high, switch them *
@@ -1308,7 +1283,7 @@ static enum swap_result try_swap(float t, float *cost, float *bb_cost, float *ti
 	
 	abort_swap = find_affected_blocks(b_from, x_to, y_to, z_to);
 
-	if (abort_swap == FALSE) {
+	if (abort_swap == false) {
 
 		// Find all the nets affected by this swap
 		num_nets_affected = find_affected_nets(ts_nets_to_update);
@@ -1326,19 +1301,19 @@ static enum swap_result try_swap(float t, float *cost, float *bb_cost, float *ti
 				inet = block[bnum].nets[iblk_pin];
 				if (inet == OPEN)
 					continue;
-				if (clb_net[inet].is_global)
+				if (g_clbs_nlist.net[inet].is_global)
 					continue;
 			
-				if (clb_net[inet].num_sinks < SMALL_NET) {
+				if (g_clbs_nlist.net[inet].num_sinks() < SMALL_NET) {
 					if(bb_updated_before[inet] == NOT_UPDATED_YET)
 						/* Brute force bounding box recomputation, once only for speed. */
 						get_non_updateable_bb(inet, &ts_bb_coord_new[inet]);
 				} else {
 					update_bb(inet, &ts_bb_coord_new[inet],
 							&ts_bb_edge_new[inet], 
-							blocks_affected.moved_blocks[iblk].xold, 
+							blocks_affected.moved_blocks[iblk].xold + block[bnum].type->pin_width[iblk_pin],
 							blocks_affected.moved_blocks[iblk].yold + block[bnum].type->pin_height[iblk_pin],
-							blocks_affected.moved_blocks[iblk].xnew, 
+							blocks_affected.moved_blocks[iblk].xnew + block[bnum].type->pin_width[iblk_pin],
 							blocks_affected.moved_blocks[iblk].ynew + block[bnum].type->pin_height[iblk_pin]);
 				}
 			}
@@ -1389,7 +1364,7 @@ static enum swap_result try_swap(float t, float *cost, float *bb_cost, float *ti
 				inet = ts_nets_to_update[inet_affected];
 
 				bb_coords[inet] = ts_bb_coord_new[inet];
-				if (clb_net[inet].num_sinks >= SMALL_NET)
+				if (g_clbs_nlist.net[inet].num_sinks() >= SMALL_NET)
 					bb_num_on_edges[inet] = ts_bb_edge_new[inet];
 			
 				net_cost[inet] = temp_net_cost[inet];
@@ -1415,10 +1390,12 @@ static enum swap_result try_swap(float t, float *cost, float *bb_cost, float *ti
 
 				grid[x_to][y_to].blocks[z_to] = b_from;
 
-				if (blocks_affected.moved_blocks[iblk].swapped_to_empty == TRUE) {
+				if (blocks_affected.moved_blocks[iblk].swapped_to_was_empty) {
 					grid[x_to][y_to].usage++;
+				}
+				if (blocks_affected.moved_blocks[iblk].swapped_from_is_empty) {
 					grid[x_from][y_from].usage--;
-					grid[x_from][y_from].blocks[z_from] = -1;
+					grid[x_from][y_from].blocks[z_from] = EMPTY;
 				}
 			
 			} // Finish updating clb for all blocks
@@ -1488,7 +1465,7 @@ static int find_affected_nets(int *nets_to_update) {
 			inet = block[bnum].nets[iblk_pin];
 			if (inet == OPEN)
 				continue;
-			if (clb_net[inet].is_global)
+			if (g_clbs_nlist.net[inet].is_global)
 				continue;
 			
 			if (temp_net_cost[inet] < 0.) { 
@@ -1504,84 +1481,116 @@ static int find_affected_nets(int *nets_to_update) {
 	return num_affected_nets;
 }
 
-static boolean find_to(int x_from, int y_from, t_type_ptr type, float rlim, int *x_to, int *y_to) {
+static bool find_to(t_type_ptr type, float rlim, 
+		int iblk_from, int x_from, int y_from, 
+		int *px_to, int *py_to, int *pz_to) {
 
 	/* Returns the point to which I want to swap, properly range limited. 
 	 * rlim must always be between 1 and nx (inclusive) for this routine  
 	 * to work.  Assumes that a column only contains blocks of the same type.
 	 */
 
-	int x_rel, y_rel, rlx, rly, min_x, max_x, min_y, max_y;
+	int rlx, rly, min_x, max_x, min_y, max_y;
 	int num_tries;
 	int active_area;
-	boolean is_legal;
-	int block_index, ipos;
+	bool is_legal;
+	int itype;
 
 	assert(type == grid[x_from][y_from].type);
 
-	rlx = (int)std::min((float)nx + 1, rlim); 
-	rly = (int)std::min((float)ny + 1, rlim); /* Added rly for aspect_ratio != 1 case. */
+	rlx = (int)min((float)nx + 1, rlim); 
+	rly = (int)min((float)ny + 1, rlim); /* Added rly for aspect_ratio != 1 case. */
 	active_area = 4 * rlx * rly;
 
-	min_x = std::max(0, x_from - rlx);
-	max_x = std::min(nx + 1, x_from + rlx);
-	min_y = std::max(0, y_from - rly);
-	max_y = std::min(ny + 1, y_from + rly);
+	min_x = max(0, x_from - rlx);
+	max_x = min(nx + 1, x_from + rlx);
+	min_y = max(0, y_from - rly);
+	max_y = min(ny + 1, y_from + rly);
 
 #ifdef DEBUG
 	if (rlx < 1 || rlx > nx + 1) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in find_to: rlx = %d\n", rlx);
-		exit(1);
+		vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,"in find_to: rlx = %d\n", rlx);
 	}
 #endif
 
 	num_tries = 0;
-	block_index = type->index;
+	itype = type->index;
 
 	do { /* Until legal */
-		is_legal = TRUE;
+		is_legal = true;
 
 		/* Limit the number of tries when searching for an alternative position */
-		if(num_tries >= 2 * std::min(active_area / type->height, num_legal_pos[block_index]) + 10) {
+		if(num_tries >= 2 * min(active_area / (type->width * type->height), num_legal_pos[itype]) + 10) {
 			/* Tried randomly searching for a suitable position */
-			return FALSE;
+			return false;
 		} else {
 			num_tries++;
 		}
-		if(nx / 4 < rlx || 
-			ny / 4 < rly ||
-			num_legal_pos[block_index] < active_area) {
-			ipos = my_irand(num_legal_pos[block_index] - 1);
-			*x_to = legal_pos[block_index][ipos].x;
-			*y_to = legal_pos[block_index][ipos].y;
-		} else {
-			x_rel = my_irand(std::max(0, max_x - min_x));
-			*x_to = min_x + x_rel;
-			y_rel = my_irand(std::max(0, max_y - min_y));
-			*y_to = min_y + y_rel;
-			*y_to = (*y_to) - grid[*x_to][*y_to].offset; /* align it */
-		}
+
+		find_to_location(type, rlim, iblk_from, x_from, y_from, 
+				px_to, py_to, pz_to);
 		
-		if((x_from == *x_to) && (y_from == *y_to)) {
-			is_legal = FALSE;
-		} else if(*x_to > max_x || *x_to < min_x || *y_to > max_y || *y_to < min_y) {
-			is_legal = FALSE;
-		} else if(grid[*x_to][*y_to].type != grid[x_from][y_from].type) {
-			is_legal = FALSE;
+		if((x_from == *px_to) && (y_from == *py_to)) {
+			is_legal = false;
+		} else if(*px_to > max_x || *px_to < min_x || *py_to > max_y || *py_to < min_y) {
+			is_legal = false;
+		} else if(grid[*px_to][*py_to].type != grid[x_from][y_from].type) {
+			is_legal = false;
+		} else {
+			/* Find z_to and test to validate that the "to" block is *not* fixed */
+			*pz_to = 0;
+			if (grid[*px_to][*py_to].type->capacity > 1) {
+				*pz_to = my_irand(grid[*px_to][*py_to].type->capacity - 1);
+			}
+			int b_to = grid[*px_to][*py_to].blocks[*pz_to];
+			if ((b_to != EMPTY) && (block[b_to].is_fixed == true)) {
+				is_legal = false;
+			}
 		}
 
-		assert(*x_to >= 0 && *x_to <= nx + 1);
-		assert(*y_to >= 0 && *y_to <= ny + 1);
-	} while (is_legal == FALSE);
+		assert(*px_to >= 0 && *px_to <= nx + 1);
+		assert(*py_to >= 0 && *py_to <= ny + 1);
+	} while (is_legal == false);
 
 #ifdef DEBUG
-	if (*x_to < 0 || *x_to > nx + 1 || *y_to < 0 || *y_to > ny + 1) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in routine find_to: (x_to,y_to) = (%d,%d)\n", *x_to, *y_to);
-		exit(1);
+	if (*px_to < 0 || *px_to > nx + 1 || *py_to < 0 || *py_to > ny + 1) {
+		vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,"in routine find_to: (x_to,y_to) = (%d,%d)\n", *px_to, *py_to);
 	}
 #endif
-	assert(type == grid[*x_to][*y_to].type);
-	return TRUE;
+	assert(type == grid[*px_to][*py_to].type);
+	return true;
+}
+
+static void find_to_location(t_type_ptr type, float rlim,
+		int iblk_from, int x_from, int y_from, 
+		int *px_to, int *py_to, int *pz_to) {
+
+	int itype = type->index;
+
+
+	int rlx = (int)min((float)nx + 1, rlim); 
+	int rly = (int)min((float)ny + 1, rlim); /* Added rly for aspect_ratio != 1 case. */
+	int active_area = 4 * rlx * rly;
+
+	int min_x = max(0, x_from - rlx);
+	int max_x = min(nx + 1, x_from + rlx);
+	int min_y = max(0, y_from - rly);
+	int max_y = min(ny + 1, y_from + rly);
+
+	*pz_to = 0;
+	if (nx / 4 < rlx || ny / 4 < rly || num_legal_pos[itype] < active_area) {
+		int ipos = my_irand(num_legal_pos[itype] - 1);
+		*px_to = legal_pos[itype][ipos].x;
+		*py_to = legal_pos[itype][ipos].y;
+		*pz_to = legal_pos[itype][ipos].z;
+	} else {
+		int x_rel = my_irand(max(0, max_x - min_x));
+		int y_rel = my_irand(max(0, max_y - min_y));
+		*px_to = min_x + x_rel;
+		*py_to = min_y + y_rel;
+		*px_to = (*px_to) - grid[*px_to][*py_to].width_offset; /* align it */
+		*py_to = (*py_to) - grid[*px_to][*py_to].height_offset; /* align it */
+	}
 }
 
 static enum swap_result assess_swap(float delta_c, float t) {
@@ -1620,13 +1629,13 @@ static float recompute_bb_cost(void) {
 	 * This routine does as little work as possible to compute this new  *
 	 * cost.                                                             */
 
-	int inet;
+	unsigned int inet;
 	float cost;
 
 	cost = 0;
 
-	for (inet = 0; inet < num_nets; inet++) { /* for each net ... */
-		if (clb_net[inet].is_global == FALSE) { /* Do only if not global. */
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) { /* for each net ... */
+		if (g_clbs_nlist.net[inet].is_global == false) { /* Do only if not global. */
 
 			/* Bounding boxes don't have to be recomputed; they're correct. */
 			cost += net_cost[inet];
@@ -1647,10 +1656,10 @@ static float comp_td_point_to_point_delay(int inet, int ipin) {
 
 	delay_source_to_sink = 0.;
 
-	source_block = clb_net[inet].node_block[0];
+	source_block = g_clbs_nlist.net[inet].pins[0].block;
 	source_type = block[source_block].type;
 
-	sink_block = clb_net[inet].node_block[ipin];
+	sink_block = g_clbs_nlist.net[inet].pins[ipin].block;
 	sink_type = block[sink_block].type;
 
 	assert(source_type != NULL);
@@ -1675,10 +1684,36 @@ static float comp_td_point_to_point_delay(int inet, int ipin) {
 			delay_source_to_sink = delta_clb_to_clb[delta_x][delta_y];
 	}
 	if (delay_source_to_sink < 0) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in comp_td_point_to_point_delay: Bad delay_source_to_sink value delta(%d, %d) delay of %g\n", delta_x, delta_y, delay_source_to_sink);
-		vpr_printf(TIO_MESSAGE_ERROR, "in comp_td_point_to_point_delay: Delay is less than 0\n");
-		exit(1);
+		vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,
+				"in comp_td_point_to_point_delay: Bad delay_source_to_sink value delta(%d, %d) delay of %g\n"
+				"in comp_td_point_to_point_delay: Delay is less than 0\n",
+				delta_x, delta_y, delay_source_to_sink);
 	}
+
+#ifdef INTERPOSER_BASED_ARCHITECTURE
+	/* Check the number of times this connection crosses the interposer cuts 
+	 * and account for the added delay
+	 */
+	if(num_cuts > 0 && delay_increase > 0)
+	{
+		float f_delay_increase = (float)delay_increase * 1e-12;
+		int y1 = std::min(block[source_block].y, block[sink_block].y);
+		int y2 = std::max(block[source_block].y, block[sink_block].y);
+		int times_crossed = 0;
+		int counter = 0;
+		int y = 0;
+		for(counter = 0; counter < num_cuts; ++counter)
+		{
+			y = arch_cut_locations[counter];
+			if(y1 <= y && y2 > y)
+			{
+				times_crossed++;
+			}
+		}
+
+		delay_source_to_sink += (float)times_crossed * f_delay_increase;
+	}
+#endif
 
 	return (delay_source_to_sink);
 }
@@ -1687,7 +1722,8 @@ static void update_td_cost(void) {
 	/* Update the point_to_point_timing_cost values from the temporary *
 	 * values for all connections that have changed.                   */
 
-	int iblk_pin, net_pin, inet, ipin;
+	int iblk_pin, net_pin, inet;
+	unsigned int ipin;
 	int iblk, iblk2, bnum, driven_by_moved_block;
 	
 	/* Go through all the blocks moved. */
@@ -1701,21 +1737,21 @@ static void update_td_cost(void) {
 			if (inet == OPEN)
 				continue;
 
-			if (clb_net[inet].is_global)
+			if (g_clbs_nlist.net[inet].is_global)
 				continue;
 
 			net_pin = net_pin_index[bnum][iblk_pin];
 
 			if (net_pin != 0) {
 
-				driven_by_moved_block = FALSE;
+				driven_by_moved_block = false;
 				for (iblk2 = 0; iblk2 < blocks_affected.num_moved_blocks; iblk2++)
-				{	if (clb_net[inet].node_block[0] == blocks_affected.moved_blocks[iblk2].block_num)
-						driven_by_moved_block = TRUE;
+				{	if (g_clbs_nlist.net[inet].pins[0].block == blocks_affected.moved_blocks[iblk2].block_num)
+						driven_by_moved_block = true;
 				}
 				
 				/* The following "if" prevents the value from being updated twice. */
-				if (driven_by_moved_block == FALSE) {
+				if (driven_by_moved_block == false) {
 					point_to_point_delay_cost[inet][net_pin] =
 							temp_point_to_point_delay_cost[inet][net_pin];
 					temp_point_to_point_delay_cost[inet][net_pin] = -1;
@@ -1725,7 +1761,7 @@ static void update_td_cost(void) {
 				}
 			} else { /* This net is being driven by a moved block, recompute */
 				/* All point to point connections on this net. */
-				for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++) {
+				for (ipin = 1; ipin < g_clbs_nlist.net[inet].pins.size(); ipin++) {
 					point_to_point_delay_cost[inet][ipin] =
 							temp_point_to_point_delay_cost[inet][ipin];
 					temp_point_to_point_delay_cost[inet][ipin] = -1;
@@ -1745,7 +1781,8 @@ static void comp_delta_td_cost(float *delta_timing, float *delta_delay) {
 	/*must only have the timing cost on the connection driving the input */
 	/*pin computed */
 
-	int inet, net_pin, ipin;
+	int inet, net_pin;
+	unsigned int ipin;
 	float delta_timing_cost, delta_delay_cost, temp_delay;
 	int iblk, iblk2, bnum, iblk_pin, driven_by_moved_block;
 
@@ -1763,7 +1800,7 @@ static void comp_delta_td_cost(float *delta_timing, float *delta_delay) {
 			if (inet == OPEN)
 				continue;
 
-			if (clb_net[inet].is_global)
+			if (g_clbs_nlist.net[inet].is_global)
 				continue;
 
 			net_pin = net_pin_index[bnum][iblk_pin];
@@ -1774,13 +1811,13 @@ static void comp_delta_td_cost(float *delta_timing, float *delta_delay) {
 				 * be computed in the fanout of the net on  the driving block, also    *
 				 * computing it here would double count the change, and mess up the    *
 				 * delta_timing_cost value.                                            */
-				driven_by_moved_block = FALSE;
+				driven_by_moved_block = false;
 				for (iblk2 = 0; iblk2 < blocks_affected.num_moved_blocks; iblk2++)
-				{	if (clb_net[inet].node_block[0] == blocks_affected.moved_blocks[iblk2].block_num)
-						driven_by_moved_block = TRUE;
+				{	if (g_clbs_nlist.net[inet].pins[0].block == blocks_affected.moved_blocks[iblk2].block_num)
+						driven_by_moved_block = true;
 				}
 				
-				if (driven_by_moved_block == FALSE) {
+				if (driven_by_moved_block == false) {
 					temp_delay = comp_td_point_to_point_delay(inet, net_pin);
 					temp_point_to_point_delay_cost[inet][net_pin] = temp_delay;
 
@@ -1793,7 +1830,7 @@ static void comp_delta_td_cost(float *delta_timing, float *delta_delay) {
 				}
 			} else { /* This net is being driven by a moved block, recompute */
 				/* All point to point connections on this net. */
-				for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++) {
+				for (ipin = 1; ipin < g_clbs_nlist.net[inet].pins.size(); ipin++) {
 					temp_delay = comp_td_point_to_point_delay(inet, ipin);
 					temp_point_to_point_delay_cost[inet][ipin] = temp_delay;
 
@@ -1818,17 +1855,17 @@ static void comp_td_costs(float *timing_cost, float *connection_delay_sum) {
 	 * on all point to point connections, we define the timing cost of       *
 	 * each connection as criticality*delay.                                 */
 
-	int inet, ipin;
+	unsigned inet, ipin;
 	float loc_timing_cost, loc_connection_delay_sum, temp_delay_cost,
 			temp_timing_cost;
 
 	loc_timing_cost = 0.;
 	loc_connection_delay_sum = 0.;
 
-	for (inet = 0; inet < num_nets; inet++) { /* For each net ... */
-		if (clb_net[inet].is_global == FALSE) { /* Do only if not global. */
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) { /* For each net ... */
+		if (g_clbs_nlist.net[inet].is_global == false) { /* Do only if not global. */
 
-			for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++) {
+			for (ipin = 1; ipin < g_clbs_nlist.net[inet].pins.size(); ipin++) {
 
 				temp_delay_cost = comp_td_point_to_point_delay(inet, ipin);
 				temp_timing_cost = temp_delay_cost * timing_place_crit[inet][ipin];
@@ -1861,21 +1898,21 @@ static float comp_bb_cost(enum cost_methods method) {
 	 * cost which can be used to check the correctness of the       *
 	 * other routine.                                               */
 
-	int inet;
+	unsigned int inet;
 	float cost;
 	double expected_wirelength;
 
 	cost = 0;
 	expected_wirelength = 0.0;
 
-	for (inet = 0; inet < num_nets; inet++) { /* for each net ... */
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) { /* for each net ... */
 
-		if (clb_net[inet].is_global == FALSE) { /* Do only if not global. */
+		if (g_clbs_nlist.net[inet].is_global == false) { /* Do only if not global. */
 
 			/* Small nets don't use incremental updating on their bounding boxes, *
 			 * so they can use a fast bounding box calculator.                    */
 
-			if (clb_net[inet].num_sinks >= SMALL_NET && method == NORMAL) {
+			if (g_clbs_nlist.net[inet].num_sinks() >= SMALL_NET && method == NORMAL) {
 				get_bb_from_scratch(inet, &bb_coords[inet],
 						&bb_num_on_edges[inet]);
 			} else {
@@ -1891,8 +1928,8 @@ static float comp_bb_cost(enum cost_methods method) {
 	}
 
 	if (method == CHECK) {
-		vpr_printf(TIO_MESSAGE_INFO, "\n");
-		vpr_printf(TIO_MESSAGE_INFO, "BB estimate of min-dist (placement) wirelength: %.0f\n", expected_wirelength);
+		vpr_printf_info("\n");
+		vpr_printf_info("BB estimate of min-dist (placement) wire length: %.0f\n", expected_wirelength);
 	}
 	return (cost);
 }
@@ -1904,7 +1941,8 @@ static void free_placement_structs(
 	/* Frees the major structures needed by the placer (and not needed       *
 	 * elsewhere).   */
 
-	int inet, imacro;
+	unsigned int inet;
+	int imacro;
 
 	free_legal_placements();
 	free_fast_cost_update();
@@ -1912,7 +1950,7 @@ static void free_placement_structs(
 	if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
 			|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE
 			|| placer_opts.enable_timing_computations) {
-		for (inet = 0; inet < num_nets; inet++) {
+		for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
 			/*add one to the address since it is indexed from 1 not 0 */
 
 			point_to_point_delay_cost[inet]++;
@@ -1962,71 +2000,80 @@ static void free_placement_structs(
 static void alloc_and_load_placement_structs(
 		float place_cost_exp, float ***old_region_occ_x,
 		float ***old_region_occ_y, struct s_placer_opts placer_opts,
-		t_direct_inf *directs, int num_directs) {
+		t_direct_inf *directs, int num_directs, int num_segments) {
 
 	/* Allocates the major structures needed only by the placer, primarily for *
 	 * computing costs quickly and such.                                       */
 
-	int inet, ipin, max_pins_per_clb, i;
+	int max_pins_per_clb, i;
+	unsigned int inet, ipin;
 
 	alloc_legal_placements();
 	load_legal_placements();
 
 	max_pins_per_clb = 0;
 	for (i = 0; i < num_types; i++) {
-		max_pins_per_clb = std::max(max_pins_per_clb, type_descriptors[i].num_pins);
+		max_pins_per_clb = max(max_pins_per_clb, type_descriptors[i].num_pins);
 	}
 
 	if (placer_opts.place_algorithm == NET_TIMING_DRIVEN_PLACE
 			|| placer_opts.place_algorithm == PATH_TIMING_DRIVEN_PLACE
 			|| placer_opts.enable_timing_computations) {
 		/* Allocate structures associated with timing driven placement */
-		/* [0..num_nets-1][1..num_pins-1]  */
-		point_to_point_delay_cost = (float **) my_malloc(num_nets * sizeof(float *));
-		temp_point_to_point_delay_cost = (float **) my_malloc(num_nets * sizeof(float *));
+		/* [0..g_clbs_nlist.net.size()-1][1..num_pins-1]  */
+		point_to_point_delay_cost = (float **) my_malloc(
+				g_clbs_nlist.net.size() * sizeof(float *));
+		temp_point_to_point_delay_cost = (float **) my_malloc(
+				g_clbs_nlist.net.size() * sizeof(float *));
 
-		point_to_point_timing_cost = (float **) my_malloc(num_nets * sizeof(float *));
-		temp_point_to_point_timing_cost = (float **) my_malloc(num_nets * sizeof(float *));
+		point_to_point_timing_cost = (float **) my_malloc(
+				g_clbs_nlist.net.size() * sizeof(float *));
+		temp_point_to_point_timing_cost = (float **) my_malloc(
+				g_clbs_nlist.net.size() * sizeof(float *));
 
-		for (inet = 0; inet < num_nets; inet++) {
+		for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
 
 			/* In the following, subract one so index starts at *
 			 * 1 instead of 0 */
-			point_to_point_delay_cost[inet] = (float *) my_malloc(clb_net[inet].num_sinks * sizeof(float));
+			point_to_point_delay_cost[inet] = (float *) my_malloc(
+					g_clbs_nlist.net[inet].num_sinks() * sizeof(float));
 			point_to_point_delay_cost[inet]--;
 
-			temp_point_to_point_delay_cost[inet] = (float *) my_malloc(clb_net[inet].num_sinks * sizeof(float));
+			temp_point_to_point_delay_cost[inet] = (float *) my_malloc(
+					g_clbs_nlist.net[inet].num_sinks() * sizeof(float));
 			temp_point_to_point_delay_cost[inet]--;
 
-			point_to_point_timing_cost[inet] = (float *) my_malloc(clb_net[inet].num_sinks * sizeof(float));
+			point_to_point_timing_cost[inet] = (float *) my_malloc(
+					g_clbs_nlist.net[inet].num_sinks() * sizeof(float));
 			point_to_point_timing_cost[inet]--;
 
-			temp_point_to_point_timing_cost[inet] = (float *) my_malloc(clb_net[inet].num_sinks * sizeof(float));
+			temp_point_to_point_timing_cost[inet] = (float *) my_malloc(
+					g_clbs_nlist.net[inet].num_sinks() * sizeof(float));
 			temp_point_to_point_timing_cost[inet]--;
 		}
-		for (inet = 0; inet < num_nets; inet++) {
-			for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++) {
+		for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
+			for (ipin = 1; ipin < g_clbs_nlist.net[inet].pins.size(); ipin++) {
 				point_to_point_delay_cost[inet][ipin] = 0;
 				temp_point_to_point_delay_cost[inet][ipin] = 0;
 			}
 		}
 	}
 
-	net_cost = (float *) my_malloc(num_nets * sizeof(float));
-	temp_net_cost = (float *) my_malloc(num_nets * sizeof(float));
-	bb_updated_before = (char*)my_calloc(num_nets, sizeof(char));
+	net_cost = (float *) my_malloc(g_clbs_nlist.net.size() * sizeof(float));
+	temp_net_cost = (float *) my_malloc(g_clbs_nlist.net.size() * sizeof(float));
+	bb_updated_before = (char*)my_calloc(g_clbs_nlist.net.size(), sizeof(char));
 	
 	/* Used to store costs for moves not yet made and to indicate when a net's   *
 	 * cost has been recomputed. temp_net_cost[inet] < 0 means net's cost hasn't *
 	 * been recomputed.                                                          */
 
-	for (inet = 0; inet < num_nets; inet++){
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++){
 		bb_updated_before[inet] = NOT_UPDATED_YET;
 		temp_net_cost[inet] = -1.;
 	}
 	
-	bb_coords = (struct s_bb *) my_malloc(num_nets * sizeof(struct s_bb));
-	bb_num_on_edges = (struct s_bb *) my_malloc(num_nets * sizeof(struct s_bb));
+	bb_coords = (struct s_bb *) my_malloc(g_clbs_nlist.net.size() * sizeof(struct s_bb));
+	bb_num_on_edges = (struct s_bb *) my_malloc(g_clbs_nlist.net.size() * sizeof(struct s_bb));
 
 	/* Shouldn't use them; crash hard if I do!   */
 	*old_region_occ_x = NULL;
@@ -2038,17 +2085,17 @@ static void alloc_and_load_placement_structs(
 
 	alloc_and_load_try_swap_structs();
 
-	num_pl_macros = alloc_and_load_placement_macros(directs, num_directs, &pl_macros);
+	num_pl_macros = alloc_and_load_placement_macros(directs, num_directs, num_segments, &pl_macros);
 }
 
 static void alloc_and_load_try_swap_structs() {
 	/* Allocate the local bb_coordinate storage, etc. only once. */
-	/* Allocate with size num_nets for any number of nets affected. */
+	/* Allocate with size g_clbs_nlist.net.size() for any number of nets affected. */
 	ts_bb_coord_new = (struct s_bb *) my_calloc(
-			num_nets, sizeof(struct s_bb));
+			g_clbs_nlist.net.size(), sizeof(struct s_bb));
 	ts_bb_edge_new = (struct s_bb *) my_calloc(
-			num_nets, sizeof(struct s_bb));
-	ts_nets_to_update = (int *) my_calloc(num_nets, sizeof(int));
+			g_clbs_nlist.net.size(), sizeof(struct s_bb));
+	ts_nets_to_update = (int *) my_calloc(g_clbs_nlist.net.size(), sizeof(int));
 		
 	/* Allocate with size num_blocks for any number of moved block. */
 	blocks_affected.moved_blocks = (t_pl_moved_block*)my_calloc(
@@ -2065,20 +2112,20 @@ static void get_bb_from_scratch(int inet, struct s_bb *coords,
 	 * coordinate and number of pins on each edge information.  It         *
 	 * should only be called when the bounding box information is not valid. */
 
-	int ipin, bnum, pnum, x, y, xmin, xmax, ymin, ymax;
+	int bnum, pnum, x, y, xmin, xmax, ymin, ymax;
 	int xmin_edge, xmax_edge, ymin_edge, ymax_edge;
-	int n_pins;
+	unsigned int ipin, n_pins;
 
-	n_pins = clb_net[inet].num_sinks + 1;
+	n_pins = g_clbs_nlist.net[inet].pins.size();
 	
-	bnum = clb_net[inet].node_block[0];
-	pnum = clb_net[inet].node_block_pin[0];
+	bnum = g_clbs_nlist.net[inet].pins[0].block;
+	pnum = g_clbs_nlist.net[inet].pins[0].block_pin;
 
-	x = block[bnum].x;
+	x = block[bnum].x + block[bnum].type->pin_width[pnum];
 	y = block[bnum].y + block[bnum].type->pin_height[pnum];
 
-	x = std::max(std::min(x, nx), 1);
-	y = std::max(std::min(y, ny), 1);
+	x = max(min(x, nx), 1);
+	y = max(min(y, ny), 1);
 
 	xmin = x;
 	ymin = y;
@@ -2090,9 +2137,9 @@ static void get_bb_from_scratch(int inet, struct s_bb *coords,
 	ymax_edge = 1;
 
 	for (ipin = 1; ipin < n_pins; ipin++) {
-		bnum = clb_net[inet].node_block[ipin];
-		pnum = clb_net[inet].node_block_pin[ipin];
-		x = block[bnum].x;
+		bnum = g_clbs_nlist.net[inet].pins[ipin].block;
+		pnum = g_clbs_nlist.net[inet].pins[ipin].block_pin;
+		x = block[bnum].x + block[bnum].type->pin_width[pnum];
 		y = block[bnum].y + block[bnum].type->pin_height[pnum];
 
 		/* Code below counts IO blocks as being within the 1..nx, 1..ny clb array. *
@@ -2102,8 +2149,8 @@ static void get_bb_from_scratch(int inet, struct s_bb *coords,
 		 * the which channels are included within the bounding box, and it         *
 		 * simplifies the code a lot.                                              */
 
-		x = std::max(std::min(x, nx), 1);
-		y = std::max(std::min(y, ny), 1);
+		x = max(min(x, nx), 1);
+		y = max(min(y, ny), 1);
 
 		if (x == xmin) {
 			xmin_edge++;
@@ -2155,15 +2202,15 @@ static double get_net_wirelength_estimate(int inet, struct s_bb *bbptr) {
 	/* Get the expected "crossing count" of a net, based on its number *
 	 * of pins.  Extrapolate for very large nets.                      */
 
-	if (((clb_net[inet].num_sinks + 1) > 50)
-			&& ((clb_net[inet].num_sinks + 1) < 85)) {
-		crossing = 2.7933 + 0.02616 * ((clb_net[inet].num_sinks + 1) - 50);
-	} else if ((clb_net[inet].num_sinks + 1) >= 85) {
-		crossing = 2.7933 + 0.011 * (clb_net[inet].num_sinks + 1)
-				- 0.0000018 * (clb_net[inet].num_sinks + 1)
-						* (clb_net[inet].num_sinks + 1);
+	if (((g_clbs_nlist.net[inet].pins.size()) > 50)
+			&& ((g_clbs_nlist.net[inet].pins.size()) < 85)) {
+		crossing = 2.7933 + 0.02616 * ((g_clbs_nlist.net[inet].pins.size()) - 50);
+	} else if ((g_clbs_nlist.net[inet].pins.size()) >= 85) {
+		crossing = 2.7933 + 0.011 * (g_clbs_nlist.net[inet].pins.size())
+				- 0.0000018 * (g_clbs_nlist.net[inet].pins.size())
+					* (g_clbs_nlist.net[inet].pins.size());
 	} else {
-		crossing = cross_count[(clb_net[inet].num_sinks + 1) - 1];
+		crossing = cross_count[g_clbs_nlist.net[inet].pins.size() - 1];
 	}
 
 	/* Could insert a check for xmin == xmax.  In that case, assume  *
@@ -2190,11 +2237,11 @@ static float get_net_cost(int inet, struct s_bb *bbptr) {
 	/* Get the expected "crossing count" of a net, based on its number *
 	 * of pins.  Extrapolate for very large nets.                      */
 
-	if ((clb_net[inet].num_sinks + 1) > 50) {
-		crossing = 2.7933 + 0.02616 * ((clb_net[inet].num_sinks + 1) - 50);
+	if ((g_clbs_nlist.net[inet].pins.size()) > 50) {
+		crossing = 2.7933 + 0.02616 * ((g_clbs_nlist.net[inet].pins.size()) - 50);
 		/*    crossing = 3.0;    Old value  */
 	} else {
-		crossing = cross_count[(clb_net[inet].num_sinks + 1) - 1];
+		crossing = cross_count[(g_clbs_nlist.net[inet].pins.size()) - 1];
 	}
 
 	/* Could insert a check for xmin == xmax.  In that case, assume  *
@@ -2210,6 +2257,67 @@ static float get_net_cost(int inet, struct s_bb *bbptr) {
 	ncost += (bbptr->ymax - bbptr->ymin + 1) * crossing
 			* chany_place_cost_fac[bbptr->xmax][bbptr->xmin - 1];
 
+#ifdef INTERPOSER_BASED_ARCHITECTURE
+	/* Adding extra cost factor here if the net crosses a cutline */
+	if(num_cuts > 0)
+	{
+		float C1, C2;
+		int times_crossed, counter;
+		int const_type = constant_type;
+
+		/* Ideas of different costs:
+		 * 0 penalty = C0 * times_crossed * width
+		 * 1 penalty = C1 * height * times_crossed
+		 * 2 penalty = C2 * height * times_crossed + C2*#crosses
+		 * 3 penalty = C3 * min(y1, y2) + C2*#crosses
+		 * 4 penalty = increase cost of ychannel
+		 * 5 penalty = C * height
+		 */
+		int closest = 11000;
+		times_crossed = 0;
+		C1 = placer_cost_constant;
+		C2 = (float)(percent_wires_cut / 100.0);
+		
+		for(counter = 0; counter < num_cuts; ++counter)
+		{
+			int j = arch_cut_locations[counter];
+			if(bbptr->ymin <= j && bbptr->ymax > j)
+			{
+				times_crossed++;
+				closest = std::min(closest, std::min(j-bbptr->ymin+1, bbptr->ymax-j));
+			}
+		}
+
+		if(const_type == 0)
+		{
+			ncost += C1 * chany_place_cost_fac[nx][1] * times_crossed * (bbptr->xmax - bbptr->xmin + 1) * C2;
+		}
+		if(const_type == 1)
+		{
+			ncost += C1 * chany_place_cost_fac[nx][1] * times_crossed * (bbptr->ymax - bbptr->ymin + 1) * C2;
+		}
+		if(const_type == 2)
+		{
+			ncost += C1 * chany_place_cost_fac[nx][1] * times_crossed * (bbptr->ymax - bbptr->ymin + 1) * C2 + C1 * chany_place_cost_fac[nx][1] * times_crossed * C2;
+		}
+		if(const_type == 3)
+		{
+			if(times_crossed > 0)
+			{
+				ncost += C1 * chany_place_cost_fac[nx][1] * times_crossed * closest * C2 + C1 * chany_place_cost_fac[nx][1] * times_crossed * C2;
+			}
+		}
+		if(const_type == 4)
+		{
+			ncost += C1 * (bbptr->ymax - bbptr->ymin + 1) * crossing * chany_place_cost_fac[bbptr->xmax][bbptr->xmin - 1] * C2;
+		}
+		if(const_type == 5)
+		{
+			ncost += C1 * chany_place_cost_fac[nx][1] * (bbptr->ymax - bbptr->ymin + 1) * C2;
+		}
+	}
+#endif
+
 	return (ncost);
 }
 
@@ -2223,24 +2331,25 @@ static void get_non_updateable_bb(int inet, struct s_bb *bb_coord_new) {
 	 * edges of the bounding box can be used.  Essentially, I am assuming *
 	 * the pins always lie on the outside of the bounding box.            */
 
-	int k, xmax, ymax, xmin, ymin, x, y;
+	int xmax, ymax, xmin, ymin, x, y;
 	int bnum, pnum;
+	unsigned int k;
 
-	bnum = clb_net[inet].node_block[0];
-	pnum = clb_net[inet].node_block_pin[0];
-	x = block[bnum].x;
-	y =	block[bnum].y + block[bnum].type->pin_height[pnum];
+	bnum = g_clbs_nlist.net[inet].pins[0].block;
+	pnum = g_clbs_nlist.net[inet].pins[0].block_pin;
+	x = block[bnum].x + block[bnum].type->pin_width[pnum];
+	y = block[bnum].y + block[bnum].type->pin_height[pnum];
 	
 	xmin = x;
 	ymin = y;
 	xmax = x;
 	ymax = y;
 
-	for (k = 1; k < (clb_net[inet].num_sinks + 1); k++) {
-		bnum = clb_net[inet].node_block[k];
-		pnum = clb_net[inet].node_block_pin[k];
-		x = block[bnum].x;
-		y =	block[bnum].y + block[bnum].type->pin_height[pnum];
+	for (k = 1; k < g_clbs_nlist.net[inet].pins.size(); k++) {
+		bnum = g_clbs_nlist.net[inet].pins[k].block;
+		pnum = g_clbs_nlist.net[inet].pins[k].block_pin;
+		x = block[bnum].x + block[bnum].type->pin_width[pnum];
+		y = block[bnum].y + block[bnum].type->pin_height[pnum];
 
 		if (x < xmin) {
 			xmin = x;
@@ -2262,10 +2371,10 @@ static void get_non_updateable_bb(int inet, struct s_bb *bb_coord_new) {
 	 * clip to 1 in both directions as well (since minimum channel index *
 	 * is 0).  See route.c for a channel diagram.                        */
 
-	bb_coord_new->xmin = std::max(std::min(xmin, nx), 1);
-	bb_coord_new->ymin = std::max(std::min(ymin, ny), 1);
-	bb_coord_new->xmax = std::max(std::min(xmax, nx), 1);
-	bb_coord_new->ymax = std::max(std::min(ymax, ny), 1);
+	bb_coord_new->xmin = max(min(xmin, nx), 1);
+	bb_coord_new->ymin = max(min(ymin, ny), 1);
+	bb_coord_new->xmax = max(min(xmax, nx), 1);
+	bb_coord_new->ymax = max(min(ymax, ny), 1);
 }
 
 static void update_bb(int inet, struct s_bb *bb_coord_new,
@@ -2286,10 +2395,10 @@ static void update_bb(int inet, struct s_bb *bb_coord_new,
 	
 	struct s_bb *curr_bb_edge, *curr_bb_coord;
 		
-	xnew = std::max(std::min(xnew, nx), 1);
-	ynew = std::max(std::min(ynew, ny), 1);
-	xold = std::max(std::min(xold, nx), 1);
-	yold = std::max(std::min(yold, ny), 1);
+	xnew = max(min(xnew, nx), 1);
+	ynew = max(min(ynew, ny), 1);
+	xold = max(min(xold, nx), 1);
+	yold = max(min(yold, ny), 1);
 
 	/* Check if the net had been updated before. */
 	if (bb_updated_before[inet] == GOT_FROM_SCRATCH)
@@ -2495,9 +2604,11 @@ static void alloc_legal_placements() {
 		for (j = 0; j <= ny + 1; j++) {
 			grid[i][j].usage = 0;
 			for (k = 0; k < grid[i][j].type->capacity; k++) {
-				grid[i][j].blocks[k] = EMPTY;
-				if (grid[i][j].offset == 0) {
-					num_legal_pos[grid[i][j].type->index]++;
+				if (grid[i][j].blocks[k] != INVALID) {
+					grid[i][j].blocks[k] = EMPTY;
+					if (grid[i][j].width_offset == 0 && grid[i][j].height_offset == 0) {
+						num_legal_pos[grid[i][j].type->index]++;
+					}
 				}
 			}
 		}
@@ -2517,7 +2628,10 @@ static void load_legal_placements() {
 	for (i = 0; i <= nx + 1; i++) {
 		for (j = 0; j <= ny + 1; j++) {
 			for (k = 0; k < grid[i][j].type->capacity; k++) {
-				if (grid[i][j].offset == 0) {
+				if (grid[i][j].blocks[k] == INVALID) {
+					continue;
+				}
+				if (grid[i][j].width_offset == 0 && grid[i][j].height_offset == 0) {
 					itype = grid[i][j].type->index;
 					legal_pos[itype][index[itype]].x = i;
 					legal_pos[itype][index[itype]].y = j;
@@ -2547,7 +2661,7 @@ static int check_macro_can_be_placed(int imacro, int itype, int x, int y, int z)
 	int member_x, member_y, member_z;
 
 	// Every macro can be placed until proven otherwise
-	int macro_can_be_placed = TRUE;
+	int macro_can_be_placed = true;
 
 	// Check whether all the members can be placed
 	for (imember = 0; imember < pl_macros[imacro].num_blocks; imember++) {
@@ -2561,12 +2675,12 @@ static int check_macro_can_be_placed(int imacro, int itype, int x, int y, int z)
 		// still within the chip's dimemsion and the member_z is allowed at that location on the grid
 		if (member_x <= nx+1 && member_y <= ny+1
 				&& grid[member_x][member_y].type->index == itype
-				&& grid[member_x][member_y].blocks[member_z] == OPEN) {
+				&& grid[member_x][member_y].blocks[member_z] == EMPTY) {
 			// Can still accomodate blocks here, check the next position
 			continue;
 		} else {
 			// Cant be placed here - skip to the next try
-			macro_can_be_placed = FALSE;
+			macro_can_be_placed = false;
 			break;
 		}
 	}
@@ -2575,28 +2689,28 @@ static int check_macro_can_be_placed(int imacro, int itype, int x, int y, int z)
 }
 
 
-static int try_place_macro(int itype, int ichoice, int imacro, int * free_locations){
+static int try_place_macro(int itype, int ipos, int imacro, int * free_locations){
 
 	int x, y, z, member_x, member_y, member_z, imember;
 
-	int macro_placed = FALSE;
+	int macro_placed = false;
 
 	// Choose a random position for the head
-	x = legal_pos[itype][ichoice].x;
-	y = legal_pos[itype][ichoice].y;
-	z = legal_pos[itype][ichoice].z;
+	x = legal_pos[itype][ipos].x;
+	y = legal_pos[itype][ipos].y;
+	z = legal_pos[itype][ipos].z;
 			
 	// If that location is occupied, do nothing.
-	if (grid[x][y].blocks[z] != OPEN) {
+	if (grid[x][y].blocks[z] != EMPTY) {
 		return (macro_placed);
 	} 
 	
 	int macro_can_be_placed = check_macro_can_be_placed(imacro, itype, x, y, z);
 
-	if (macro_can_be_placed == TRUE) {
+	if (macro_can_be_placed) {
 		
 		// Place down the macro
-		macro_placed = TRUE;
+		macro_placed = true;
 		for (imember = 0; imember < pl_macros[imacro].num_blocks; imember++) {
 					
 			member_x = x + pl_macros[imacro].members[imember].x_offset;
@@ -2626,60 +2740,60 @@ static int try_place_macro(int itype, int ichoice, int imacro, int * free_locati
 static void initial_placement_pl_macros(int macros_max_num_tries, int * free_locations) {
 
 	int macro_placed;
-	int imacro, iblk, itype, itry, ichoice;
+	int imacro, iblk, itype, itry, ipos;
 
 	/* Macros are harder to place.  Do them first */
 	for (imacro = 0; imacro < num_pl_macros; imacro++) {
 		
 		// Every macro are not placed in the beginnning
-		macro_placed = FALSE;
+		macro_placed = false;
 		
 		// Assume that all the blocks in the macro are of the same type
 		iblk = pl_macros[imacro].members[0].blk_index;
 		itype = block[iblk].type->index;
 		if (free_locations[itype] < pl_macros[imacro].num_blocks) {
-			vpr_printf (TIO_MESSAGE_ERROR, "Initial placement failed.\n");
-			vpr_printf (TIO_MESSAGE_ERROR, "Could not place macro length %d with head block %s (#%d); not enough free locations of type %s (#%d).\n", 
+			vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,
+					"Initial placement failed.\n"
+					"Could not place macro length %d with head block %s (#%d); not enough free locations of type %s (#%d).\n"
+					"VPR cannot auto-size for your circuit, please resize the FPGA manually.\n", 
 					pl_macros[imacro].num_blocks, block[iblk].name, iblk, type_descriptors[itype].name, itype);
-			vpr_printf (TIO_MESSAGE_INFO, "VPR cannot auto-size for your circuit, please resize the FPGA manually.\n");
-			exit(1);
 		}
 
 		// Try to place the macro first, if can be placed - place them, otherwise try again
-		for (itry = 0; itry < macros_max_num_tries && macro_placed == FALSE; itry++) {
+		for (itry = 0; itry < macros_max_num_tries && macro_placed == false; itry++) {
 			
 			// Choose a random position for the head
-			ichoice = my_irand(free_locations[itype] - 1);
+			ipos = my_irand(free_locations[itype] - 1);
 
 			// Try to place the macro
-			macro_placed = try_place_macro(itype, ichoice, imacro, free_locations);
+			macro_placed = try_place_macro(itype, ipos, imacro, free_locations);
 
 		} // Finished all tries
 		
 		
-		if (macro_placed == FALSE){
+		if (macro_placed == false){
 			// if a macro still could not be placed after macros_max_num_tries times, 
 			// go through the chip exhaustively to find a legal placement for the macro
 			// place the macro on the first location that is legal
-			// then set macro_placed = TRUE;
+			// then set macro_placed = true;
 			// if there are no legal positions, error out
 
 			// Exhaustive placement of carry macros
-			for (ichoice = 0; ichoice < free_locations[itype] && macro_placed == FALSE; ichoice++) {
+			for (ipos = 0; ipos < free_locations[itype] && macro_placed == false; ipos++) {
 
 				// Try to place the macro
-				macro_placed = try_place_macro(itype, ichoice, imacro, free_locations);
+				macro_placed = try_place_macro(itype, ipos, imacro, free_locations);
 
 			} // Exhausted all the legal placement position for this macro
 
 			// If macro could not be placed after exhaustive placement, error out
-			if (macro_placed == FALSE) {
+			if (macro_placed == false) {
 				// Error out
-				vpr_printf (TIO_MESSAGE_ERROR, "Initial placement failed.\n");
-				vpr_printf (TIO_MESSAGE_ERROR, "Could not place macro length %d with head block %s (#%d); not enough free locations of type %s (#%d).\n", 
-					pl_macros[imacro].num_blocks, block[iblk].name, iblk, type_descriptors[itype].name, itype);
-				vpr_printf (TIO_MESSAGE_INFO, "Please manually size the FPGA because VPR can't do this yet.\n");
-				exit(1);
+				vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,
+						"Initial placement failed.\n"
+						"Could not place macro length %d with head block %s (#%d); not enough free locations of type %s (#%d).\n"
+						"Please manually size the FPGA because VPR can't do this yet.\n", 
+						pl_macros[imacro].num_blocks, block[iblk].name, iblk, type_descriptors[itype].name, itype);
 			}
 
 		} else {
@@ -2689,21 +2803,23 @@ static void initial_placement_pl_macros(int macros_max_num_tries, int * free_loc
 	} // Finish placing all the pl_macros successfully
 }
 
-static void initial_placement_blocks(int * free_locations, enum e_pad_loc_type pad_loc_type) {
+static void initial_placement_blocks(int * free_locations, enum e_pad_loc_type pad_loc_type,
+		bool apply_placement_regions) {
 
 	/* Place blocks that are NOT a part of any macro.
 	 * We'll randomly place each block in the clustered netlist, one by one. 
 	 */
-
+	
 	int iblk, itype;
-	int ichoice, x, y, z;
+	int ipos, x, y, z;
 
 	for (iblk = 0; iblk < num_blocks; iblk++) {
 
-		if (block[iblk].x != -1) {
+		if (block[iblk].x != EMPTY) {
 			// block placed.
 			continue;
 		}
+
 		/* Don't do IOs if the user specifies IOs; we'll read those locations later. */
 		if (!(block[iblk].type == IO_TYPE && pad_loc_type == USER)) {
 
@@ -2715,19 +2831,16 @@ static void initial_placement_blocks(int * free_locations, enum e_pad_loc_type p
 			 */
 			itype = block[iblk].type->index;
 			if (free_locations[itype] <= 0) {
-				vpr_printf (TIO_MESSAGE_ERROR, "Initial placement failed.\n");
-				vpr_printf (TIO_MESSAGE_ERROR, "Could not place block %s (#%d); no free locations of type %s (#%d).\n", 
+				vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__, 
+						"Initial placement failed.\n"
+						"Could not place block %s (#%d); no free locations of type %s (#%d).\n", 
 						block[iblk].name, iblk, type_descriptors[itype].name, itype);
-				exit(1);
 			}
 
-			ichoice = my_irand(free_locations[itype] - 1);
-			x = legal_pos[itype][ichoice].x;
-			y = legal_pos[itype][ichoice].y;
-			z = legal_pos[itype][ichoice].z;
+			initial_placement_location(free_locations, iblk, &ipos, &x, &y, &z);
 
-			// Make sure that the position is OPEN before placing the block down
-			assert (grid[x][y].blocks[z] == OPEN);
+			// Make sure that the position is EMPTY before placing the block down
+			assert (grid[x][y].blocks[z] == EMPTY);
 
 			grid[x][y].blocks[z] = iblk;
 			grid[x][y].usage++;
@@ -2741,11 +2854,22 @@ static void initial_placement_blocks(int * free_locations, enum e_pad_loc_type p
 				* just move the last entry in legal_pos to the spot we just used and decrement the 
 				* count of free_locations.
 				*/
-			legal_pos[itype][ichoice] = legal_pos[itype][free_locations[itype] - 1]; /* overwrite used block position */
+			legal_pos[itype][ipos] = legal_pos[itype][free_locations[itype] - 1]; /* overwrite used block position */
 			free_locations[itype]--;
 			
 		}
 	}
+}
+
+static void initial_placement_location(int * free_locations, int iblk,
+		int *pipos, int *px_to, int *py_to, int *pz_to) {
+
+	int itype = block[iblk].type->index;
+
+	*pipos = my_irand(free_locations[itype] - 1);
+	*px_to = legal_pos[itype][*pipos].x;
+	*py_to = legal_pos[itype][*pipos].y;
+	*pz_to = legal_pos[itype][*pipos].z;
 }
 
 static void initial_placement(enum e_pad_loc_type pad_loc_type,
@@ -2756,7 +2880,7 @@ static void initial_placement(enum e_pad_loc_type pad_loc_type,
 	 * array that gives every legal value of (x,y,z) that can accomodate a block.
 	 * The number of such locations is given by num_legal_pos[itype].
 	 */
-	int i, j, k, iblk, itype, x, y, z, ichoice;
+	int i, j, k, iblk, itype, x, y, z, ipos;
 	int *free_locations; /* [0..num_types-1]. 
 						  * Stores how many locations there are for this type that *might* still be free.
 						  * That is, this stores the number of entries in legal_pos[itype] that are worth considering
@@ -2776,7 +2900,9 @@ static void initial_placement(enum e_pad_loc_type pad_loc_type,
 			grid[i][j].usage = 0;
 			itype = grid[i][j].type->index;
 			for (k = 0; k < type_descriptors[itype].capacity; k++) {
-				grid[i][j].blocks[k] = OPEN;
+				if (grid[i][j].blocks[k] != INVALID) {
+					grid[i][j].blocks[k] = EMPTY;
+				}
 			}
 		}
 	}
@@ -2789,27 +2915,29 @@ static void initial_placement(enum e_pad_loc_type pad_loc_type,
 	}
 
 	initial_placement_pl_macros(MAX_NUM_TRIES_TO_PLACE_MACROS_RANDOMLY, free_locations);
-	
+
 	// All the macros are placed, update the legal_pos[][] array
 	for (itype = 0; itype < num_types; itype++) {
 		assert (free_locations[itype] >= 0);
-		for (ichoice = 0; ichoice < free_locations[itype]; ichoice++) {
-			x = legal_pos[itype][ichoice].x;
-			y = legal_pos[itype][ichoice].y;
-			z = legal_pos[itype][ichoice].z;
+		for (ipos = 0; ipos < free_locations[itype]; ipos++) {
+			x = legal_pos[itype][ipos].x;
+			y = legal_pos[itype][ipos].y;
+			z = legal_pos[itype][ipos].z;
 			
 			// Check if that location is occupied.  If it is, remove from legal_pos
-			if (grid[x][y].blocks[z] != OPEN) {
-				legal_pos[itype][ichoice] = legal_pos[itype][free_locations[itype] - 1];
+			if (grid[x][y].blocks[z] != EMPTY && grid[x][y].blocks[z] != INVALID) {
+				legal_pos[itype][ipos] = legal_pos[itype][free_locations[itype] - 1];
 				free_locations[itype]--;
 
 				// After the move, I need to check this particular entry again
-				ichoice--;
+				ipos--;
 				continue;
 			}
 		}
 	} // Finish updating the legal_pos[][] and free_locations[] array
 
+	bool apply_placement_regions = true;
+	initial_placement_blocks(free_locations, pad_loc_type, apply_placement_regions );
 	initial_placement_blocks(free_locations, pad_loc_type);
 
 	if (pad_loc_type == USER) {
@@ -2820,7 +2948,7 @@ static void initial_placement(enum e_pad_loc_type pad_loc_type,
 	load_legal_placements();
 
 #ifdef VERBOSE
-	vpr_printf(TIO_MESSAGE_INFO, "At end of initial_placement.\n");
+	vpr_printf_info("At end of initial_placement.\n");
 	if (getEchoEnabled() && isEchoFileEnabled(E_ECHO_INITIAL_CLB_PLACEMENT)) {
 		print_clb_placement(getEchoFileName(E_ECHO_INITIAL_CLB_PLACEMENT));
 	}
@@ -2873,13 +3001,13 @@ static void alloc_and_load_for_fast_cost_update(float place_cost_exp) {
 	/* First compute the number of tracks between channel high and channel *
 	 * low, inclusive, in an efficient manner.                             */
 
-	chanx_place_cost_fac[0][0] = chan_width_x[0];
+	chanx_place_cost_fac[0][0] = chan_width.x_list[0];
 
 	for (high = 1; high <= ny; high++) {
-		chanx_place_cost_fac[high][high] = chan_width_x[high];
+		chanx_place_cost_fac[high][high] = chan_width.x_list[high];
 		for (low = 0; low < high; low++) {
 			chanx_place_cost_fac[high][low] =
-					chanx_place_cost_fac[high - 1][low] + chan_width_x[high];
+					chanx_place_cost_fac[high - 1][low] + chan_width.x_list[high];
 		}
 	}
 
@@ -2903,13 +3031,13 @@ static void alloc_and_load_for_fast_cost_update(float place_cost_exp) {
 	/* Now do the same thing for the y-directed channels.  First get the  *
 	 * number of tracks between channel high and channel low, inclusive.  */
 
-	chany_place_cost_fac[0][0] = chan_width_y[0];
+	chany_place_cost_fac[0][0] = chan_width.y_list[0];
 
 	for (high = 1; high <= nx; high++) {
-		chany_place_cost_fac[high][high] = chan_width_y[high];
+		chany_place_cost_fac[high][high] = chan_width.y_list[high];
 		for (low = 0; low < high; low++) {
 			chany_place_cost_fac[high][low] =
-					chany_place_cost_fac[high - 1][low] + chan_width_y[high];
+					chany_place_cost_fac[high - 1][low] + chan_width.y_list[high];
 		}
 	}
 
@@ -2944,24 +3072,28 @@ static void check_place(float bb_cost, float timing_cost,
 	int imacro, imember, head_iblk, member_iblk, member_x, member_y, member_z;
 
 	bb_cost_check = comp_bb_cost(CHECK);
-	vpr_printf(TIO_MESSAGE_INFO, "bb_cost recomputed from scratch: %g\n", bb_cost_check);
+	vpr_printf_info("bb_cost recomputed from scratch: %g\n", bb_cost_check);
 	if (fabs(bb_cost_check - bb_cost) > bb_cost * ERROR_TOL) {
-		vpr_printf(TIO_MESSAGE_ERROR, "bb_cost_check: %g and bb_cost: %g differ in check_place.\n", bb_cost_check, bb_cost);
+		vpr_printf_error(__FILE__, __LINE__,
+				"bb_cost_check: %g and bb_cost: %g differ in check_place.\n", 
+				bb_cost_check, bb_cost);
 		error++;
 	}
 
 	if (place_algorithm == NET_TIMING_DRIVEN_PLACE
 			|| place_algorithm == PATH_TIMING_DRIVEN_PLACE) {
 		comp_td_costs(&timing_cost_check, &delay_cost_check);
-		vpr_printf(TIO_MESSAGE_INFO, "timing_cost recomputed from scratch: %g\n", timing_cost_check);
+		vpr_printf_info("timing_cost recomputed from scratch: %g\n", timing_cost_check);
 		if (fabs(timing_cost_check - timing_cost) > timing_cost * ERROR_TOL) {
-			vpr_printf(TIO_MESSAGE_ERROR, "timing_cost_check: %g and timing_cost: %g differ in check_place.\n", 
-					   timing_cost_check, timing_cost);
+			vpr_printf_error(__FILE__, __LINE__,
+					"timing_cost_check: %g and timing_cost: %g differ in check_place.\n", 
+					timing_cost_check, timing_cost);
 			error++;
 		}
-		vpr_printf(TIO_MESSAGE_INFO, "delay_cost recomputed from scratch: %g\n", delay_cost_check);
+		vpr_printf_info("delay_cost recomputed from scratch: %g\n", delay_cost_check);
 		if (fabs(delay_cost_check - delay_cost) > delay_cost * ERROR_TOL) {
-			vpr_printf(TIO_MESSAGE_ERROR, "delay_cost_check: %g and delay_cost: %g differ in check_place.\n", 
+			vpr_printf_error(__FILE__, __LINE__,
+					"delay_cost_check: %g and delay_cost: %g differ in check_place.\n", 
 					delay_cost_check, delay_cost);
 			error++;
 		}
@@ -2975,23 +3107,26 @@ static void check_place(float bb_cost, float timing_cost,
 	for (i = 0; i <= (nx + 1); i++)
 		for (j = 0; j <= (ny + 1); j++) {
 			if (grid[i][j].usage > grid[i][j].type->capacity) {
-				vpr_printf(TIO_MESSAGE_ERROR, "Block at grid location (%d,%d) overused. Usage is %d.\n", 
+				vpr_printf_error(__FILE__, __LINE__,
+						"Block at grid location (%d,%d) overused. Usage is %d.\n", 
 						i, j, grid[i][j].usage);
 				error++;
 			}
 			usage_check = 0;
 			for (k = 0; k < grid[i][j].type->capacity; k++) {
 				bnum = grid[i][j].blocks[k];
-				if (EMPTY == bnum)
+				if (EMPTY == bnum || INVALID == bnum)
 					continue;
 
 				if (block[bnum].type != grid[i][j].type) {
-					vpr_printf(TIO_MESSAGE_ERROR, "Block %d type does not match grid location (%d,%d) type.\n",
+					vpr_printf_error(__FILE__, __LINE__,
+							"Block %d type does not match grid location (%d,%d) type.\n",
 							bnum, i, j);
 					error++;
 				}
 				if ((block[bnum].x != i) || (block[bnum].y != j)) {
-					vpr_printf(TIO_MESSAGE_ERROR, "Block %d location conflicts with grid(%d,%d) data.\n", 
+					vpr_printf_error(__FILE__, __LINE__,
+							"Block %d location conflicts with grid(%d,%d) data.\n", 
 							bnum, i, j);
 					error++;
 				}
@@ -2999,7 +3134,8 @@ static void check_place(float bb_cost, float timing_cost,
 				bdone[bnum]++;
 			}
 			if (usage_check != grid[i][j].usage) {
-				vpr_printf(TIO_MESSAGE_ERROR, "Location (%d,%d) usage is %d, but has actual usage %d.\n",
+				vpr_printf_error(__FILE__, __LINE__,
+						"Location (%d,%d) usage is %d, but has actual usage %d.\n",
 						i, j, grid[i][j].usage, usage_check);
 				error++;
 			}
@@ -3008,7 +3144,8 @@ static void check_place(float bb_cost, float timing_cost,
 	/* Check that every block exists in the grid and block arrays somewhere. */
 	for (i = 0; i < num_blocks; i++)
 		if (bdone[i] != 1) {
-			vpr_printf(TIO_MESSAGE_ERROR, "Block %d listed %d times in data structures.\n",
+			vpr_printf_error(__FILE__, __LINE__,
+					"Block %d listed %d times in data structures.\n",
 					i, bdone[i]);
 			error++;
 		}
@@ -3032,14 +3169,16 @@ static void check_place(float bb_cost, float timing_cost,
 			if (block[member_iblk].x != member_x 
 					|| block[member_iblk].y != member_y 
 					|| block[member_iblk].z != member_z) {
-				vpr_printf(TIO_MESSAGE_ERROR, "Block %d in pl_macro #%d is not placed in the proper orientation.\n", 
+				vpr_printf_error(__FILE__, __LINE__,
+						"Block %d in pl_macro #%d is not placed in the proper orientation.\n", 
 						member_iblk, imacro);
 				error++;
 			}
 
 			// Then check the grid data structure
 			if (grid[member_x][member_y].blocks[member_z] != member_iblk) {
-				vpr_printf(TIO_MESSAGE_ERROR, "Block %d in pl_macro #%d is not placed in the proper orientation.\n", 
+				vpr_printf_error(__FILE__, __LINE__,
+						"Block %d in pl_macro #%d is not placed in the proper orientation.\n", 
 						member_iblk, imacro);
 				error++;
 			}
@@ -3047,19 +3186,18 @@ static void check_place(float bb_cost, float timing_cost,
 	} // Finish going through all the macros
 
 	if (error == 0) {
-		vpr_printf(TIO_MESSAGE_INFO, "\n");
-		vpr_printf(TIO_MESSAGE_INFO, "Completed placement consistency check successfully.\n");
-		vpr_printf(TIO_MESSAGE_INFO, "\n");
-		vpr_printf(TIO_MESSAGE_INFO, "Swaps called: %d\n", num_ts_called);
+		vpr_printf_info("\n");
+		vpr_printf_info("Completed placement consistency check successfully.\n");
+		vpr_printf_info("\n");
+		vpr_printf_info("Swaps called: %d\n", num_ts_called);
 
 #ifdef PRINT_REL_POS_DISTR
 		print_relative_pos_distr(void);
 #endif
 	} else {
-		vpr_printf(TIO_MESSAGE_INFO, "\n");
-		vpr_printf(TIO_MESSAGE_ERROR, "Completed placement consistency check, %d errors found.\n", error);
-		vpr_printf(TIO_MESSAGE_INFO, "Aborting program.\n");
-		exit(1);
+		vpr_throw(VPR_ERROR_PLACE, __FILE__, __LINE__,
+				"\nCompleted placement consistency check, %d errors found.\n"
+				"Aborting program.\n", error);
 	}
 
 }
@@ -3100,4 +3238,5 @@ static void free_try_swap_arrays(void) {
 		bb_updated_before = NULL;
 	}
 }
+
 

@@ -1,11 +1,16 @@
-#include <math.h>
-#include <stdio.h>
+#include <cstdio>
+#include <ctime>
+#include <cmath>
+#include <iostream>
+using namespace std;
+
 #include <assert.h>
-#include <time.h>
+
+#include "stats.h"
 #include "util.h"
 #include "vpr_types.h"
-#include "vpr_utils.h"
 #include "globals.h"
+#include "vpr_utils.h"
 #include "route_export.h"
 #include "route_common.h"
 #include "route_tree_timing.h"
@@ -19,11 +24,18 @@
 #include "read_xml_arch_file.h"
 #include "ReadOptions.h"
 
+
+// Disable the routing predictor for circuits with less that this number of nets.
+// This was experimentally determined, by Matthew Walker, to be the most useful
+// metric, and this is also somewhat larger than largest circuit observed to have
+// inaccurate predictions, thought this is still only affects quite small circuits.
+#define MIN_NETS_TO_ACTIVATE_PREDICTOR 150
+
 /***************** Variables shared only by route modules *******************/
 
 t_rr_node_route_inf *rr_node_route_inf = NULL; /* [0..num_rr_nodes-1] */
 
-struct s_bb *route_bb = NULL; /* [0..num_nets-1]. Limits area in which each  */
+struct s_bb *route_bb = NULL; /* [0..g_clbs_nlist.net.size()-1]. Limits area in which each  */
 
 /* net must be routed.                         */
 
@@ -33,6 +45,7 @@ static struct s_heap **heap; /* Indexed from [1..heap_size] */
 static int heap_size; /* Number of slots in the heap array */
 static int heap_tail; /* Index of first unused slot in the heap array */
 
+int num_cons = 0;
 /* For managing my own list of currently free heap data structures.     */
 static struct s_heap *heap_free_head = NULL;
 /* For keeping track of the sudo malloc memory for the heap*/
@@ -45,13 +58,12 @@ static t_chunk trace_ch = {NULL, 0, NULL};
 
 
 /* Connection router data and experimental stuff*/
-int num_cons = 0;
 t_con* cons = NULL;
 t_node_hash_map* node_hash_maps = NULL;
 t_rr_to_rg_node_hash_map* node_maps = NULL;
-boolean* congested_cons = NULL;
-boolean* congested_nets = NULL;
-boolean* bb_cotains_congested_node = NULL;
+bool* congested_cons = NULL;
+bool* congested_nets = NULL;
+bool* bb_cotains_congested_node = NULL;
 int** cons_with_node_in_bb = NULL;
 int* no_its_not_congested_con = NULL;
 int* no_its_not_congested_net = NULL;
@@ -113,14 +125,13 @@ static t_chunk linked_f_pointer_ch = {NULL, 0, NULL};
 static void free_trace_data(struct s_trace *tptr);
 static void load_route_bb(int bb_factor);
 
-static struct s_trace *alloc_trace_data(void);
 static void add_to_heap(struct s_heap *hptr);
 static struct s_heap *alloc_heap_data(void);
 static struct s_linked_f_pointer *alloc_linked_f_pointer(void);
 
 static t_ivec **alloc_and_load_clb_opins_used_locally(void);
-static void adjust_one_rr_occ_and_pcost(int inode, int add_or_sub,
-		float pres_fac);
+static void adjust_one_rr_occ_and_apcost(int inode, int add_or_sub,
+		float pres_fac, float acc_fac);
 
 
 static struct s_node_entry* alloc_node_entry(void);
@@ -144,11 +155,12 @@ void save_routing(struct s_trace **best_routing,
 	 * routing elements.  Also saves any data about locally used clb_opins, *
 	 * since this is also part of the routing.                              */
 
-	int inet, iblk, iclass, ipin, num_local_opins;
+	unsigned int inet;
+	int iblk, iclass, ipin, num_local_opins;
 	struct s_trace *tptr, *tempptr;
 	t_type_ptr type;
 
-	for (inet = 0; inet < num_nets; inet++) {
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
 
 		/* Free any previously saved routing.  It is no longer best. */
 		tptr = best_routing[inet];
@@ -193,10 +205,11 @@ void restore_routing(struct s_trace **best_routing,
 	 * update_traceback.  If you need trace_tail restored, modify this        *
 	 * routine.  Also restores the locally used opin data.                    */
 
-	int inet, iblk, ipin, iclass, num_local_opins;
+	unsigned int inet;
+	int iblk, ipin, iclass, num_local_opins;
 	t_type_ptr type;
 
-	for (inet = 0; inet < num_nets; inet++) {
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
 
 		/* Free any current routing. */
 		free_traceback(inet);
@@ -227,12 +240,13 @@ void get_serial_num(void) {
 	 * Use this number as a routing serial number to ensure that programming *
 	 * changes do not break the router.                                      */
 
-	int inet, serial_num, inode;
+	unsigned int inet;
+	int serial_num, inode;
 	struct s_trace *tptr;
 
 	serial_num = 0;
 
-	for (inet = 0; inet < num_nets; inet++) {
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
 
 		/* Global nets will have null trace_heads (never routed) so they *
 		 * are not included in the serial number calculation.            */
@@ -241,23 +255,68 @@ void get_serial_num(void) {
 		while (tptr != NULL) {
 			inode = tptr->index;
 			serial_num += (inet + 1)
-					* (rr_node[inode].xlow * (nx + 1) - rr_node[inode].yhigh);
+					* (rr_node[inode].get_xlow() * (nx + 1) - rr_node[inode].get_yhigh());
 
-			serial_num -= rr_node[inode].ptc_num * (inet + 1) * 10;
+			serial_num -= rr_node[inode].get_ptc_num() * (inet + 1) * 10;
 
 			serial_num -= rr_node[inode].type * (inet + 1) * 100;
 			serial_num %= 2000000000; /* Prevent overflow */
 			tptr = tptr->next;
 		}
 	}
-	vpr_printf(TIO_MESSAGE_INFO, "Serial number (magic cookie) for the routing is: %d\n", serial_num);
+	vpr_printf_info("Serial number (magic cookie) for the routing is: %d\n", serial_num);
 }
 
-boolean try_route(int width_fac, struct s_router_opts router_opts,
-		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf,
+void try_graph(int width_fac, struct s_router_opts router_opts,
+		struct s_det_routing_arch *det_routing_arch, t_segment_inf * segment_inf,
+		t_timing_inf timing_inf, t_chan_width_dist chan_width_dist,
+		t_direct_inf *directs, int num_directs) {
+
+	t_graph_type graph_type;
+	if (router_opts.route_type == GLOBAL) {
+		graph_type = GRAPH_GLOBAL;
+	} else {
+		graph_type = (det_routing_arch->directionality == BI_DIRECTIONAL ?
+						GRAPH_BIDIR : GRAPH_UNIDIR);
+	}
+
+	/* Set the channel widths */
+	init_chan(width_fac, &router_opts.fixed_channel_width, chan_width_dist);
+
+	/* Free any old routing graph, if one exists. */
+	free_rr_graph();
+
+	clock_t begin = clock();
+
+	/* Set up the routing resource graph defined by this FPGA architecture. */
+	int warning_count;
+	build_rr_graph(graph_type, num_types, type_descriptors, nx, ny, grid,
+			&chan_width, NULL, det_routing_arch->switch_block_type,
+			det_routing_arch->Fs, det_routing_arch->switchblocks,
+			det_routing_arch->num_segment,
+			g_num_arch_switches, segment_inf,
+			det_routing_arch->global_route_switch,
+			det_routing_arch->delayless_switch, timing_inf,
+			det_routing_arch->wire_to_arch_ipin_switch,
+			router_opts.base_cost_type, 
+			router_opts.trim_empty_channels,
+			router_opts.trim_obs_channels,
+			directs, num_directs, false,
+			det_routing_arch->dump_rr_structs_file,
+			&det_routing_arch->wire_to_rr_ipin_switch,
+			&g_num_rr_switches,
+			&warning_count);
+
+	clock_t end = clock();
+
+	vpr_printf_info("Build rr_graph took %g seconds.\n", (float)(end - begin) / CLOCKS_PER_SEC);
+}
+
+bool try_route(int width_fac, struct s_router_opts router_opts,
+		struct s_det_routing_arch *det_routing_arch, t_segment_inf * segment_inf,
 		t_timing_inf timing_inf, float **net_delay, t_slack * slacks,
 		t_chan_width_dist chan_width_dist, t_ivec ** clb_opins_used_locally,
-		boolean * Fc_clipped, t_direct_inf *directs, int num_directs) {
+		bool * Fc_clipped, t_direct_inf *directs, int num_directs) {
 
 	/* Attempts a routing via an iterated maze router algorithm.  Width_fac *
 	 * specifies the relative width of the channels, while the members of   *
@@ -266,84 +325,80 @@ boolean try_route(int width_fac, struct s_router_opts router_opts,
 	 * architecture (connection and switch boxes) of the FPGA; it is used   *
 	 * only if a DETAILED routing has been selected.                        */
 
-	int tmp;
-	clock_t begin, end;
-	boolean success;
 	t_graph_type graph_type;
-
 	if (router_opts.route_type == GLOBAL) {
 		graph_type = GRAPH_GLOBAL;
 	} else {
-		graph_type = (
-				det_routing_arch.directionality == BI_DIRECTIONAL ?
+		graph_type = (det_routing_arch->directionality == BI_DIRECTIONAL ?
 						GRAPH_BIDIR : GRAPH_UNIDIR);
 	}
 
 	/* Set the channel widths */
-
-	init_chan(width_fac, chan_width_dist);
+	init_chan(width_fac, &router_opts.fixed_channel_width, chan_width_dist);
 
 	/* Free any old routing graph, if one exists. */
-
 	free_rr_graph();
 
-	begin = clock();
+	clock_t begin = clock();
 
 	/* Set up the routing resource graph defined by this FPGA architecture. */
-
+	int warning_count;
 	build_rr_graph(graph_type, num_types, type_descriptors, nx, ny, grid,
-			chan_width_x[0], NULL, det_routing_arch.switch_block_type,
-			det_routing_arch.Fs, det_routing_arch.num_segment,
-			det_routing_arch.num_switch, segment_inf,
-			det_routing_arch.global_route_switch,
-			det_routing_arch.delayless_switch, timing_inf,
-			det_routing_arch.wire_to_ipin_switch, router_opts.base_cost_type,
-			directs, num_directs, FALSE,
-			&tmp);
+			&chan_width, NULL, det_routing_arch->switch_block_type,
+			det_routing_arch->Fs, det_routing_arch->switchblocks,
+			det_routing_arch->num_segment,
+			g_num_arch_switches, segment_inf,
+			det_routing_arch->global_route_switch,
+			det_routing_arch->delayless_switch, timing_inf,
+			det_routing_arch->wire_to_arch_ipin_switch, 
+			router_opts.base_cost_type, 
+			router_opts.trim_empty_channels,
+			router_opts.trim_obs_channels,
+			directs, num_directs, false,
+			det_routing_arch->dump_rr_structs_file,
+			&det_routing_arch->wire_to_rr_ipin_switch,
+			&g_num_rr_switches,
+			&warning_count);
 
-	end = clock();
-#ifdef CLOCKS_PER_SEC
-	vpr_printf(TIO_MESSAGE_INFO, "Build rr_graph took %g seconds.\n", (float)(end - begin) / CLOCKS_PER_SEC);
-#else
-	vpr_printf(TIO_MESSAGE_INFO, "Build rr_graph took %g seconds.\n", (float)(end - begin) / CLK_PER_SEC);
-#endif
+	clock_t end = clock();
 
-	/* Allocate and load some additional rr_graph information needed only by *
-	 * the router.                                                           */
+	vpr_printf_info("Build rr_graph took %g seconds.\n", (float)(end - begin) / CLOCKS_PER_SEC);
 
+	bool success = true;
+
+	/* Allocate and load additional rr_graph information needed only by the router. */
 	alloc_and_load_rr_node_route_structs();
 
 	init_route_structs(router_opts.bb_factor);
 
 	if (router_opts.router_algorithm == BREADTH_FIRST) {
-		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: BREADTH_FIRST.\n");
+		vpr_printf_info("Confirming router algorithm: BREADTH_FIRST.\n");
 		success = try_breadth_first_route(router_opts, clb_opins_used_locally,
 				width_fac);
 	} else if (router_opts.router_algorithm == BREADTH_FIRST_CONR) {
-		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: BREADTH_FIRST_CONR.\n");
+		vpr_printf_info( "Confirming Router Algorithm: BREADTH_FIRST_CONR.\n");
 		success = try_breadth_first_route_conr(router_opts, clb_opins_used_locally,
 				width_fac);
 	} else if (router_opts.router_algorithm == DIRECTED_SEARCH_CONR) {
-		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: DIRECTED_SEARCH_CONR.\n");
+		vpr_printf_info( "Confirming Router Algorithm: DIRECTED_SEARCH_CONR.\n");
 		success = try_directed_search_route_conr(router_opts, clb_opins_used_locally);
 	} else if (router_opts.router_algorithm == TIMING_DRIVEN_CONR) {
-		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: TIMING_DRIVEN_CONR.\n");
+		vpr_printf_info( "Confirming Router Algorithm: TIMING_DRIVEN_CONR.\n");
 		assert(router_opts.route_type != GLOBAL);
 		success = try_timing_driven_route_conr(router_opts, net_delay, slacks,
-			clb_opins_used_locally,timing_inf.timing_analysis_enabled);
+			clb_opins_used_locally,timing_inf.timing_analysis_enabled, timing_inf);
 	} else { /* TIMING_DRIVEN route */
-		vpr_printf(TIO_MESSAGE_INFO, "Confirming Router Algorithm: TIMING_DRIVEN.\n");
+		vpr_printf_info("Confirming router algorithm: TIMING_DRIVEN.\n");
 		assert(router_opts.route_type != GLOBAL);
 		success = try_timing_driven_route(router_opts, net_delay, slacks,
-			clb_opins_used_locally,timing_inf.timing_analysis_enabled);
+			clb_opins_used_locally,timing_inf.timing_analysis_enabled, timing_inf);
 	}
 
 	free_rr_node_route_structs();
-
 	return (success);
 }
 
-boolean feasible_routing(void) {
+bool feasible_routing(void) {
 
 	/* This routine checks to see if this is a resource-feasible routing.      *
 	 * That is, are all rr_node capacity limitations respected?  It assumes    *
@@ -352,12 +407,31 @@ boolean feasible_routing(void) {
 	int inode;
 
 	for (inode = 0; inode < num_rr_nodes; inode++) {
-		if (rr_node[inode].occ > rr_node[inode].capacity) {
-			return (FALSE);
+		if (rr_node[inode].get_occ() > rr_node[inode].get_capacity()) {
+			return (false);
 		}
 	}
 
-	return (TRUE);
+	return (true);
+}
+
+int predict_success_route_iter(const std::vector<double>& historical_overuse_ratio, const t_router_opts& router_opts) {
+
+	// invalid condition for prediction
+	if (router_opts.routing_failure_predictor == OFF || num_nets > MIN_NETS_TO_ACTIVATE_PREDICTOR) return 0;
+
+	// use the last 5 iterations in prediction
+	size_t itry {historical_overuse_ratio.size() - 1};
+	double congestion_slope {linear_regression_vector(historical_overuse_ratio, itry - 5)};
+
+	// linear extrapolation
+	int expected_success_route_iter = (itry*congestion_slope - historical_overuse_ratio.back()) / congestion_slope;
+
+	if (expected_success_route_iter > 1.25 * router_opts.max_router_iterations) {
+		vpr_printf_info("Routing aborted, the predicted iteration for a successful route (%d) is too high.\n", expected_success_route_iter);
+		return UNDEFINED;
+	}
+	return expected_success_route_iter;
 }
 
 void pathfinder_update_one_cost(struct s_trace *route_segment_start,
@@ -373,31 +447,28 @@ void pathfinder_update_one_cost(struct s_trace *route_segment_start,
 
 	struct s_trace *tptr;
 	int inode, occ, capacity;
-	/* capacity: it represents the capacity of the node */
-	/* occ: is the occupancy of the node */
+
 	tptr = route_segment_start;
 	if (tptr == NULL) /* No routing yet. */
 		return;
 
 	for (;;) {
-		if(tptr == NULL)
-			return;
 		inode = tptr->index;
 
-		occ = rr_node[inode].occ + add_or_sub;
-		capacity = rr_node[inode].capacity;
+		occ = rr_node[inode].get_occ() + add_or_sub;
+		capacity = rr_node[inode].get_capacity();
 
-		rr_node[inode].occ = occ;
+		rr_node[inode].set_occ(occ);
 
 		/* pres_cost is Pn in the Pathfinder paper. I set my pres_cost according to *
 		 * the overuse that would result from having ONE MORE net use this routing  *
 		 * node.                                                                    */
 
-		/* pres_cost == p(n) */
 		if (occ < capacity) {
-			rr_node_route_inf[inode].pres_cost = 1.;
+			rr_node_route_inf[inode].pres_cost = 1.0;
 		} else {
-			rr_node_route_inf[inode].pres_cost = 1.	+ (occ + 1 - capacity) * pres_fac;
+			rr_node_route_inf[inode].pres_cost = 1.0
+					+ (occ + 1 - capacity) * pres_fac;
 		}
 
 		if (rr_node[inode].type == SINK) {
@@ -424,19 +495,20 @@ void pathfinder_update_cost(float pres_fac, float acc_fac) {
 	int inode, occ, capacity;
 
 	for (inode = 0; inode < num_rr_nodes; inode++) {
-		occ = rr_node[inode].occ;
-		capacity = rr_node[inode].capacity;
+		occ = rr_node[inode].get_occ();
+		capacity = rr_node[inode].get_capacity();
 
 		if (occ > capacity) {
-			rr_node_route_inf[inode].acc_cost += (occ - capacity) * acc_fac; /* This is the h(n) */
-			rr_node_route_inf[inode].pres_cost = 1.	+ (occ + 1 - capacity) * pres_fac;
+			rr_node_route_inf[inode].acc_cost += (occ - capacity) * acc_fac;
+			rr_node_route_inf[inode].pres_cost = 1.0
+					+ (occ + 1 - capacity) * pres_fac;
 		}
 
 		/* If occ == capacity, we don't need to increase acc_cost, but a change    *
 		 * in pres_fac could have made it necessary to recompute the cost anyway.  */
 
 		else if (occ == capacity) {
-			rr_node_route_inf[inode].pres_cost = 1. + pres_fac;
+			rr_node_route_inf[inode].pres_cost = 1.0 + pres_fac;
 		}
 	}
 }
@@ -446,9 +518,9 @@ void init_route_structs(int bb_factor) {
 	/* Call this before you route any nets.  It frees any old traceback and   *
 	 * sets the list of rr_nodes touched to empty.                            */
 
-	int i;
+	unsigned int i;
 
-	for (i = 0; i < num_nets; i++)
+	for (i = 0; i < g_clbs_nlist.net.size(); i++)
 		free_traceback(i);
 
 	load_route_bb(bb_factor);
@@ -457,18 +529,18 @@ void init_route_structs(int bb_factor) {
 	 * really were.                                                           */
 
 	if (rr_modified_head != NULL) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in init_route_structs. List of modified rr nodes is not empty.\n");
-		exit(1);
+		vpr_throw(VPR_ERROR_ROUTE, __FILE__, __LINE__, 
+			"in init_route_structs. List of modified rr nodes is not empty.\n");
 	}
 
 	if (heap_tail != 1) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in init_route_structs. Heap is not empty.\n");
-		exit(1);
+		vpr_throw(VPR_ERROR_ROUTE, __FILE__, __LINE__, 
+			"in init_route_structs. Heap is not empty.\n");
 	}
 }
 
 struct s_trace *
-update_traceback(struct s_heap *hptr,int inet) {
+update_traceback(struct s_heap *hptr, int inet) {
 
 	/* This routine adds the most recently finished wire segment to the         *
 	 * traceback linked list.  The first connection starts with the net SOURCE  *
@@ -486,25 +558,22 @@ update_traceback(struct s_heap *hptr,int inet) {
 	struct s_trace *tptr, *prevptr, *temptail, *ret_ptr;
 	int inode;
 	short iedge;
-	int print = 0;
 
 #ifdef DEBUG
 	t_rr_type rr_type;
 #endif
 
+	// hptr points to the end of a connection
 	inode = hptr->index;
 
 #ifdef DEBUG
 	rr_type = rr_node[inode].type;
 	if (rr_type != SINK) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in update_traceback. Expected type = SINK (%d).\n", SINK);
-		vpr_printf(TIO_MESSAGE_ERROR, "\tGot type = %d while tracing back net %d in index: %d.\n", rr_type, inet,inode);
-		exit(1);
-		/* This return means that the cluster contains a connection that is explicit and not active which means that it does not have a node to drive to */
+		vpr_throw(VPR_ERROR_ROUTE, __FILE__, __LINE__, 
+			"in update_traceback. Expected type = SINK (%d).\n"
+			"\tGot type = %d while tracing back net %d.\n", SINK, rr_type, inet);
 	}
 #endif
-
-	my_printf(print,"Inode: %d\n",inode);
 
 	tptr = alloc_trace_data(); /* SINK on the end of the connection */
 	tptr->index = inode;
@@ -590,7 +659,7 @@ float get_rr_cong_cost(int inode) {
 	short cost_index;
 	float cost;
 
-	cost_index = rr_node[inode].cost_index;
+	cost_index = rr_node[inode].get_cost_index();
 	cost = rr_indexed_data[cost_index].base_cost
 			* rr_node_route_inf[inode].acc_cost
 			* rr_node_route_inf[inode].pres_cost;
@@ -605,15 +674,16 @@ void mark_ends(int inet) {
 	 * the same net to two inputs of an and-gate (and-gate inputs are logically *
 	 * equivalent, so both will connect to the same SINK).                      */
 
-	int ipin, inode;
+	unsigned int ipin;
+	int inode;
 
-	for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++) {
+	for (ipin = 1; ipin < g_clbs_nlist.net[inet].pins.size(); ipin++) {
 		inode = net_rr_terminals[inet][ipin];
 		rr_node_route_inf[inode].target_flag++;
 	}
 }
 
-void node_to_heap(int inode, float cost, int prev_node, int prev_edge,
+void node_to_heap(int inode, float total_cost, int prev_node, int prev_edge,
 		float backward_path_cost, float R_upstream) {
 
 	/* Puts an rr_node on the heap, if the new cost given is lower than the     *
@@ -625,12 +695,12 @@ void node_to_heap(int inode, float cost, int prev_node, int prev_edge,
 
 	struct s_heap *hptr;
 
-	if (cost >= rr_node_route_inf[inode].path_cost)
+	if (total_cost >= rr_node_route_inf[inode].path_cost)
 		return;
 
 	hptr = alloc_heap_data();
 	hptr->index = inode;
-	hptr->cost = cost;
+	hptr->cost = total_cost;
 	hptr->u.prev_node = prev_node;
 	hptr->prev_edge = prev_edge;
 	hptr->backward_path_cost = backward_path_cost;
@@ -701,7 +771,7 @@ alloc_saved_routing(t_ivec ** clb_opins_used_locally,
 	int iblk, iclass, num_local_opins;
 	t_type_ptr type;
 
-	best_routing = (struct s_trace **) my_calloc(num_nets,
+	best_routing = (struct s_trace **) my_calloc(g_clbs_nlist.net.size(),
 			sizeof(struct s_trace *));
 
 	saved_clb_opins_used_locally = (t_ivec **) my_malloc(
@@ -759,7 +829,7 @@ alloc_and_load_clb_opins_used_locally(void) {
 			}
 		
 			if ((block[iblk].nets[clb_pin] != OPEN
-					&& clb_net[block[iblk].nets[clb_pin]].num_sinks == 0) || block[iblk].nets[clb_pin] == OPEN
+					&& g_clbs_nlist.net[block[iblk].nets[clb_pin]].num_sinks() == 0) || block[iblk].nets[clb_pin] == OPEN
 				) {
 				iclass = type->pin_class[clb_pin];
 				if(type->class_inf[iclass].type == DRIVER) {
@@ -788,9 +858,9 @@ void free_trace_structs(void) {
 	/*the trace lists are only freed after use by the timing-driven placer */
 	/*Do not  free them after use by the router, since stats, and draw  */
 	/*routines use the trace values */
-	int i;
+	unsigned int i;
 
-	for (i = 0; i < num_nets; i++)
+	for (i = 0; i < g_clbs_nlist.net.size(); i++)
 		free_traceback(i);
 
 	if(trace_head) {
@@ -844,8 +914,8 @@ void alloc_and_load_rr_node_route_structs(void) {
 	int inode;
 
 	if (rr_node_route_inf != NULL) {
- 		vpr_printf(TIO_MESSAGE_ERROR, "in alloc_and_load_rr_node_route_structs: old rr_node_route_inf array exists.\n");
-		exit(1);
+		vpr_throw(VPR_ERROR_ROUTE, __FILE__, __LINE__, 
+			"in alloc_and_load_rr_node_route_structs: old rr_node_route_inf array exists.\n");
 	}
 
 	rr_node_route_inf = (t_rr_node_route_inf *) my_malloc(num_rr_nodes * sizeof(t_rr_node_route_inf));
@@ -853,8 +923,8 @@ void alloc_and_load_rr_node_route_structs(void) {
 	for (inode = 0; inode < num_rr_nodes; inode++) {
 		rr_node_route_inf[inode].prev_node = NO_PREVIOUS;
 		rr_node_route_inf[inode].prev_edge = NO_PREVIOUS;
-		rr_node_route_inf[inode].pres_cost = 1.;
-		rr_node_route_inf[inode].acc_cost = 1.;
+		rr_node_route_inf[inode].pres_cost = 1.0;
+		rr_node_route_inf[inode].acc_cost = 1.0;
 		rr_node_route_inf[inode].path_cost = HUGE_POSITIVE_FLOAT;
 		rr_node_route_inf[inode].target_flag = 0;
 
@@ -886,8 +956,8 @@ void reset_rr_node_route_structs(void) {
 	for (inode = 0; inode < num_rr_nodes; inode++) {
 		rr_node_route_inf[inode].prev_node = NO_PREVIOUS;
 		rr_node_route_inf[inode].prev_edge = NO_PREVIOUS;
-		rr_node_route_inf[inode].pres_cost = 1.;
-		rr_node_route_inf[inode].acc_cost = 1.;
+		rr_node_route_inf[inode].pres_cost = 1.0;
+		rr_node_route_inf[inode].acc_cost = 1.0;
 		rr_node_route_inf[inode].path_cost = HUGE_POSITIVE_FLOAT;
 		rr_node_route_inf[inode].target_flag = 0;
 	}
@@ -916,24 +986,25 @@ static void load_route_bb(int bb_factor) {
 	 * clipped to lie within (0,0) and (nx+1,ny+1) rather than (1,1) and   *
 	 * (nx,ny).                                                            */
 
-	int k, xmax, ymax, xmin, ymin, x, y, inet;
+	unsigned int k, inet;
+	int xmax, ymax, xmin, ymin, x, y;
 
-	for (inet = 0; inet < num_nets; inet++) {
-		x = block[clb_net[inet].node_block[0]].x;
-		y =
-				block[clb_net[inet].node_block[0]].y
-						+ block[clb_net[inet].node_block[0]].type->pin_height[clb_net[inet].node_block_pin[0]];
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
+		x = block[g_clbs_nlist.net[inet].pins[0].block].x
+			+ block[g_clbs_nlist.net[inet].pins[0].block].type->pin_width[g_clbs_nlist.net[inet].pins[0].block_pin];
+		y = block[g_clbs_nlist.net[inet].pins[0].block].y
+			+ block[g_clbs_nlist.net[inet].pins[0].block].type->pin_height[g_clbs_nlist.net[inet].pins[0].block_pin];
 
 		xmin = x;
 		ymin = y;
 		xmax = x;
 		ymax = y;
 
-		for (k = 1; k <= clb_net[inet].num_sinks; k++) {
-			x = block[clb_net[inet].node_block[k]].x;
-			y =
-					block[clb_net[inet].node_block[k]].y
-							+ block[clb_net[inet].node_block[k]].type->pin_height[clb_net[inet].node_block_pin[k]];
+		for (k = 1; k < g_clbs_nlist.net[inet].pins.size(); k++) {
+			x = block[g_clbs_nlist.net[inet].pins[k].block].x
+				+ block[g_clbs_nlist.net[inet].pins[k].block].type->pin_width[g_clbs_nlist.net[inet].pins[k].block_pin];
+			y = block[g_clbs_nlist.net[inet].pins[k].block].y
+				+ block[g_clbs_nlist.net[inet].pins[k].block].type->pin_height[g_clbs_nlist.net[inet].pins[k].block_pin];
 
 			if (x < xmin) {
 				xmin = x;
@@ -956,10 +1027,10 @@ static void load_route_bb(int bb_factor) {
 		/* Expand the net bounding box by bb_factor, then clip to the physical *
 		 * chip area.                                                          */
 
-		route_bb[inet].xmin = std::max(xmin - bb_factor, 0);
-		route_bb[inet].xmax = std::min(xmax + bb_factor, nx + 1);
-		route_bb[inet].ymin = std::max(ymin - bb_factor, 0);
-		route_bb[inet].ymax = std::min(ymax + bb_factor, ny + 1);
+		route_bb[inet].xmin = max(xmin - bb_factor, 0);
+		route_bb[inet].xmax = min(xmax + bb_factor, nx + 1);
+		route_bb[inet].ymin = max(ymin - bb_factor, 0);
+		route_bb[inet].ymax = min(ymax + bb_factor, ny + 1);
 	}
 }
 
@@ -1009,8 +1080,8 @@ static void add_to_heap(struct s_heap *hptr) {
 }
 
 /*WMF: peeking accessor :) */
-boolean is_empty_heap(void) {
-	return (boolean)(heap_tail == 1);
+bool is_empty_heap(void) {
+	return (bool)(heap_tail == 1);
 }
 
 struct s_heap *
@@ -1025,8 +1096,8 @@ get_heap_head(void) {
 
 	do {
 		if (heap_tail == 1) { /* Empty heap. */
-			vpr_printf(TIO_MESSAGE_WARNING, "Empty heap occurred in get_heap_head.\n");
-			vpr_printf(TIO_MESSAGE_WARNING, "Some blocks are impossible to connect in this architecture.\n");
+			vpr_printf_warning(__FILE__, __LINE__, "Empty heap occurred in get_heap_head.\n");
+			vpr_printf_warning(__FILE__, __LINE__, "Some blocks are impossible to connect in this architecture.\n");
 			return (NULL);
 		}
 
@@ -1107,10 +1178,10 @@ void invalidate_heap_entries(int sink_node, int ipin_node) {
 	}
 }
 
-static struct s_trace *
+t_trace *
 alloc_trace_data(void) {
 
-	struct s_trace *temp_ptr;
+	t_trace *temp_ptr;
 
 	if (trace_free_head == NULL) { /* No elements on the free list */
 		trace_free_head = (struct s_trace *) my_chunk_malloc(sizeof(struct s_trace),&trace_ch);
@@ -1127,7 +1198,7 @@ alloc_trace_data(void) {
 	return (temp_ptr);
 }
 
-void free_trace_data(struct s_trace *tptr) {
+static void free_trace_data(struct s_trace *tptr) {
 
 	/* Puts the traceback structure pointed to by tptr on the free list. */
 
@@ -1167,38 +1238,39 @@ void print_route(char *route_file) {
 
 	/* Prints out the routing to file route_file.  */
 
-	int inet, inode, ipin, bnum, ilow, jlow, node_block_pin, iclass;
+	unsigned int inet;
+	int inode, bnum, ilow, jlow, node_block_pin, iclass;
+	unsigned int ipin;
 	t_rr_type rr_type;
 	struct s_trace *tptr;
-	const char *name_type[] = { "SOURCE", "SINK", "IPIN", "OPIN", "CHANX", "CHANY",
-			"INTRA_CLUSTER_EDGE" };
 	FILE *fp;
 
 	fp = fopen(route_file, "w");
 
 	fprintf(fp, "Array size: %d x %d logic blocks.\n", nx, ny);
 	fprintf(fp, "\nRouting:");
-	for (inet = 0; inet < num_nets; inet++) {
-		if (clb_net[inet].is_global == FALSE) {
-			if (clb_net[inet].num_sinks == FALSE) {
-				fprintf(fp, "\n\nNet %d (%s)\n\n", inet, clb_net[inet].name);
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
+		if (g_clbs_nlist.net[inet].is_global == false) {
+			if (g_clbs_nlist.net[inet].num_sinks() == false) {
+				fprintf(fp, "\n\nNet %d (%s)\n\n", inet, g_clbs_nlist.net[inet].name);
 				fprintf(fp, "\n\nUsed in local cluster only, reserved one CLB pin\n\n");
 			} else {
-				fprintf(fp, "\n\nNet %d (%s)\n\n", inet, clb_net[inet].name);
+				fprintf(fp, "\n\nNet %d (%s)\n\n", inet, g_clbs_nlist.net[inet].name);
 				tptr = trace_head[inet];
 
 				while (tptr != NULL) {
 					inode = tptr->index;
 					rr_type = rr_node[inode].type;
-					ilow = rr_node[inode].xlow;
-					jlow = rr_node[inode].ylow;
+					ilow = rr_node[inode].get_xlow();
+					jlow = rr_node[inode].get_ylow();
 
-					fprintf(fp, "Node:\t%d\t%6s (%d,%d) ", inode, name_type[rr_type], ilow, jlow);
+					fprintf(fp, "Node:\t%d\t%6s (%d,%d) ", inode, 
+							rr_node[inode].rr_get_type_string(), ilow, jlow);
 
-					if ((ilow != rr_node[inode].xhigh)
-							|| (jlow != rr_node[inode].yhigh))
-						fprintf(fp, "to (%d,%d) ", rr_node[inode].xhigh,
-								rr_node[inode].yhigh);
+					if ((ilow != rr_node[inode].get_xhigh())
+							|| (jlow != rr_node[inode].get_yhigh()))
+						fprintf(fp, "to (%d,%d) ", rr_node[inode].get_xhigh(),
+								rr_node[inode].get_yhigh());
 
 					switch (rr_type) {
 
@@ -1226,13 +1298,23 @@ void print_route(char *route_file) {
 						break;
 
 					default:
-						vpr_printf(TIO_MESSAGE_ERROR, "in print_route: Unexpected traceback element type: %d (%s).\n", 
-								rr_type, name_type[rr_type]);
-						exit(1);
+						vpr_throw(VPR_ERROR_ROUTE, __FILE__, __LINE__, 
+								  "in print_route: Unexpected traceback element type: %d (%s).\n", 
+								  rr_type, rr_node[inode].rr_get_type_string());
 						break;
 					}
 
-					fprintf(fp, "%d  ", rr_node[inode].ptc_num);
+					fprintf(fp, "%d  ", rr_node[inode].get_ptc_num());
+
+					if (grid[ilow][jlow].type != IO_TYPE && (rr_type == IPIN || rr_type == OPIN)) {
+						int pin_num = rr_node[inode].get_ptc_num();
+						int offset = grid[ilow][jlow].height_offset;
+						int iblock = grid[ilow][jlow - offset].blocks[0];
+						assert(iblock != OPEN);
+						t_pb_graph_pin *pb_pin = get_pb_graph_node_pin_from_block_pin(iblock, pin_num);
+						t_pb_type *pb_type = pb_pin->parent_node->pb_type;
+						fprintf(fp, " %s.%s[%d] ", pb_type->name, pb_pin->port->name, pb_pin->pin_number);
+					}
 
 					/* Uncomment line below if you're debugging and want to see the switch types *
 					 * used in the routing.                                                      */
@@ -1247,12 +1329,12 @@ void print_route(char *route_file) {
 
 		else { /* Global net.  Never routed. */
 			fprintf(fp, "\n\nNet %d (%s): global net connecting:\n\n", inet,
-					clb_net[inet].name);
+					g_clbs_nlist.net[inet].name);
 
-			for (ipin = 0; ipin <= clb_net[inet].num_sinks; ipin++) {
-				bnum = clb_net[inet].node_block[ipin];
+			for (ipin = 0; ipin < g_clbs_nlist.net[inet].pins.size(); ipin++) {
+				bnum = g_clbs_nlist.net[inet].pins[ipin].block;
 
-				node_block_pin = clb_net[inet].node_block_pin[ipin];
+				node_block_pin = g_clbs_nlist.net[inet].pins[ipin].block_pin;
 				iclass = block[bnum].type->pin_class[node_block_pin];
 
 				fprintf(fp, "Block %s (#%d) at (%d, %d), Pin class %d.\n",
@@ -1275,8 +1357,8 @@ void print_route(char *route_file) {
 
 }
 
-/* TODO: check if this is still necessary for speed */
-void reserve_locally_used_opins(float pres_fac, boolean rip_up_local_opins,
+/* TODO: jluu: I now always enforce logically equivalent outputs to use at most one output pin, should rethink how to do this */
+void reserve_locally_used_opins(float pres_fac, float acc_fac, bool rip_up_local_opins,
 		t_ivec ** clb_opins_used_locally) {
 
 	/* In the past, this function implicitly allowed LUT duplication when there are free LUTs. 
@@ -1299,7 +1381,7 @@ void reserve_locally_used_opins(float pres_fac, boolean rip_up_local_opins,
 				/* Always 0 for pads and for RECEIVER (IPIN) classes */
 				for (ipin = 0; ipin < num_local_opin; ipin++) {
 					inode = clb_opins_used_locally[iblk][iclass].list[ipin];
-					adjust_one_rr_occ_and_pcost(inode, -1, pres_fac);
+					adjust_one_rr_occ_and_apcost(inode, -1, pres_fac, acc_fac);
 				}
 			}
 		}
@@ -1313,18 +1395,18 @@ void reserve_locally_used_opins(float pres_fac, boolean rip_up_local_opins,
 
 			if (num_local_opin != 0) { /* Have to reserve (use) some OPINs */
 				from_node = rr_blk_source[iblk][iclass];
-				num_edges = rr_node[from_node].num_edges;
+				num_edges = rr_node[from_node].get_num_edges();
 				for (iconn = 0; iconn < num_edges; iconn++) {
 					to_node = rr_node[from_node].edges[iconn];
 					cost = get_rr_cong_cost(to_node);
-					printf("reserve_locally_used_opins Add to heap: %d\n",to_node);
+					//printf("reserve_locally_used_opins Add to heap: %d\n",to_node);
 					node_to_heap(to_node, cost, OPEN, OPEN, 0., 0.);
 				}
 
 				for (ipin = 0; ipin < num_local_opin; ipin++) {
 					heap_head_ptr = get_heap_head();
 					inode = heap_head_ptr->index;
-					adjust_one_rr_occ_and_pcost(inode, 1, pres_fac);
+					adjust_one_rr_occ_and_apcost(inode, 1, pres_fac, acc_fac);
 					clb_opins_used_locally[iblk][iclass].list[ipin] = inode;
 					free_heap_data(heap_head_ptr);
 				}
@@ -1335,26 +1417,27 @@ void reserve_locally_used_opins(float pres_fac, boolean rip_up_local_opins,
 	}
 }
 
-static void adjust_one_rr_occ_and_pcost(int inode, int add_or_sub,
-		float pres_fac) {
+static void adjust_one_rr_occ_and_apcost(int inode, int add_or_sub,
+		float pres_fac, float acc_fac) {
 
 	/* Increments or decrements (depending on add_or_sub) the occupancy of    *
 	 * one rr_node, and adjusts the present cost of that node appropriately.  */
 
 	int occ, capacity;
 
-	occ = rr_node[inode].occ + add_or_sub;
-	capacity = rr_node[inode].capacity;
-	rr_node[inode].occ = occ;
+	occ = rr_node[inode].get_occ() + add_or_sub;
+	capacity = rr_node[inode].get_capacity();
+	rr_node[inode].set_occ(occ);
 
 	if (occ < capacity) {
-		rr_node_route_inf[inode].pres_cost = 1.;
+		rr_node_route_inf[inode].pres_cost = 1.0;
 	} else {
-		rr_node_route_inf[inode].pres_cost = 1.
-				+ (occ + 1 - capacity) * pres_fac;
+		rr_node_route_inf[inode].pres_cost = 1.0 + (occ + 1 - capacity) * pres_fac;
+		if (add_or_sub == 1) {
+			rr_node_route_inf[inode].acc_cost += (occ - capacity) * acc_fac;
+		}
 	}
 }
-
 
 void free_chunk_memory_trace(void) {
 	if (trace_ch.chunk_ptr_head != NULL) {
@@ -1500,9 +1583,8 @@ t_node_entry* remove_node(t_node_hash_map* map, int key){
                 map->node_entries[hashfvalue] = NULL;
                 map->no_entries--;
                 //move following entries up if legal
-                int i, idx;
-                for(i=1;i<map->no_entries+1;i++){
-                    idx = (hashfvalue + i) % map_size;
+                for(int i=1;i<map->no_entries+1;i++){
+                    int idx = (hashfvalue + i) % map_size;
                     if(map->node_entries[idx] == NULL) break;
                     else{
                         int hfv = map->node_entries[idx]->node % map_size;
@@ -1520,9 +1602,9 @@ t_node_entry* remove_node(t_node_hash_map* map, int key){
                 return map->node_entries[hashfvalue];
             }
         }else{
-            int i, idx;
-            for(i=1;i<map_size;i++){
-                idx = (hashfvalue+i)%map_size;
+            int j, idx;
+            for(j=1;j<map_size;j++){
+                idx = (hashfvalue+j)%map_size;
                 if(map->node_entries[idx] ==  NULL){
                     printf("Error in remove_node: no node entry found.");
                     exit(2);
@@ -1532,9 +1614,8 @@ t_node_entry* remove_node(t_node_hash_map* map, int key){
                         map->node_entries[idx]=NULL;
                         map->no_entries--;
                         //move following entries up if legal
-                        int i, loc;
-                        for(i = 1; i<map->no_entries; i++){
-                            loc = (idx + i) % map_size;
+                        for(int i = 1; i<map->no_entries; i++){
+                            int loc = (idx + i) % map_size;
                             if(map->node_entries[loc] == NULL) break;
                             else{
                                 int hfv = map->node_entries[loc]->node % map_size;
@@ -1781,9 +1862,8 @@ t_rr_to_rg_node_entry* remove_rr_to_rg_node(t_rr_to_rg_node_hash_map* map, int k
                 map->node_entries[hashfvalue] = NULL;
                 map->no_entries--;
                 //move following entries up if legal
-                int i, idx;
-                for(i=1;i<map->no_entries+1;i++){
-                    idx = (hashfvalue + i) % map_size;
+                for(int i=1;i<map->no_entries+1;i++){
+                    int idx = (hashfvalue + i) % map_size;
                     if(map->node_entries[idx] == NULL) break;
                     else{
                         int hfv = map->node_entries[idx]->rr_node % map_size;
@@ -1801,9 +1881,8 @@ t_rr_to_rg_node_entry* remove_rr_to_rg_node(t_rr_to_rg_node_hash_map* map, int k
                 return map->node_entries[hashfvalue];
             }
         }else{
-            int i, idx;
             for(int i=1;i<map_size;i++){
-                idx = (hashfvalue+i)%map_size;
+                int idx = (hashfvalue+i)%map_size;
                 if(map->node_entries[idx] ==  NULL){
                     printf("Error in remove_node: no node entry found.");
                     exit(2);
@@ -1813,9 +1892,8 @@ t_rr_to_rg_node_entry* remove_rr_to_rg_node(t_rr_to_rg_node_hash_map* map, int k
                         map->node_entries[idx]=NULL;
                         map->no_entries--;
                         //move following entries up if legal
-                        int i, loc;
-                        for(i=1;i<map->no_entries;i++){
-                            loc = (idx + i) % map_size;
+                        for(int j=1;j<map->no_entries;j++){
+                            int loc = (idx + j) % map_size;
                             if(map->node_entries[loc] == NULL) break;
                             else{
                                 int hfv = map->node_entries[loc]->rr_node % map_size;
@@ -1870,7 +1948,7 @@ static void free_source_data(struct s_source* sptr) {
 
 void rip_up_con(int icon, float pres_fac) {
     struct s_trace *route_segment_start = trace_head_con[icon];
-    int source = cons[icon].source;
+    int source = net_rr_terminals[cons[icon].net][0];
     int inode, occ, capacity;
     struct s_trace* tptr = route_segment_start;
     if (tptr == NULL) /* No routing yet. */
@@ -1902,7 +1980,7 @@ void rip_up_con(int icon, float pres_fac) {
             printf("Error in pathfinder_rip_up: current element is null.\n");
         }
         if (source_usage == 0) {
-            printf("Error while ripping up connection %d in node %d (type: %d, cap %d): source was not present", icon,inode, rr_node[inode].type, rr_node[inode].capacity);
+            printf("Error while ripping up connection %d in node %d (type: %d, cap %d): source was not present", icon,inode, rr_node[inode].type, rr_node[inode].get_capacity());
             exit(10);
         } else {
             /*Capacity and pres_cost need to be adapted*/
@@ -1917,15 +1995,15 @@ void rip_up_con(int icon, float pres_fac) {
 //                free(current_element->data_vptr);
 //                free(current_element);
                 free_source_data(current_element);
-                occ = rr_node[inode].occ - 1;
-                rr_node[inode].occ = occ;
+                occ = rr_node[inode].get_occ() - 1;
+                rr_node[inode].set_occ(occ);
             } else {
                 //source_entry* se = (source_entry*) current_element->data_vptr;
                 //se->usage--;
                 current_element->usage--;
-                occ = rr_node[inode].occ;
+                occ = rr_node[inode].get_occ();
             }
-            capacity = rr_node[inode].capacity;
+            capacity = rr_node[inode].get_capacity();
             if (occ < capacity) {
                 rr_node_route_inf[inode].pres_cost = 1.;
             } else {
@@ -1953,12 +2031,12 @@ void rip_up_con_fast(int icon, t_node_hash_map* node_hash_map, float pres_fac) {
             inode = tptr->index;
             t_node_entry* node_entry = remove_node(node_hash_map,inode);
             if(node_entry == NULL){
-                occupancy = rr_node[inode].occ -1;
+                occupancy = rr_node[inode].get_occ() -1;
             }else{
-                occupancy = rr_node[inode].occ;
+                occupancy = rr_node[inode].get_occ();
             }
-            rr_node[inode].occ = occupancy;
-            capacity = rr_node[inode].capacity;
+            rr_node[inode].set_occ(occupancy);
+            capacity = rr_node[inode].get_capacity();
             if (occupancy < capacity) {
                 rr_node_route_inf[inode].pres_cost = 1.;
             } else {
@@ -1990,8 +2068,8 @@ void rip_up_con_fast(int icon, t_node_hash_map* node_hash_map, float pres_fac) {
             int node = node_hash_map->node_entries[it]->node;
             int usage = node_hash_map->node_entries[it]->usage;
             rr_node_route_inf[node].usage = usage;
-            int occ = rr_node[node].occ;
-            int cap = rr_node[node].capacity;
+            int occ = rr_node[node].get_occ();
+            int cap = rr_node[node].get_capacity();
             float pres_cost;
             if (occ < cap) {
                 pres_cost = 1.;
@@ -2008,7 +2086,7 @@ void rip_up_con_fast(int icon, t_node_hash_map* node_hash_map, float pres_fac) {
 
 void add_con(int icon, float pres_fac) {
     struct s_trace *route_segment_start = trace_head_con[icon];
-    int source = cons[icon].source;
+    int source = cons[icon].net;
     int inode;
     struct s_trace* tptr = route_segment_start;
     
@@ -2019,12 +2097,12 @@ void add_con(int icon, float pres_fac) {
     for (;;) {
         inode = tptr->index;
         /*Check if node is already used by source*/
-        boolean source_found = FALSE;
+        bool source_found = false;
         struct s_source* current_element;
-        struct s_source* prev_element = NULL;
+//        struct s_source* prev_element = NULL;
 //        struct s_linked_vptr* current_element;
 //        struct s_linked_vptr* prev_element = NULL;
-        int old_capacity = rr_node[inode].occ;
+        int old_capacity = rr_node[inode].get_occ();
         if (old_capacity > 0) {
             current_element = rr_node_route_inf[inode].source_list_head;
             if (current_element != NULL) {
@@ -2032,13 +2110,13 @@ void add_con(int icon, float pres_fac) {
 //                  source_entry* so = (source_entry*) current_element->data_vptr;
 //                    if (so->source == source) {
                     if(current_element->source == source){
-                        source_found = TRUE;
+                        source_found = true;
                         break;
                     }
                     if (current_element->next == NULL) {
                         break;
                     } else {
-                        prev_element = current_element;
+//                        prev_element = current_element;
                         current_element = current_element->next;
                     }
                 }
@@ -2060,9 +2138,9 @@ void add_con(int icon, float pres_fac) {
             rr_node_route_inf[inode].num_cons++;
 //          if (rr_node_route_inf[inode].size_source_list > rr_node_route_inf[inode].max_size_source_list)rr_node_route_inf[inode].max_size_source_list = rr_node_route_inf[inode].size_source_list;
             /*Adapt occupation field and calculate present congestion factor*/
-            int occ = rr_node[inode].occ + 1;
-            int capacity = rr_node[inode].capacity;
-            rr_node[inode].occ = occ;
+            short occ = rr_node[inode].get_occ() + 1;
+            int capacity = rr_node[inode].get_capacity();
+            rr_node[inode].set_occ(occ);
             if (occ < capacity) {
                 rr_node_route_inf[inode].pres_cost = 1.;
             } else {
@@ -2120,7 +2198,7 @@ void add_con_fast(int icon, t_node_hash_map* node_hash_map , float pres_fac) {
     }
  
 #ifdef DEBUG
-    boolean usage_increases = FALSE;
+    bool usage_increases = false;
     int previous_usage =  -1;
 #endif
     //printf("Path found: ");
@@ -2129,7 +2207,7 @@ void add_con_fast(int icon, t_node_hash_map* node_hash_map , float pres_fac) {
         //printf("inode %d, ",inode);
 #ifdef DEBUG
         if(previous_usage != -1 && rr_node_route_inf[inode].usage > previous_usage){
-            usage_increases = TRUE;
+            usage_increases = true;
         }
         previous_usage = rr_node_route_inf[inode].usage;
 #endif
@@ -2179,13 +2257,13 @@ void add_con_fast(int icon, t_node_hash_map* node_hash_map , float pres_fac) {
         inode = tptr->index;
         t_node_entry* node_entry = add_node(node_hash_map,inode);
         int occupancy;
-        if(rr_node[inode].occ>0 && node_entry->usage>1){
-            occupancy = rr_node[inode].occ;
+        if(rr_node[inode].get_occ()>0 && node_entry->usage>1){
+            occupancy = rr_node[inode].get_occ();
         }else{
-            occupancy = rr_node[inode].occ + 1;
+            occupancy = rr_node[inode].get_occ() + 1;
         }
-        rr_node[inode].occ = occupancy; 
-        int capacity = rr_node[inode].capacity;   
+        rr_node[inode].set_occ(occupancy); 
+        int capacity = rr_node[inode].get_capacity();   
         if (occupancy < capacity) {
             rr_node_route_inf[inode].pres_cost = 1.;
         } else {
@@ -2208,18 +2286,18 @@ void add_con_fast(int icon, t_node_hash_map* node_hash_map , float pres_fac) {
 float get_rr_cong_cost_con(int inode, int icon, float pres_fac) {
 
     /* Returns the *congestion* cost of using this rr_node. */
-    float cost, pres_cost;
+    float cost;
 
     /*Check if node is already used by a connection with the same source*/
 //    struct s_linked_vptr* source_list_it = rr_node_route_inf[inode].source_list_head;
     struct s_source* source_list_it = rr_node_route_inf[inode].source_list_head;
-    boolean source_found = FALSE;
-    if (rr_node[inode].occ > 0 && source_list_it != NULL) {
+    bool source_found = false;
+    if (rr_node[inode].get_occ() > 0 && source_list_it != NULL) {
         for (;;) {
 //            source_entry* se = (source_entry *) source_list_it->data_vptr;
 //            if (se->source == cons[icon].source) {
             if(source_list_it->source == cons[icon].source){
-                source_found = TRUE;
+                source_found = true;
                 break;
             }
             if (source_list_it->next == NULL) {
@@ -2233,21 +2311,21 @@ float get_rr_cong_cost_con(int inode, int icon, float pres_fac) {
 //        source_entry* se = (source_entry *) source_list_it->data_vptr;
 //        float usage = 1. + se->usage;
         float usage = 1. + source_list_it->usage;
-        int occ = rr_node[inode].occ;
-        int cap = rr_node[inode].capacity;
+        int occ = rr_node[inode].get_occ();
+        int cap = rr_node[inode].get_capacity();
         float pres_cost;
         if (occ < cap) {
             pres_cost = 1.;
         } else {
             pres_cost = 1. + (occ - cap) * pres_fac;
         }
-        cost = rr_indexed_data[rr_node[inode].cost_index].base_cost *
+        cost = rr_indexed_data[rr_node[inode].get_cost_index()].base_cost *
                 rr_node_route_inf[inode].acc_cost *
                 pres_cost /
                 usage;
     } else {
         
-        cost = rr_indexed_data[rr_node[inode].cost_index].base_cost *
+        cost = rr_indexed_data[rr_node[inode].get_cost_index()].base_cost *
                 rr_node_route_inf[inode].acc_cost *
                 rr_node_route_inf[inode].pres_cost;
     }
@@ -2305,7 +2383,7 @@ struct s_trace * update_traceback_con(struct s_heap *hptr, int icon) {
      * the first "new" node in the traceback (node not previously in trace).    */
 
     struct s_trace *tptr, *prevptr;
-    int inode, old_inode;
+    int inode;
     short iedge;
 
 #ifdef DEBUG
@@ -2345,7 +2423,6 @@ struct s_trace * update_traceback_con(struct s_heap *hptr, int icon) {
         tptr = prevptr;
         
         iedge = rr_node_route_inf[inode].prev_edge;
-        old_inode = inode;
         inode = rr_node_route_inf[inode].prev_node;  
     }
     trace_head_con[icon] = tptr;
@@ -2370,7 +2447,7 @@ void update_traceback_con_experimental(struct s_heap *hptr,
      * the first "new" node in the traceback (node not previously in trace).    */
 
     struct s_trace *tptr, *prevptr;
-    int inode, old_inode;
+    int inode;
     short iedge;
 
 #ifdef DEBUG
@@ -2411,7 +2488,7 @@ void update_traceback_con_experimental(struct s_heap *hptr,
     cons[icon].previous_total_path_cost = new_path_cost;
     cons[icon].previous_total_shares = 0;
     
-    float neighborhood = 0.0;
+//    float neighborhood = 0.0;
 
     while (inode != NO_PREVIOUS) {
         prevptr = alloc_trace_data();
@@ -2427,14 +2504,13 @@ void update_traceback_con_experimental(struct s_heap *hptr,
 //                neighbor = rr_node[inode].edges[edge];
 //                if(neighbor != old_inode){
 //                    //neighborhood += rr_node_route_inf[neighbor].acc_cost;
-//                        //neighborhood += (rr_node[neighbor].occ*1.0/(1+rr_node_route_inf[neighbor].usage));
-//                        //if(icon==2000)printf("\tnbh += %f\n",(rr_node[neighbor].occ*1.0/(1+rr_node_route_inf[neighbor].usage)));
+//                        //neighborhood += (rr_node[neighbor].get_occ()*1.0/(1+rr_node_route_inf[neighbor].usage));
+//                        //if(icon==2000)printf("\tnbh += %f\n",(rr_node[neighbor].get_occ()*1.0/(1+rr_node_route_inf[neighbor].usage)));
 //                }
 //            }
 //        }
         //if(rr_node[inode].type>2) cons[icon].previous_total_shares += (1+rr_node_route_inf[inode].usage);
         iedge = rr_node_route_inf[inode].prev_edge;
-        old_inode = inode;
         inode = rr_node_route_inf[inode].prev_node;  
     }
 //    cons[icon].neighborhood = neighborhood;
@@ -2443,7 +2519,7 @@ void update_traceback_con_experimental(struct s_heap *hptr,
     trace_head_con[icon] = tptr;
 }
 
-boolean feasible_routing_debug(void) {
+bool feasible_routing_debug(void) {
 
     /* This routine checks to see if this is a resource-feasible routing.      *
      * That is, are all rr_node capacity limitations respected?  It assumes    *
@@ -2452,13 +2528,13 @@ boolean feasible_routing_debug(void) {
     int inode;
 
     //	for(inode = 0; inode < num_rr_nodes; inode++) {
-    //		if(rr_node[inode].occ > rr_node[inode].capacity) {
-    //			return (FALSE);
+    //		if(rr_node[inode].get_occ() > rr_node[inode].get_capacity()) {
+    //			return (false);
     //		}
     //	}
-    //    return (TRUE);
+    //    return (true);
 
-    boolean feasible = TRUE;
+    bool feasible = true;
 
     int congested = 0;
     int total_overuse = 0;
@@ -2466,17 +2542,17 @@ boolean feasible_routing_debug(void) {
 //    int sumOfMaxSizes = 0;
     int nrOfUsedRNs = 0;
     for (inode = 0; inode < num_rr_nodes; inode++) {
-        int occ = rr_node[inode].occ;
+        int occ = rr_node[inode].get_occ();
         if (occ > 0) {
             //int mSize = rr_node_route_inf[inode].max_size_source_list;
             nrOfUsedRNs++;
             //sumOfMaxSizes += mSize;
             //if (mSize > maxSize) maxSize = mSize;
-            if (occ > rr_node[inode].capacity) {
-                //printf("node %d, type %d, occ %d,cap %d\n",inode,rr_node[inode].type,occ,rr_node[inode].capacity);
-                feasible = FALSE;
+            if (occ > rr_node[inode].get_capacity()) {
+                //printf("node %d, type %d, occ %d,cap %d\n",inode,rr_node[inode].type,occ,rr_node[inode].get_capacity());
+                feasible = false;
                 congested++;
-                total_overuse += (occ - rr_node[inode].capacity);
+                total_overuse += (occ - rr_node[inode].get_capacity());
             }
         }
     }
@@ -2488,7 +2564,7 @@ boolean feasible_routing_debug(void) {
 }
 
 
-boolean feasible_routing_rco(void) {
+bool feasible_routing_rco(void) {
 
     /* This routine checks to see if this is a resource-feasible routing.      *
      * That is, are all rr_node capacity limitations respected?  It assumes    *
@@ -2499,17 +2575,17 @@ boolean feasible_routing_rco(void) {
     
     struct s_trace* it;
         
-    boolean feasible = TRUE;
+    bool feasible = true;
     
     for(inet=0; inet<num_nets;inet++){
-        congested_cons[inet] = FALSE;
+        congested_cons[inet] = false;
         it = trace_head[inet];
         while(it!=NULL && !congested_cons[inet]){
-            short occ = rr_node[it->index].occ;
+            short occ = rr_node[it->index].get_occ();
             if (occ > 0) {
-                if (occ > rr_node[it->index].capacity) {
-                    congested_cons[inet] = TRUE;
-                    feasible = FALSE;
+                if (occ > rr_node[it->index].get_capacity()) {
+                    congested_cons[inet] = true;
+                    feasible = false;
                 }
             }
             it = it->next;
@@ -2523,7 +2599,7 @@ boolean feasible_routing_rco(void) {
     return feasible;
 }
 //
-//boolean
+//bool
 //feasible_routing_conr_rco(void) {
 //
 //    /* This routine checks to see if this is a resource-feasible routing.      *
@@ -2535,17 +2611,17 @@ boolean feasible_routing_rco(void) {
 //    
 //    struct s_trace* it;
 //        
-//    boolean feasible = TRUE;
+//    bool feasible = true;
 //    
 //    for(icon=0; icon<num_cons;icon++){
-//        congested[icon] = FALSE;
+//        congested[icon] = false;
 //        it = trace_head_con[icon];
 //        while(it!=NULL && !congested[icon]){
-//            short occ = rr_node[it->index].occ;
+//            short occ = rr_node[it->index].get_occ();
 //            if (occ > 0) {
-//                if (occ > rr_node[it->index].capacity) {
-//                    congested[icon] = TRUE;
-//                    feasible = FALSE;
+//                if (occ > rr_node[it->index].get_capacity()) {
+//                    congested[icon] = true;
+//                    feasible = false;
 //                }
 //            }
 //            it = it->next;
@@ -2559,44 +2635,42 @@ boolean feasible_routing_rco(void) {
 //    return feasible;
 //}
 
-boolean feasible_routing_conr_rco(void){//(t_parents* parents, boolean* parent_of_congested_node, int itry) {
+bool feasible_routing_conr_rco(void){//(t_parents* parents, bool* parent_of_congested_node, int itry) {
 
     /* This routine checks to see if this is a resource-feasible routing.      *
      * That is, are all rr_node capacity limitations respected?  It assumes    *
      * that the occupancy arrays are up to date when it is called.             */
-
-    int icon, inode, parent, inet;
     int congestedCons = 0;
 //    int overuse = 0;
     
     struct s_trace* it;
         
-    boolean feasible = TRUE;
+    bool feasible = true;
 //    if(itry>0){
 //        for(inode=0; inode<num_rr_nodes; inode++){
-//            parent_of_congested_node[inode] = FALSE;
-//            if (rr_node[inode].occ > rr_node[inode].capacity) {
+//            parent_of_congested_node[inode] = false;
+//            if (rr_node[inode].get_occ() > rr_node[inode].get_capacity()) {
 //                overuse++;
 //                for(parent=0;parent<parents[inode].num_parents;parent++){
-//                    parent_of_congested_node[parent] =  TRUE;
+//                    parent_of_congested_node[parent] =  true;
 //                }
 //            }
 //        }
 //    }
-    for(inet=0; inet<num_nets;inet++){
-        congested_nets[inet]=FALSE;
+    for(int inet=0; inet<num_nets;inet++){
+        congested_nets[inet]=false;
     }
     
-    for(icon=0; icon<num_cons;icon++){
-        boolean congested = FALSE;
+    for(int icon=0; icon<num_cons;icon++){
+        bool congested = false;
         it = trace_head_con[icon];
         while(it!=NULL && !congested){
-            short occ = rr_node[it->index].occ;
+            short occ = rr_node[it->index].get_occ();
             if (occ > 0) {
-                if (occ > rr_node[it->index].capacity) {
-                    congested = TRUE;
-                    feasible = FALSE;
-                    congested_nets[cons[icon].net] = TRUE;
+                if (occ > rr_node[it->index].get_capacity()) {
+                    congested = true;
+                    feasible = false;
+                    congested_nets[cons[icon].net] = true;
                     break;
                 }
             }
@@ -2611,7 +2685,7 @@ boolean feasible_routing_conr_rco(void){//(t_parents* parents, boolean* parent_o
         }
     }
     
-    for(inet=0; inet<num_nets;inet++){
+    for(int inet=0; inet<num_nets;inet++){
         if(congested_nets[inet]){
             no_its_not_congested_net[inet]=0;
         }else{
@@ -2640,8 +2714,8 @@ void pathfinder_update_cost_acc(float pres_fac,
     int inode, occ, capacity;
 
     for (inode = 0; inode < num_rr_nodes; inode++) {
-        occ = rr_node[inode].occ;
-        capacity = rr_node[inode].capacity;
+        occ = rr_node[inode].get_occ();
+        capacity = rr_node[inode].get_capacity();
 
         if (occ > capacity) {
             //rr_node_route_inf[inode].acc_cost += (occ - capacity) * acc_fac;
@@ -2703,7 +2777,7 @@ struct s_trace * update_traceback_td_con(struct s_heap *hptr, int icon) {
      * the first "new" node in the traceback (node not previously in trace).    */
 
     struct s_trace *tptr, *prevptr, *btptr, *next_btptr;
-    int inode, old_inode;
+    int inode;
     short iedge;
 
 #ifdef DEBUG
@@ -2754,7 +2828,6 @@ struct s_trace * update_traceback_td_con(struct s_heap *hptr, int icon) {
         btptr = next_btptr;
         
         iedge = rr_node_route_inf[inode].prev_edge;
-        old_inode = inode;
         inode = rr_node_route_inf[inode].prev_node;  
     }
     trace_head_con[icon] = tptr;

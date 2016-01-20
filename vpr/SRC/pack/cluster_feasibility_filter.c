@@ -18,9 +18,8 @@
 
  Author: Jason Luu
  Date: May 16, 2012
-
-
  */
+
 #include <assert.h>
 
 #include "read_xml_arch_file.h"
@@ -54,7 +53,7 @@ static void expand_pb_graph_node_and_load_pin_class_by_depth(
 static void sum_pin_class(INOUTP t_pb_graph_node *pb_graph_node);
 
 static void discover_all_forced_connections(INOUTP t_pb_graph_node *pb_graph_node);
-static boolean is_forced_connection(INP t_pb_graph_pin *pb_graph_pin);
+static bool is_forced_connection(INP t_pb_graph_pin *pb_graph_pin);
 
 
 /* Identify all pin class information for complex block
@@ -198,8 +197,12 @@ static void reset_pin_class_scratch_pad_rec(
 	for (i = 0; i < pb_graph_node->pb_type->num_modes; i++) {
 		for (j = 0; j < pb_graph_node->pb_type->modes[i].num_pb_type_children;
 				j++) {
-			for (k = 0; k < pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb; k++) {
-				reset_pin_class_scratch_pad_rec( &pb_graph_node->child_pb_graph_nodes[i][j][k]);
+			for (k = 0;
+					k
+							< pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb;
+					k++) {
+				reset_pin_class_scratch_pad_rec(
+						&pb_graph_node->child_pb_graph_nodes[i][j][k]);
 			}
 		}
 	}
@@ -215,7 +218,8 @@ static void load_pin_class_by_depth(INOUTP t_pb_graph_node *pb_graph_node,
 			/* At primitive, determine which pin class each of its pins belong to */
 			for (i = 0; i < pb_graph_node->num_input_ports; i++) {
 				for (j = 0; j < pb_graph_node->num_input_pins[i]; j++) {
-					if (pb_graph_node->input_pins[i][j].parent_pin_class[depth]	== OPEN) {
+					if (pb_graph_node->input_pins[i][j].parent_pin_class[depth]
+							== OPEN) {
 						expand_pb_graph_node_and_load_pin_class_by_depth(
 								&pb_graph_node->input_pins[i][j],
 								&pb_graph_node->input_pins[i][j], depth,
@@ -226,7 +230,8 @@ static void load_pin_class_by_depth(INOUTP t_pb_graph_node *pb_graph_node,
 			}
 			for (i = 0; i < pb_graph_node->num_output_ports; i++) {
 				for (j = 0; j < pb_graph_node->num_output_pins[i]; j++) {
-					if (pb_graph_node->output_pins[i][j].parent_pin_class[depth] == OPEN) {
+					if (pb_graph_node->output_pins[i][j].parent_pin_class[depth]
+							== OPEN) {
 						expand_pb_graph_node_and_load_pin_class_by_depth(
 								&pb_graph_node->output_pins[i][j],
 								&pb_graph_node->output_pins[i][j], depth,
@@ -237,7 +242,8 @@ static void load_pin_class_by_depth(INOUTP t_pb_graph_node *pb_graph_node,
 			}
 			for (i = 0; i < pb_graph_node->num_clock_ports; i++) {
 				for (j = 0; j < pb_graph_node->num_clock_pins[i]; j++) {
-					if (pb_graph_node->clock_pins[i][j].parent_pin_class[depth]	== OPEN) {
+					if (pb_graph_node->clock_pins[i][j].parent_pin_class[depth]
+							== OPEN) {
 						expand_pb_graph_node_and_load_pin_class_by_depth(
 								&pb_graph_node->clock_pins[i][j],
 								&pb_graph_node->clock_pins[i][j], depth,
@@ -274,8 +280,13 @@ static void load_pin_class_by_depth(INOUTP t_pb_graph_node *pb_graph_node,
 	for (i = 0; i < pb_graph_node->pb_type->num_modes; i++) {
 		for (j = 0; j < pb_graph_node->pb_type->modes[i].num_pb_type_children;
 				j++) {
-			for (k = 0;k < pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb;k++) {
-				load_pin_class_by_depth(&pb_graph_node->child_pb_graph_nodes[i][j][k], depth, input_count, output_count);
+			for (k = 0;
+					k
+							< pb_graph_node->pb_type->modes[i].pb_type_children[j].num_pb;
+					k++) {
+				load_pin_class_by_depth(
+						&pb_graph_node->child_pb_graph_nodes[i][j][k], depth,
+						input_count, output_count);
 			}
 		}
 	}
@@ -487,7 +498,8 @@ static void sum_pin_class(INOUTP t_pb_graph_node *pb_graph_node) {
 			assert(
 					pb_graph_node->input_pins[i][j].pin_class < pb_graph_node->num_input_pin_class);
 			if (pb_graph_node->input_pins[i][j].pin_class == OPEN) {
-				vpr_printf(TIO_MESSAGE_WARNING, "%s[%d].%s[%d] unconnected pin in architecture.\n",
+				vpr_printf_warning(__FILE__, __LINE__, 
+						"%s[%d].%s[%d] unconnected pin in architecture.\n",
 						pb_graph_node->pb_type->name,
 						pb_graph_node->placement_index,
 						pb_graph_node->input_pins[i][j].port->name,
@@ -502,7 +514,8 @@ static void sum_pin_class(INOUTP t_pb_graph_node *pb_graph_node) {
 			assert(
 					pb_graph_node->output_pins[i][j].pin_class < pb_graph_node->num_output_pin_class);
 			if (pb_graph_node->output_pins[i][j].pin_class == OPEN) {
-				vpr_printf(TIO_MESSAGE_WARNING, "%s[%d].%s[%d] unconnected pin in architecture.\n",
+				vpr_printf_warning(__FILE__, __LINE__, 
+						"%s[%d].%s[%d] unconnected pin in architecture.\n",
 						pb_graph_node->pb_type->name,
 						pb_graph_node->placement_index,
 						pb_graph_node->output_pins[i][j].port->name,
@@ -517,7 +530,8 @@ static void sum_pin_class(INOUTP t_pb_graph_node *pb_graph_node) {
 			assert(
 					pb_graph_node->clock_pins[i][j].pin_class < pb_graph_node->num_input_pin_class);
 			if (pb_graph_node->clock_pins[i][j].pin_class == OPEN) {
-				vpr_printf(TIO_MESSAGE_WARNING, "%s[%d].%s[%d] unconnected pin in architecture.\n",
+				vpr_printf_warning(__FILE__, __LINE__, 
+						"%s[%d].%s[%d] unconnected pin in architecture.\n",
 						pb_graph_node->pb_type->name,
 						pb_graph_node->placement_index,
 						pb_graph_node->clock_pins[i][j].port->name,
@@ -558,16 +572,16 @@ static void discover_all_forced_connections(INOUTP t_pb_graph_node *pb_graph_nod
 /**
  * Given an output pin, determine if it connects to only one input pin and nothing else. 
  */
-static boolean is_forced_connection(INP t_pb_graph_pin *pb_graph_pin) {
+static bool is_forced_connection(INP t_pb_graph_pin *pb_graph_pin) {
 	if(pb_graph_pin->num_output_edges > 1) {
-		return FALSE;
+		return false;
 	}
 	if(pb_graph_pin->num_output_edges == 0) {
 		if(pb_graph_pin->parent_node->pb_type->num_modes == 0) {
 			/* Check that this pin belongs to a primitive */
-			return TRUE;
+			return true;
 		} else {
-			return FALSE;
+			return false;
 		}
 	}
 	return is_forced_connection(pb_graph_pin->output_edges[0]->output_pins[0]);

@@ -18,21 +18,23 @@ struct s_options {
 	char *CmosTechFile;
 	char *out_file_prefix;
 	char *SDCFile;
+	char *dump_rr_structs_file;
 
 	/* General options */
 	int GraphPause;
 	float constant_net_delay;
-	boolean TimingAnalysis;
-	boolean CreateEchoFile;
-  boolean Generate_Post_Synthesis_Netlist;
+	bool TimingAnalysis;
+	bool CreateEchoFile;
+	bool Generate_Post_Synthesis_Netlist;
+    char SlackDefinition;
 	/* Clustering options */
-	boolean global_clocks;
+	bool global_clocks;
 	int cluster_size;
 	int inputs_per_cluster;
 	int lut_size;
-	boolean hill_climbing_flag;
-	boolean sweep_hanging_nets_and_inputs;
-	boolean timing_driven;
+	bool hill_climbing_flag;
+	bool sweep_hanging_nets_and_inputs;
+	bool timing_driven;
 	enum e_cluster_seed cluster_seed_type;
 	float alpha;
 	float beta;
@@ -40,10 +42,10 @@ struct s_options {
 	float block_delay;
 	float intra_cluster_net_delay;
 	float inter_cluster_net_delay;
-	boolean skip_clustering;
-	boolean allow_unrelated_clustering;
-	boolean allow_early_exit;
-	boolean connection_driven;
+	bool skip_clustering;
+	bool allow_unrelated_clustering;
+	bool allow_early_exit;
+	bool connection_driven;
 	enum e_packer_algorithm packer_algorithm;
 
 	/* Placement options */
@@ -56,7 +58,7 @@ struct s_options {
 	float place_cost_exp;
 	int PlaceChanWidth;
 	char *PinFile;
-	boolean ShowPlaceTiming;
+	bool ShowPlaceTiming;
 	int block_dist;
 
 	/* Timing-driven placement options only */
@@ -69,6 +71,8 @@ struct s_options {
 	/* Router Options */
 	int max_router_iterations;
 	int bb_factor;
+	bool congestion_analysis;
+    bool switch_usage_analysis;
 	float initial_pres_fac;
 	float pres_fac_mult;
 	float acc_fac;
@@ -76,13 +80,32 @@ struct s_options {
 	float bend_cost;
 	enum e_route_type RouteType;
 	int RouteChanWidth;
+	bool TrimEmptyChan;
+	bool TrimObsChan;
 	enum e_router_algorithm RouterAlgorithm;
 	enum e_base_cost_type base_cost_type;
+
+#ifdef INTERPOSER_BASED_ARCHITECTURE
+	int percent_wires_cut;
+	int num_cuts;
+	int delay_increase;
+	float placer_cost_constant;
+	int constant_type;
+	/* architecture experiments */
+	bool allow_chanx_interposer_connections;
+	bool transfer_interposer_fanins;
+	bool allow_additional_interposer_fanins;
+	int  pct_of_interposer_nodes_each_chany_can_drive;
+	bool transfer_interposer_fanouts;
+	bool allow_additional_interposer_fanouts;
+	int  pct_of_chany_wires_an_interposer_node_can_drive;
+#endif
 
 	/* Timing-driven router options only */
 	float astar_fac;
 	float criticality_exp;
 	float max_criticality;
+	enum e_routing_failure_predictor routing_failure_predictor;
 
 	/* State and metadata about various settings */
 	int Count[OT_BASE_UNKNOWN];
@@ -104,6 +127,7 @@ enum e_echo_files {
 	E_ECHO_FINAL_PLACEMENT_CRITICALITY,
 	E_ECHO_PLACEMENT_CRIT_PATH,
 	E_ECHO_PB_GRAPH,
+	E_ECHO_LB_TYPE_RR_GRAPH,
 	E_ECHO_ARCH,
 	E_ECHO_PLACEMENT_CRITICAL_PATH,
 	E_ECHO_PLACEMENT_LOWER_BOUND_SINK_DELAYS,
@@ -112,9 +136,9 @@ enum e_echo_files {
 	E_ECHO_POST_FLOW_TIMING_GRAPH,
 	E_ECHO_POST_PACK_NETLIST,
 	E_ECHO_BLIF_INPUT,
+	E_ECHO_COMPRESSED_NETLIST,
 	E_ECHO_NET_DELAY,
 	E_ECHO_TIMING_GRAPH,
-	E_ECHO_LUT_REMAPPING,
 	E_ECHO_PRE_PACKING_TIMING_GRAPH,
 	E_ECHO_PRE_PACKING_TIMING_GRAPH_AS_BLIF,
 	E_ECHO_CLUSTERING_TIMING_INFO,
@@ -127,9 +151,10 @@ enum e_echo_files {
 	E_ECHO_TIMING_CONSTRAINTS,
 	E_ECHO_CRITICAL_PATH,
 	E_ECHO_SLACK,
-	E_ECHO_CRITICALITY,
 	E_ECHO_COMPLETE_NET_TRACE,
 	E_ECHO_SEG_DETAILS,
+	E_ECHO_CHAN_DETAILS,
+	E_ECHO_SBLOCK_PATTERN,
 	E_ECHO_END_TOKEN
 };
 
@@ -146,14 +171,14 @@ void ReadOptions(INP int argc,
 		INP char **argv,
 		OUTP t_options * Options);
 
-boolean getEchoEnabled(void);
-void setEchoEnabled(boolean echo_enabled);
+bool getEchoEnabled(void);
+void setEchoEnabled(bool echo_enabled);
 
-void setAllEchoFileEnabled(boolean value);
-void setEchoFileEnabled(enum e_echo_files echo_option, boolean value);
+void setAllEchoFileEnabled(bool value);
+void setEchoFileEnabled(enum e_echo_files echo_option, bool value);
 void setEchoFileName(enum e_echo_files echo_option, const char *name);
 
-boolean isEchoFileEnabled(enum e_echo_files echo_option);
+bool isEchoFileEnabled(enum e_echo_files echo_option);
 char *getEchoFileName(enum e_echo_files echo_option);
 
 void alloc_and_load_echo_file_info();
@@ -164,11 +189,11 @@ char *getOutputFileName(enum e_output_files ename);
 void alloc_and_load_output_file_names(const char* default_name);
 void free_output_file_names();
 
-boolean IsTimingEnabled(INP t_options *Options);
-boolean IsEchoEnabled(INP t_options *Options);
+bool IsTimingEnabled(INP t_options *Options);
+bool IsEchoEnabled(INP t_options *Options);
 
-boolean GetPostSynthesisOption(void);
-void SetPostSynthesisOption(boolean post_synthesis_enabled);
+bool GetPostSynthesisOption(void);
+void SetPostSynthesisOption(bool post_synthesis_enabled);
 
-boolean IsPostSynthesisEnabled(INP t_options *Options);
+bool IsPostSynthesisEnabled(INP t_options *Options);
 #endif

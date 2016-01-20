@@ -82,3 +82,13 @@ void remove_connection_from_route_timing_graph(int icon, t_rg_node *root, t_rg_n
 void print_and_reset_nr_of_stumbles();
 
 void print_rg(t_rg_node * node, int level);
+
+void print_rg_to_dot(t_rg_node * node, bool original_root_status); 
+
+bool find_nodes_with_multiple_parents(t_rg_node * node);
+
+void finalize_route_graph(int icon, t_rg_node *root, float* delays);
+
+t_trace * trace_from_timing_rg(t_rg_node* root);
+
+t_trace * trace_from_timing_rg_dbg(t_rg_node* root, int net);

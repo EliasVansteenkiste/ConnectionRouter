@@ -1,4 +1,6 @@
-#include <stdio.h>
+#include <cstdio>
+using namespace std;
+
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
@@ -8,28 +10,29 @@
 
 /********************* Subroutines local to this module *********************/
 
-static boolean breadth_first_route_net(int inet, float bend_cost);
+static bool breadth_first_route_net(int inet, int itry, float bend_cost);
 
 static void breadth_first_expand_trace_segment(struct s_trace *start_ptr,
 		int remaining_connections_to_sink);
 
-static void breadth_first_expand_neighbours(int inode, float pcost, int inet,
-		float bend_cost);
+static void breadth_first_expand_neighbours(int inode, float pcost, 
+		int inet, int itry, float bend_cost);
 
 static void breadth_first_add_source_to_heap(int inet);
 
 /************************ Subroutine definitions ****************************/
 
-boolean try_breadth_first_route(struct s_router_opts router_opts,
+bool try_breadth_first_route(struct s_router_opts router_opts,
 		t_ivec ** clb_opins_used_locally, int width_fac) {
 
 	/* Iterated maze router ala Pathfinder Negotiated Congestion algorithm,  *
-	 * (FPGA 95 p. 111).  Returns TRUE if it can route this FPGA, FALSE if   *
+	 * (FPGA 95 p. 111).  Returns true if it can route this FPGA, false if   *
 	 * it can't.                                                             */
 
 	float pres_fac;
-	boolean success, is_routable, rip_up_local_opins;
-	int itry, inet;
+	bool success, is_routable, rip_up_local_opins;
+	int itry;
+	unsigned int inet;
 
 	/* Usually the first iteration uses a very small (or 0) pres_fac to find  *
 	 * the shortest path and get a congestion map.  For fast compiles, I set  *
@@ -39,23 +42,17 @@ boolean try_breadth_first_route(struct s_router_opts router_opts,
 
 	for (itry = 1; itry <= router_opts.max_router_iterations; itry++) {
 
-		for (inet = 0; inet < num_nets; inet++) {
-			if (clb_net[inet].is_global == FALSE) { /* Skip global nets. */
+		/* Reset "is_routed" and "is_fixed" flags to indicate nets not pre-routed (yet) */
+		for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
+			g_clbs_nlist.net[inet].is_routed = false;
+			g_clbs_nlist.net[inet].is_fixed = false;
+		}
 
-				pathfinder_update_one_cost(trace_head[inet], -1, pres_fac);
-
-				is_routable = breadth_first_route_net(inet,
-						router_opts.bend_cost);
-
-				/* Impossible to route? (disconnected rr_graph) */
-
-				if (!is_routable) {
-					vpr_printf(TIO_MESSAGE_INFO, "Routing failed.\n");
-					return (FALSE);
-				}
-
-				pathfinder_update_one_cost(trace_head[inet], 1, pres_fac);
-
+		for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
+			is_routable = try_breadth_first_route_net(inet, itry, pres_fac, 
+					router_opts);
+			if (!is_routable) {
+				return (false);
 			}
 		}
 
@@ -63,17 +60,17 @@ boolean try_breadth_first_route(struct s_router_opts router_opts,
 		 * to them are reserved for that purpose.                                 */
 
 		if (itry == 1)
-			rip_up_local_opins = FALSE;
+			rip_up_local_opins = false;
 		else
-			rip_up_local_opins = TRUE;
+			rip_up_local_opins = true;
 
-		reserve_locally_used_opins(pres_fac, rip_up_local_opins,
+		reserve_locally_used_opins(pres_fac, router_opts.acc_fac, rip_up_local_opins,
 				clb_opins_used_locally);
 
 		success = feasible_routing();
 		if (success) {
-			vpr_printf(TIO_MESSAGE_INFO, "Successfully routed after %d routing iterations.\n", itry);
-			return (TRUE);
+			vpr_printf_info("Successfully routed after %d routing iterations.\n", itry);
+			return (true);
 		}
 
 		if (itry == 1)
@@ -81,16 +78,47 @@ boolean try_breadth_first_route(struct s_router_opts router_opts,
 		else
 			pres_fac *= router_opts.pres_fac_mult;
 
-		pres_fac = std::min(pres_fac, static_cast<float>(HUGE_POSITIVE_FLOAT / 1e5));
+		pres_fac = min(pres_fac, static_cast<float>(HUGE_POSITIVE_FLOAT / 1e5));
 
 		pathfinder_update_cost(pres_fac, router_opts.acc_fac);
 	}
 
-	vpr_printf(TIO_MESSAGE_INFO, "Routing failed.\n");
-	return (FALSE);
+	vpr_printf_info("Routing failed.\n");
+	return (false);
 }
 
-static boolean breadth_first_route_net(int inet, float bend_cost) {
+bool try_breadth_first_route_net(int inet, int itry, float pres_fac, 
+		struct s_router_opts router_opts) {
+
+	bool is_routed = false;
+
+	if (g_clbs_nlist.net[inet].is_fixed) { /* Skip pre-routed nets. */
+
+		is_routed = true;
+
+	} else if (g_clbs_nlist.net[inet].is_global) { /* Skip global nets. */
+
+		is_routed = true;
+
+	} else {
+
+		pathfinder_update_one_cost(trace_head[inet], -1, pres_fac);
+		is_routed = breadth_first_route_net(inet, itry, router_opts.bend_cost);
+
+		/* Impossible to route? (disconnected rr_graph) */
+		if (is_routed) {
+			g_clbs_nlist.net[inet].is_routed = true;
+			g_atoms_nlist.net[clb_to_vpack_net_mapping[inet]].is_routed = true;
+		} else {
+			vpr_printf_info("Routing failed.\n");
+		}
+
+		pathfinder_update_one_cost(trace_head[inet], 1, pres_fac);
+	}
+	return (is_routed);
+}
+
+static bool breadth_first_route_net(int inet, int itry, float bend_cost) {
 
 	/* Uses a maze routing (Dijkstra's) algorithm to route a net.  The net       *
 	 * begins at the net output, and expands outward until it hits a target      *
@@ -102,10 +130,11 @@ static boolean breadth_first_route_net(int inet, float bend_cost) {
 	 * routing), since global routes with lots of bends are tougher to detailed  *
 	 * route (using a detailed router like SEGA).                                *
 	 * If this routine finds that a net *cannot* be connected (due to a complete *
-	 * lack of potential paths, rather than congestion), it returns FALSE, as    *
-	 * routing is impossible on this architecture.  Otherwise it returns TRUE.   */
+	 * lack of potential paths, rather than congestion), it returns false, as    *
+	 * routing is impossible on this architecture.  Otherwise it returns true.   */
 
-	int i, inode, prev_node, remaining_connections_to_sink;
+	int inode, prev_node, remaining_connections_to_sink;
+	unsigned int i;
 	float pcost, new_pcost;
 	struct s_heap *current;
 	struct s_trace *tptr;
@@ -117,15 +146,15 @@ static boolean breadth_first_route_net(int inet, float bend_cost) {
 	tptr = NULL;
 	remaining_connections_to_sink = 0;
 
-	for (i = 1; i <= clb_net[inet].num_sinks; i++) { /* Need n-1 wires to connect n pins */
+	for (i = 1; i < g_clbs_nlist.net[inet].pins.size(); i++) { /* Need n-1 wires to connect n pins */
 		breadth_first_expand_trace_segment(tptr, remaining_connections_to_sink);
 		current = get_heap_head();
 
 		if (current == NULL) { /* Infeasible routing.  No possible path for net. */
-			vpr_printf (TIO_MESSAGE_INFO, "Cannot route net #%d (%s) to sink #%d -- no possible path.\n",
-					inet, clb_net[inet].name, i);
+			vpr_printf_info("Cannot route net #%d (%s) to sink #%d -- no possible path.\n",
+					inet, g_clbs_nlist.net[inet].name, i);
 			reset_path_costs(); /* Clean up before leaving. */
-			return (FALSE);
+			return (false);
 		}
 
 		inode = current->index;
@@ -142,7 +171,7 @@ static boolean breadth_first_route_net(int inet, float bend_cost) {
 				if (pcost > 0.99 * HUGE_POSITIVE_FLOAT) /* First time touched. */
 					add_to_mod_list(&rr_node_route_inf[inode].path_cost);
 
-				breadth_first_expand_neighbours(inode, new_pcost, inet,
+				breadth_first_expand_neighbours(inode, new_pcost, inet, itry,
 						bend_cost);
 			}
 
@@ -150,10 +179,10 @@ static boolean breadth_first_route_net(int inet, float bend_cost) {
 			current = get_heap_head();
 
 			if (current == NULL) { /* Impossible routing. No path for net. */
-				vpr_printf (TIO_MESSAGE_INFO, "Cannot route net #%d (%s) to sink #%d -- no possible path.\n",
-						inet, clb_net[inet].name, i);
+				vpr_printf_info("Cannot route net #%d (%s) to sink #%d -- no possible path.\n",
+						inet, g_clbs_nlist.net[inet].name, i);
 				reset_path_costs();
-				return (FALSE);
+				return (false);
 			}
 
 			inode = current->index;
@@ -167,7 +196,7 @@ static boolean breadth_first_route_net(int inet, float bend_cost) {
 
 	empty_heap();
 	reset_path_costs();
-	return (TRUE);
+	return (true);
 }
 
 static void breadth_first_expand_trace_segment(struct s_trace *start_ptr,
@@ -256,8 +285,8 @@ static void breadth_first_expand_trace_segment(struct s_trace *start_ptr,
 	}
 }
 
-static void breadth_first_expand_neighbours(int inode, float pcost, int inet,
-		float bend_cost) {
+static void breadth_first_expand_neighbours(int inode, float pcost, 
+		int inet, int itry, float bend_cost) {
 
 	/* Puts all the rr_nodes adjacent to inode on the heap.  rr_nodes outside   *
 	 * the expanded bounding box specified in route_bb are not added to the     *
@@ -267,15 +296,16 @@ static void breadth_first_expand_neighbours(int inode, float pcost, int inet,
 	t_rr_type from_type, to_type;
 	float tot_cost;
 
-	num_edges = rr_node[inode].num_edges;
+	num_edges = rr_node[inode].get_num_edges();
 	for (iconn = 0; iconn < num_edges; iconn++) {
 		to_node = rr_node[inode].edges[iconn];
 
-		if (rr_node[to_node].xhigh < route_bb[inet].xmin
-				|| rr_node[to_node].xlow > route_bb[inet].xmax
-				|| rr_node[to_node].yhigh < route_bb[inet].ymin
-				|| rr_node[to_node].ylow > route_bb[inet].ymax)
+		if (rr_node[to_node].get_xhigh() < route_bb[inet].xmin
+				|| rr_node[to_node].get_xlow() > route_bb[inet].xmax
+				|| rr_node[to_node].get_yhigh() < route_bb[inet].ymin
+				|| rr_node[to_node].get_ylow() > route_bb[inet].ymax)
 			continue; /* Node is outside (expanded) bounding box. */
+
 
 		tot_cost = pcost + get_rr_cong_cost(to_node);
 
@@ -303,3 +333,5 @@ static void breadth_first_add_source_to_heap(int inet) {
 
 	node_to_heap(inode, cost, NO_PREVIOUS, NO_PREVIOUS, OPEN, OPEN);
 }
+
+

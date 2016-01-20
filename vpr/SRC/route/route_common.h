@@ -1,4 +1,6 @@
 /************ Defines and types shared by all route files ********************/
+#pragma once
+#include <vector>
 
 /* Connection router * Added by Elias Vansteenkiste */
 struct s_con_heap
@@ -104,9 +106,9 @@ extern int num_cons;
 extern t_con* cons;
 extern t_node_hash_map* node_hash_maps;
 extern t_rr_to_rg_node_hash_map* node_maps;
-extern boolean* congested_cons;
-extern boolean* congested_nets;
-extern boolean* bb_cotains_congested_node;
+extern bool* congested_cons;
+extern bool* congested_nets;
+extern bool* bb_cotains_congested_node;
 extern int** cons_with_node_in_bb;
 extern int* no_its_not_congested_con;
 extern int* no_its_not_congested_net;
@@ -130,7 +132,7 @@ void mark_ends(int inet);
 void node_to_heap(int inode, float cost, int prev_node, int prev_edge,
 		float backward_path_cost, float R_upstream);
 
-boolean is_empty_heap(void);
+bool is_empty_heap(void);
 
 void free_traceback(int inet);
 
@@ -150,17 +152,20 @@ void free_rr_node_route_structs(void);
 
 void alloc_and_load_rr_node_route_structs(void);
 
+t_trace *alloc_trace_data(void);
+
 void reset_rr_node_route_structs(void);
 
 void alloc_route_static_structs(void);
 
 void free_trace_structs(void);
 
-void reserve_locally_used_opins(float pres_fac, boolean rip_up_local_opins,
+void reserve_locally_used_opins(float pres_fac, float acc_fac, bool rip_up_local_opins,
 		t_ivec ** clb_opins_used_locally);
 
 void free_chunk_memory_trace(void);
 
+int predict_success_route_iter(const std::vector<double>& historical_overuse_ratio, const t_router_opts& router_opts);
 /* Extra methods for the connection router * Added by Elias Vansteenkiste*/
 
 void pathfinder_update_cost_history(float pres_fac,
@@ -184,13 +189,13 @@ void free_traceback_con(int icon);
 
 void free_traceback_td_con(int icon);
 
-boolean feasible_routing(void);
+bool feasible_routing(void);
 
-boolean feasible_routing_debug(void);
+bool feasible_routing_debug(void);
 
-boolean feasible_routing_rco(void);
+bool feasible_routing_rco(void);
 
-boolean feasible_routing_conr_rco(void);
+bool feasible_routing_conr_rco(void);
 
 void add_con(int icon, float pres_fac);
 

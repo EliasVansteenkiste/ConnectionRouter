@@ -1,4 +1,5 @@
-#include <assert.h>
+#include <string.h>
+
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
@@ -8,20 +9,21 @@
 #include "SetupVPR.h"
 
 /******** Function Prototypes ********/
-static void CheckSwitches(INP t_arch Arch, INP boolean TimingEnabled);
+static void CheckSwitches(INP t_arch Arch, INP bool TimingEnabled);
 
 static void CheckSegments(INP t_arch Arch);
 
 /******** Function Implementations ********/
 
-void CheckArch(INP t_arch Arch, INP boolean TimingEnabled) {
+void CheckArch(INP t_arch Arch, INP bool TimingEnabled) {
 	CheckSwitches(Arch, TimingEnabled);
 	CheckSegments(Arch);
 }
 
-static void CheckSwitches(INP t_arch Arch, INP boolean TimingEnabled) {
-	struct s_switch_inf *CurSwitch;
+static void CheckSwitches(INP t_arch Arch, INP bool TimingEnabled) {
+	struct s_arch_switch_inf *CurSwitch;
 	int i;
+	int ipin_cblock_switch_index = UNDEFINED;
 
 	/* Check transistors in switches won't be less than minimum size */
 	CurSwitch = Arch.Switches;
@@ -34,18 +36,42 @@ static void CheckSwitches(INP t_arch Arch, INP boolean TimingEnabled) {
 			 * pass transistoron the output.  
 			 * Hence largest R = 2 * largest_transistor_R. */
 			if (CurSwitch->R > 2 * Arch.R_minW_nmos) {
-				vpr_printf(TIO_MESSAGE_ERROR, "Switch %s R value (%g) is greater than 2 * R_minW_nmos (%g).\n", 
+				vpr_throw(VPR_ERROR_ARCH, get_arch_file_name(), 0, 
+						"Switch %s R value (%g) is greater than 2 * R_minW_nmos (%g).\n"
+						"Refer to switchlist section of '%s'\n", 
 						CurSwitch->name, CurSwitch->R, (2 * Arch.R_minW_nmos));
-				exit(1);
 			}
 		} else { /* Pass transistor switch */
 			if (CurSwitch->R > Arch.R_minW_nmos) {
-				vpr_printf(TIO_MESSAGE_ERROR, "Switch %s R value (%g) is greater than R_minW_nmos (%g).\n", 
-						CurSwitch->name, CurSwitch->R, Arch.R_minW_nmos);
-				exit(1);
+				vpr_throw(VPR_ERROR_ARCH, get_arch_file_name(), 0, 
+						"Switch %s R value (%g) is greater than R_minW_nmos (%g).\n"
+						"Refer to switchlist section of '%s'\n", 
+						CurSwitch->name, CurSwitch->R, Arch.R_minW_nmos, get_arch_file_name());
+			}
+		}
+
+		/* find the ipin cblock switch index, if it exists */
+		if (Arch.ipin_cblock_switch_name){
+			if (strcmp(Arch.Switches[i].name, Arch.ipin_cblock_switch_name) == 0){
+				ipin_cblock_switch_index = i;
 			}
 		}
 	}
+
+	/* Check that the ipin cblock switch doesn't specify multiple (#inputs,delay) pairs. This
+	   is not currently allowed because a number of functions in VPR rely on being able 
+	   to access the ipin cblock switch's Tdel using the wire_to_ipin_switch variable.
+	   If we allow multiple fanins in the future, we would have to change the wire_to_ipin_switch 
+	   index to point to a switch with a routing resource switch with a representative Tdel value.
+	   See rr_graph.c:alloc_and_load_rr_switch_inf for more info */
+	if (ipin_cblock_switch_index != UNDEFINED){
+		if (Arch.Switches[ipin_cblock_switch_index].Tdel_map.size() > 1){
+			vpr_throw(VPR_ERROR_ARCH, __FILE__, __LINE__, 
+				"Not currently allowing an ipin cblock switch to have multiple fan-ins");
+		}
+	}
+	
+ 
 }
 
 static void CheckSegments(INP t_arch Arch) {
@@ -55,9 +81,10 @@ static void CheckSegments(INP t_arch Arch) {
 	CurSeg = Arch.Segments;
 	for (i = 0; i < Arch.num_segments; i++) {
 		if (CurSeg[i].directionality == UNI_DIRECTIONAL
-				&& CurSeg[i].longline == TRUE) {
-			vpr_printf(TIO_MESSAGE_ERROR, "Long lines not supported for unidirectional architectures.\n");
-			exit(1);
+				&& CurSeg[i].longline == true) {
+			vpr_throw(VPR_ERROR_ARCH, get_arch_file_name(), 0, 
+					"Long lines not supported for unidirectional architectures.\n"
+					"Refer to segmentlist of '%s'\n",get_arch_file_name());
 		}
 	}
 }

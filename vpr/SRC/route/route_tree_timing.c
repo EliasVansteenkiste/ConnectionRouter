@@ -1,4 +1,6 @@
-#include <stdio.h>
+#include <cstdio>
+using namespace std;
+
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
@@ -56,8 +58,8 @@ void alloc_route_tree_timing_structs(void) {
 
 	if (rr_node_to_rt_node != NULL || rt_node_free_list != NULL
 			|| rt_node_free_list != NULL) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in alloc_route_tree_timing_structs: old structures already exist.\n");
-		exit(1);
+			vpr_throw(VPR_ERROR_ROUTE, __FILE__, __LINE__, 
+				"in alloc_route_tree_timing_structs: old structures already exist.\n");
 	}
 
 	rr_node_to_rt_node = (t_rt_node **) my_malloc(
@@ -164,7 +166,7 @@ init_route_tree_to_source(int inet) {
 	rt_root->u.child_list = NULL;
 	rt_root->parent_node = NULL;
 	rt_root->parent_switch = OPEN;
-	rt_root->re_expand = TRUE;
+	rt_root->re_expand = true;
 
 	inode = net_rr_terminals[inet][0]; /* Net source */
 
@@ -200,9 +202,9 @@ update_route_tree(struct s_heap * hptr) {
 	if (subtree_parent_rt_node != NULL) { /* Parent exists. */
 		Tdel_start = subtree_parent_rt_node->Tdel;
 		iswitch = unbuffered_subtree_rt_root->parent_switch;
-		Tdel_start += switch_inf[iswitch].R
+		Tdel_start += g_rr_switch_inf[iswitch].R
 				* unbuffered_subtree_rt_root->C_downstream;
-		Tdel_start += switch_inf[iswitch].Tdel;
+		Tdel_start += g_rr_switch_inf[iswitch].Tdel;
 	} else { /* Subtree starts at SOURCE */
 		Tdel_start = 0.;
 	}
@@ -229,9 +231,9 @@ add_path_to_route_tree(struct s_heap *hptr, t_rt_node ** sink_rt_node_ptr) {
 
 #ifdef DEBUG
 	if (rr_node[inode].type != SINK) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in add_path_to_route_tree. Expected type = SINK (%d).\n", SINK);
-		vpr_printf(TIO_MESSAGE_INFO, "Got type = %d.", rr_node[inode].type);
-		exit(1);
+		vpr_throw(VPR_ERROR_ROUTE, __FILE__, __LINE__, 
+			"in add_path_to_route_tree. Expected type = SINK (%d).\n"
+			"Got type = %d.",  SINK, rr_node[inode].type);
 	}
 #endif
 
@@ -251,10 +253,10 @@ add_path_to_route_tree(struct s_heap *hptr, t_rt_node ** sink_rt_node_ptr) {
 #define NO_ROUTE_THROUGHS 1	/* Can't route through unused CLB outputs */
 	no_route_throughs = 1;
 	if (no_route_throughs == 1)
-		sink_rt_node->re_expand = FALSE;
+		sink_rt_node->re_expand = false;
 	else {
 		if (remaining_connections_to_sink == 0) { /* Usual case */
-			sink_rt_node->re_expand = TRUE;
+			sink_rt_node->re_expand = true;
 		}
 
 		/* Weird case.  This net connects several times to the same SINK.  Thus I   *
@@ -262,7 +264,7 @@ add_path_to_route_tree(struct s_heap *hptr, t_rt_node ** sink_rt_node_ptr) {
 		 * connections, since I need to reach it again via another path.            */
 
 		else {
-			sink_rt_node->re_expand = FALSE;
+			sink_rt_node->re_expand = false;
 		}
 	}
 
@@ -288,7 +290,7 @@ add_path_to_route_tree(struct s_heap *hptr, t_rt_node ** sink_rt_node_ptr) {
 		rt_node->u.child_list = linked_rt_edge;
 		rt_node->inode = inode;
 
-		if (switch_inf[iswitch].buffered == FALSE)
+		if (g_rr_switch_inf[iswitch].buffered == false)
 			C_downstream += rr_node[inode].C;
 		else
 			C_downstream = rr_node[inode].C;
@@ -298,15 +300,15 @@ add_path_to_route_tree(struct s_heap *hptr, t_rt_node ** sink_rt_node_ptr) {
 
 		if (no_route_throughs == 1)
 			if (rr_node[inode].type == IPIN)
-				rt_node->re_expand = FALSE;
+				rt_node->re_expand = false;
 			else
-				rt_node->re_expand = TRUE;
+				rt_node->re_expand = true;
 
 		else {
 			if (remaining_connections_to_sink == 0) { /* Normal case */
-				rt_node->re_expand = TRUE;
+				rt_node->re_expand = true;
 			} else { /* This is the IPIN before a multiply-connected SINK */
-				rt_node->re_expand = FALSE;
+				rt_node->re_expand = false;
 
 				/* Reset flag so wire segments get reused */
 
@@ -353,9 +355,9 @@ static void load_new_path_R_upstream(t_rt_node * start_of_new_path_rt_node) {
 	inode = rt_node->inode;
 	parent_rt_node = rt_node->parent_node;
 
-	R_upstream = switch_inf[iswitch].R + rr_node[inode].R;
+	R_upstream = g_rr_switch_inf[iswitch].R + rr_node[inode].R;
 
-	if (switch_inf[iswitch].buffered == FALSE)
+	if (g_rr_switch_inf[iswitch].buffered == false)
 		R_upstream += parent_rt_node->R_upstream;
 
 	rt_node->R_upstream = R_upstream;
@@ -370,8 +372,8 @@ static void load_new_path_R_upstream(t_rt_node * start_of_new_path_rt_node) {
 
 #ifdef DEBUG
 		if (linked_rt_edge->next != NULL) {
-			vpr_printf(TIO_MESSAGE_ERROR, "in load_new_path_R_upstream: new routing addition is a tree (not a path).\n");
-			exit(1);
+			vpr_throw(VPR_ERROR_ROUTE, __FILE__, __LINE__, 
+				"in load_new_path_R_upstream: new routing addition is a tree (not a path).\n");
 		}
 #endif
 
@@ -379,10 +381,10 @@ static void load_new_path_R_upstream(t_rt_node * start_of_new_path_rt_node) {
 		iswitch = linked_rt_edge->iswitch;
 		inode = rt_node->inode;
 
-		if (switch_inf[iswitch].buffered)
-			R_upstream = switch_inf[iswitch].R + rr_node[inode].R;
+		if (g_rr_switch_inf[iswitch].buffered)
+			R_upstream = g_rr_switch_inf[iswitch].R + rr_node[inode].R;
 		else
-			R_upstream += switch_inf[iswitch].R + rr_node[inode].R;
+			R_upstream += g_rr_switch_inf[iswitch].R + rr_node[inode].R;
 
 		rt_node->R_upstream = R_upstream;
 		linked_rt_edge = rt_node->u.child_list;
@@ -406,7 +408,7 @@ update_unbuffered_ancestors_C_downstream(t_rt_node * start_of_new_path_rt_node) 
 	parent_rt_node = rt_node->parent_node;
 	iswitch = rt_node->parent_switch;
 
-	while (parent_rt_node != NULL && switch_inf[iswitch].buffered == FALSE) {
+	while (parent_rt_node != NULL && g_rr_switch_inf[iswitch].buffered == false) {
 		rt_node = parent_rt_node;
 		rt_node->C_downstream += C_downstream_addition;
 		parent_rt_node = rt_node->parent_node;
@@ -447,8 +449,8 @@ static void load_rt_subtree_Tdel(t_rt_node * subtree_rt_root, float Tarrival) {
 		iswitch = linked_rt_edge->iswitch;
 		child_node = linked_rt_edge->child;
 
-		Tchild = Tdel + switch_inf[iswitch].R * child_node->C_downstream;
-		Tchild += switch_inf[iswitch].Tdel; /* Intrinsic switch delay. */
+		Tchild = Tdel + g_rr_switch_inf[iswitch].R * child_node->C_downstream;
+		Tchild += g_rr_switch_inf[iswitch].Tdel; /* Intrinsic switch delay. */
 		load_rt_subtree_Tdel(child_node, Tchild);
 
 		linked_rt_edge = linked_rt_edge->next;
@@ -482,10 +484,10 @@ void update_net_delays_from_route_tree(float *net_delay,
 	/* Goes through all the sinks of this net and copies their delay values from *
 	 * the route_tree to the net_delay array.                                    */
 
-	int isink;
+	unsigned int isink;
 	t_rt_node *sink_rt_node;
 
-	for (isink = 1; isink <= clb_net[inet].num_sinks; isink++) {
+	for (isink = 1; isink < g_clbs_nlist.net[inet].pins.size(); isink++) {
 		sink_rt_node = rt_node_of_sink[isink];
 		net_delay[isink] = sink_rt_node->Tdel;
 	}

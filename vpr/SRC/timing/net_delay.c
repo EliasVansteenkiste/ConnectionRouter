@@ -1,4 +1,6 @@
-#include <stdio.h>
+#include <cstdio>
+using namespace std;
+
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
@@ -80,11 +82,11 @@ static float load_rc_tree_C(t_rc_node * rc_node);
 
 static void load_rc_tree_T(t_rc_node * rc_node, float T_arrival);
 
-static void load_one_net_delay(float **net_delay, int inet, struct s_net *nets,
+static void load_one_net_delay(float **net_delay, unsigned int inet, vector<t_vnet> & nets,
 		t_linked_rc_ptr * rr_node_to_rc_node);
 
-static void load_one_constant_net_delay(float **net_delay, int inet,
-		struct s_net *nets, float delay_value);
+static void load_one_constant_net_delay(float **net_delay, unsigned int inet,
+		vector<t_vnet> & nets, float delay_value);
 
 static void free_rc_tree(t_rc_node * rc_root,
 		t_rc_node ** rc_node_free_list_ptr,
@@ -100,22 +102,22 @@ static void free_rc_edge_free_list(t_linked_rc_edge * rc_edge_free_list);
 /*************************** Subroutine definitions **************************/
 
 float **
-alloc_net_delay(t_chunk *chunk_list_ptr, struct s_net *nets,
-		int n_nets){
+alloc_net_delay(t_chunk *chunk_list_ptr, vector<t_vnet> & nets,
+		unsigned int n_nets){
 
 	/* Allocates space for the net_delay data structure                          *
-	 * [0..num_nets-1][1..num_pins-1].  I chunk the data to save space on large  *
+	 * [0..nets.size()-1][1..num_pins-1].  I chunk the data to save space on large  *
 	 * problems.                                                                 */
 
-	float **net_delay; /* [0..num_nets-1][1..num_pins-1] */
+	float **net_delay; /* [0..nets.size()-1][1..num_pins-1] */
 	float *tmp_ptr;
-	int inet;
+	unsigned int inet;
 
 	net_delay = (float **) my_malloc(n_nets * sizeof(float *));
 
 	for (inet = 0; inet < n_nets; inet++) {
 		tmp_ptr = (float *) my_chunk_malloc(
-				((nets[inet].num_sinks + 1) - 1) * sizeof(float),
+				nets[inet].num_sinks() * sizeof(float),
 				chunk_list_ptr);
 
 		net_delay[inet] = tmp_ptr - 1; /* [1..num_pins-1] */
@@ -133,10 +135,10 @@ void free_net_delay(float **net_delay,
 	free_chunk_memory(chunk_list_ptr);
 }
 
-void load_net_delay_from_routing(float **net_delay, struct s_net *nets,
-		int n_nets) {
+void load_net_delay_from_routing(float **net_delay, vector<t_vnet> & nets,
+		unsigned int n_nets) {
 
-	/* This routine loads net_delay[0..num_nets-1][1..num_pins-1].  Each entry   *
+	/* This routine loads net_delay[0..nets.size()-1][1..num_pins-1].  Each entry   *
 	 * is the Elmore delay from the net source to the appropriate sink.  Both    *
 	 * the rr_graph and the routing traceback must be completely constructed     *
 	 * before this routine is called, and the net_delay array must have been     *
@@ -144,7 +146,7 @@ void load_net_delay_from_routing(float **net_delay, struct s_net *nets,
 
 	t_rc_node *rc_node_free_list, *rc_root;
 	t_linked_rc_edge *rc_edge_free_list;
-	int inet;
+	unsigned int inet;
 	t_linked_rc_ptr *rr_node_to_rc_node; /* [0..num_rr_nodes-1]  */
 
 	rr_node_to_rc_node = (t_linked_rc_ptr *) my_calloc(num_rr_nodes,
@@ -173,14 +175,14 @@ void load_net_delay_from_routing(float **net_delay, struct s_net *nets,
 }
 
 void load_constant_net_delay(float **net_delay, float delay_value,
-		struct s_net *nets, int n_nets) {
+		vector<t_vnet> & nets, unsigned int n_nets) {
 
 	/* Loads the net_delay array with delay_value for every source - sink        *
 	 * connection that is not on a global resource, and with 0. for every source *
 	 * - sink connection on a global net.  (This can be used to allow timing     *
 	 * analysis before routing is done with a constant net delay model).         */
 
-	int inet;
+	unsigned int inet;
 
 	for (inet = 0; inet < n_nets; inet++) {
 		if (nets[inet].is_global) {
@@ -209,8 +211,8 @@ alloc_and_load_rc_tree(int inet, t_rc_node ** rc_node_free_list_ptr,
 	tptr = trace_head[inet];
 
 	if (tptr == NULL) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in alloc_and_load_rc_tree: Traceback for net %d does not exist.\n", inet);
-		exit(1);
+		vpr_throw(VPR_ERROR_TIMING,__FILE__, __LINE__, 
+				"in alloc_and_load_rc_tree: Traceback for net %d does not exist.\n", inet);
 	}
 
 	inode = tptr->index;
@@ -241,8 +243,8 @@ alloc_and_load_rc_tree(int inet, t_rc_node ** rc_node_free_list_ptr,
 #ifdef DEBUG
 			prev_node = prev_rc->inode;
 			if (rr_node[prev_node].type != SINK) {
-				vpr_printf(TIO_MESSAGE_ERROR, "in alloc_and_load_rc_tree: Routing of net %d is not a tree.\n", inet);
-				exit(1);
+				vpr_throw(VPR_ERROR_TIMING,__FILE__, __LINE__, 
+						"in alloc_and_load_rc_tree: Routing of net %d is not a tree.\n", inet);
 			}
 #endif
 
@@ -376,7 +378,7 @@ static float load_rc_tree_C(t_rc_node * rc_node) {
 		child_node = linked_rc_edge->child;
 		C_downstream = load_rc_tree_C(child_node);
 
-		if (switch_inf[iswitch].buffered == FALSE)
+		if (g_rr_switch_inf[iswitch].buffered == false)
 			C += C_downstream;
 
 		linked_rc_edge = linked_rc_edge->next;
@@ -426,26 +428,26 @@ static void load_rc_tree_T(t_rc_node * rc_node, float T_arrival) {
 		iswitch = linked_rc_edge->iswitch;
 		child_node = linked_rc_edge->child;
 
-		Tchild = Tdel + switch_inf[iswitch].R * child_node->C_downstream;
-		Tchild += switch_inf[iswitch].Tdel; /* Intrinsic switch delay. */
+		Tchild = Tdel + g_rr_switch_inf[iswitch].R * child_node->C_downstream;
+		Tchild += g_rr_switch_inf[iswitch].Tdel; /* Intrinsic switch delay. */
 		load_rc_tree_T(child_node, Tchild);
 
 		linked_rc_edge = linked_rc_edge->next;
 	}
 }
 
-static void load_one_net_delay(float **net_delay, int inet, struct s_net* nets,
+static void load_one_net_delay(float **net_delay, unsigned int inet, vector<t_vnet> & nets,
 		t_linked_rc_ptr * rr_node_to_rc_node) {
 
 	/* Loads the net delay array for net inet.  The rc tree for that net must  *
 	 * have already been completely built and loaded.                          */
 
-	int ipin, inode;
+	unsigned int ipin, inode;
 	float Tmax;
 	t_rc_node *rc_node;
 	t_linked_rc_ptr *linked_rc_ptr, *next_ptr;
 
-	for (ipin = 1; ipin < (nets[inet].num_sinks + 1); ipin++) {
+	for (ipin = 1; ipin < nets[inet].pins.size(); ipin++) {
 
 		inode = net_rr_terminals[inet][ipin];
 
@@ -486,14 +488,14 @@ static void load_one_net_delay(float **net_delay, int inet, struct s_net* nets,
 	}
 }
 
-static void load_one_constant_net_delay(float **net_delay, int inet,
-		struct s_net *nets, float delay_value) {
+static void load_one_constant_net_delay(float **net_delay, unsigned int inet,
+		vector<t_vnet> & nets, float delay_value) {
 
 	/* Sets each entry of the net_delay array for net inet to delay_value.     */
 
-	int ipin;
+	unsigned int ipin;
 
-	for (ipin = 1; ipin < (nets[inet].num_sinks + 1); ipin++)
+	for (ipin = 1; ipin < nets[inet].pins.size(); ipin++)
 		net_delay[inet][ipin] = delay_value;
 }
 

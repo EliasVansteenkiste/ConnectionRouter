@@ -1,4 +1,5 @@
 #include <assert.h>
+
 #include "util.h"
 #include "vpr_types.h"
 #include "rr_graph_sbox.h"
@@ -109,9 +110,7 @@ int get_simple_switch_block_track(INP enum e_side from_side,
 	/* This routine returns the track number to which the from_track should     *
 	 * connect.  It supports three simple, Fs = 3, switch blocks.               */
 
-	int to_track;
-
-	to_track = SBOX_ERROR; /* Can check to see if it's not set later. */
+	int to_track = SBOX_ERROR; /* Can check to see if it's not set later. */
 
 	if (switch_block_type == SUBSET) { /* NB:  Global routing uses SUBSET too */
 		to_track = from_track;
@@ -126,7 +125,7 @@ int get_simple_switch_block_track(INP enum e_side from_side,
 			if (to_side == RIGHT) { /* CHANX to CHANX */
 				to_track = from_track;
 			} else if (to_side == TOP) { /* from CHANX to CHANY */
-				to_track = (nodes_per_chan - from_track) % nodes_per_chan;
+				to_track = (nodes_per_chan - (from_track % nodes_per_chan)) % nodes_per_chan;
 			} else if (to_side == BOTTOM) {
 				to_track = (nodes_per_chan + from_track - 1) % nodes_per_chan;
 			}
@@ -138,8 +137,7 @@ int get_simple_switch_block_track(INP enum e_side from_side,
 			} else if (to_side == TOP) { /* from CHANX to CHANY */
 				to_track = (nodes_per_chan + from_track - 1) % nodes_per_chan;
 			} else if (to_side == BOTTOM) {
-				to_track = (2 * nodes_per_chan - 2 - from_track)
-						% nodes_per_chan;
+				to_track = (2 * nodes_per_chan - 2 - from_track) % nodes_per_chan;
 			}
 		}
 
@@ -149,8 +147,7 @@ int get_simple_switch_block_track(INP enum e_side from_side,
 			} else if (to_side == LEFT) { /* from CHANY to CHANX */
 				to_track = (from_track + 1) % nodes_per_chan;
 			} else if (to_side == RIGHT) {
-				to_track = (2 * nodes_per_chan - 2 - from_track)
-						% nodes_per_chan;
+				to_track = (2 * nodes_per_chan - 2 - from_track) % nodes_per_chan;
 			}
 		}
 
@@ -158,12 +155,16 @@ int get_simple_switch_block_track(INP enum e_side from_side,
 			if (to_side == BOTTOM) { /* CHANY to CHANY */
 				to_track = from_track;
 			} else if (to_side == LEFT) { /* from CHANY to CHANX */
-				to_track = (nodes_per_chan - from_track) % nodes_per_chan;
+				to_track = (nodes_per_chan - (from_track % nodes_per_chan)) % nodes_per_chan;
 			} else if (to_side == RIGHT) {
 				to_track = (from_track + 1) % nodes_per_chan;
 			}
 		}
 
+		/* Force to_track to UN_SET if it falls outside the min/max channel width range */
+		if (to_track < 0 || to_track >= nodes_per_chan) {
+			to_track = -1;
+		}
 	}
 	/* End switch_block_type == WILTON case. */
 	else if (switch_block_type == UNIVERSAL) {
@@ -216,13 +217,6 @@ int get_simple_switch_block_track(INP enum e_side from_side,
 		to_track = from_track;
 	}
 	/* UDSD Modification by WMF End */
-
-	if (to_track == SBOX_ERROR) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in get_simple_switch_block_track.\n");
-		vpr_printf(TIO_MESSAGE_ERROR, "\tUnexpected connection from_side: %d to_side: %d switch_block_type: %d.\n",
-				from_side, to_side, switch_block_type);
-		exit(1);
-	}
 
 	return (to_track);
 }

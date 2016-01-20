@@ -42,7 +42,7 @@ static void power_usage_mux_rec(t_power_usage * power_usage, float * out_prob,
 		float * out_dens, float * v_out, t_mux_node * mux_node,
 		t_mux_arch * mux_arch, int * selector_values,
 		float * primary_input_prob, float * primary_input_dens,
-		boolean v_out_restored, float period);
+		bool v_out_restored, float period);
 
 /************************* FUNCTION DEFINITIONS *********************/
 
@@ -218,7 +218,7 @@ void power_usage_lut(t_power_usage * power_usage, int lut_size,
 
 	int num_SRAM_bits;
 
-	boolean level_restorer_this_level = FALSE;
+	bool level_restorer_this_level = false;
 
 	power_zero_usage(power_usage);
 
@@ -275,9 +275,9 @@ void power_usage_lut(t_power_usage * power_usage, int lut_size,
 		 */
 		if (((level_idx % 2 == 1) && (level_idx != lut_size - 2))
 				|| (level_idx == lut_size - 1)) {
-			level_restorer_this_level = TRUE;
+			level_restorer_this_level = true;
 		} else {
-			level_restorer_this_level = FALSE;
+			level_restorer_this_level = false;
 		}
 
 		/* Loop through the 2-muxs at each level */
@@ -366,7 +366,7 @@ void power_usage_lut(t_power_usage * power_usage, int lut_size,
 				/* Level restorer */
 				power_usage_buffer(&sub_power, 1,
 						internal_prob[level_idx + 1][MUX_idx],
-						internal_dens[level_idx + 1][MUX_idx], TRUE, period);
+						internal_dens[level_idx + 1][MUX_idx], true, period);
 				power_add_usage(power_usage, &sub_power);
 			}
 		}
@@ -402,7 +402,7 @@ void power_usage_lut(t_power_usage * power_usage, int lut_size,
  * - interc_length: The physical length spanned by the interconnect (meters)
  */
 void power_usage_local_interc_mux(t_power_usage * power_usage, t_pb * pb,
-		t_interconnect_pins * interc_pins) {
+		t_interconnect_pins * interc_pins, int iblk) {
 	int pin_idx;
 	int out_port_idx;
 	int in_port_idx;
@@ -463,8 +463,7 @@ void power_usage_local_interc_mux(t_power_usage * power_usage, t_pb * pb,
 				/* Get probability/density of input signals */
 				if (pb) {
 					int output_pin_net =
-							pb->rr_graph[interc_pins->output_pins[out_port_idx][pin_idx]->pin_count_in_cluster].net_num;
-
+						block[iblk].pb_route[interc_pins->output_pins[out_port_idx][pin_idx]->pin_count_in_cluster].atom_net_idx;
 					if (output_pin_net == OPEN) {
 						selected_input = 0;
 					} else {
@@ -475,8 +474,7 @@ void power_usage_local_interc_mux(t_power_usage * power_usage, t_pb * pb,
 							t_pb_graph_pin * input_pin =
 									interc_pins->input_pins[in_port_idx][pin_idx];
 							int input_pin_net =
-									pb->rr_graph[input_pin->pin_count_in_cluster].net_num;
-
+									block[iblk].pb_route[input_pin->pin_count_in_cluster].atom_net_idx;
 							/* Find input pin that connects through the mux to the output pin */
 							if (output_pin_net == input_pin_net) {
 								selected_input = in_port_idx;
@@ -484,8 +482,8 @@ void power_usage_local_interc_mux(t_power_usage * power_usage, t_pb * pb,
 
 							/* Initialize input densities */
 							if (input_pin_net != OPEN) {
-								in_dens[in_port_idx] = pin_dens(pb, input_pin);
-								in_prob[in_port_idx] = pin_prob(pb, input_pin);
+								in_dens[in_port_idx] = pin_dens(pb, input_pin, iblk);
+								in_prob[in_port_idx] = pin_prob(pb, input_pin, iblk);
 							}
 						}
 
@@ -501,7 +499,7 @@ void power_usage_local_interc_mux(t_power_usage * power_usage, t_pb * pb,
 						power_get_mux_arch(
 								interc_pins->interconnect->interconnect_power->num_input_ports,
 								g_power_arch->mux_transistor_size), in_prob,
-						in_dens, selected_input, TRUE, g_solution_inf.T_crit);
+						in_dens, selected_input, true, g_solution_inf.T_crit);
 
 				power_add_usage(power_usage, &MUX_power);
 			}
@@ -529,11 +527,11 @@ void power_usage_local_interc_mux(t_power_usage * power_usage, t_pb * pb,
  */
 void power_usage_mux_multilevel(t_power_usage * power_usage,
 		t_mux_arch * mux_arch, float * in_prob, float * in_dens,
-		int selected_input, boolean output_level_restored, float period) {
+		int selected_input, bool output_level_restored, float period) {
 	float output_density;
 	float output_prob;
 	float V_out;
-	boolean found;
+	bool found;
 	PowerSpicedComponent * callibration;
 	float scale_factor;
 	int * selector_values = (int*) my_calloc(mux_arch->levels, sizeof(int));
@@ -572,7 +570,7 @@ static void power_usage_mux_rec(t_power_usage * power_usage, float * out_prob,
 		float * out_dens, float * v_out, t_mux_node * mux_node,
 		t_mux_arch * mux_arch, int * selector_values,
 		float * primary_input_prob, float * primary_input_dens,
-		boolean v_out_restored, float period) {
+		bool v_out_restored, float period) {
 	int input_idx;
 	float * in_prob;
 	float * in_dens;
@@ -605,7 +603,7 @@ static void power_usage_mux_rec(t_power_usage * power_usage, float * out_prob,
 			power_usage_mux_rec(power_usage, &in_prob[input_idx],
 					&in_dens[input_idx], &v_in[input_idx],
 					&mux_node->children[input_idx], mux_arch, selector_values,
-					primary_input_prob, primary_input_dens, FALSE, period);
+					primary_input_prob, primary_input_dens, false, period);
 		}
 	}
 
@@ -631,7 +629,7 @@ static void power_usage_mux_rec(t_power_usage * power_usage, float * out_prob,
  * - input_mux_size: If fed by a mux, the size of this mutliplexer
  */
 void power_usage_buffer(t_power_usage * power_usage, float size, float in_prob,
-		float in_dens, boolean level_restorer, float period) {
+		float in_dens, bool level_restorer, float period) {
 	t_power_usage sub_power_usage;
 	int i, num_stages;
 	float stage_effort;

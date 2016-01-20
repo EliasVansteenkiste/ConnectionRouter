@@ -45,41 +45,37 @@ static void free_rg_edge(t_rg_edge * edge);
 static t_rg_node *
 add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_rr_to_rg_node_hash_map* node_map);
 
-static void load_new_path_R_upstream(t_rg_node * start_of_new_path_rg_node);
-
-static t_rg_node *update_unbuffered_ancestors_C_downstream(t_rg_node *
-							   start_of_new_path_rg_node);
-
-static t_rg_node *update_unbuffered_ancestors_C_downstream_rip_up(t_rg_node *
-							   start_of_new_path_rg_node);
-
 static void load_Tdel(t_rg_node * subtree_rg_root,
-				 float Tarrival, int icon);
-
-static t_rg_node * unload_branch_and_find_start_of_branch(t_rg_node * sink);
+				 float Tarrival);
 
 static void recursive_update(t_rg_node * rg_node, float C_downstream_addition);
-
-static t_rg_node *
-find_next_joint_and_disconnect(int icon, t_rg_node * branch_point);
 
 static void
 update_subtree(t_rg_node * rg_node);
 
-static t_rg_node *
-unload_branch(t_rg_node * end);
-
 static float
-calculate_C_downstream(t_rg_node * rg_node);
-
-static float
-update_C_downstream(t_rg_node * rg_node, int icon);
+update_C_downstream(t_rg_node * rg_node);
 
 static void
 free_rg_link(t_linked_rg_edge_ref * link);
 
 static void
 load_Tdel_in_net_delay_structure(int net, t_rr_to_rg_node_hash_map* node_map, float* delays);
+
+static void
+remove_parent(t_linked_rg_edge_ref * pref);
+
+static bool
+remove_slowest_parents(t_rg_node * node, bool original_root_flag);
+
+static bool
+remove_secundary_parents(t_rg_node * node, t_rg_edge * via_edge, bool original_root_flag);
+
+static t_rg_node * 
+depth_first_search(t_rg_node * parent_nd, t_trace * parent_tr, t_trace * &trace_tail, bool original_root_status, bool flip_switch);
+
+t_rg_node * 
+backtrace(t_rg_node * node, bool original_root_status, bool print);
 
 
 /************************** Subroutine definitions ***************************/
@@ -96,7 +92,6 @@ update_route_graph(int icon, t_rg_node *root, t_rr_to_rg_node_hash_map* node_map
      * a pointer to the rt_node of the SINK that it adds to the routing.        */
 
     t_rg_node *sink_rg_node;
-    t_rg_node *unbuffered_subtree_rt_root;
 
     sink_rg_node = add_con_path_to_route_graph_and_update_R_upstream(icon, root, node_map);
 
@@ -106,10 +101,10 @@ update_route_graph(int icon, t_rg_node *root, t_rr_to_rg_node_hash_map* node_map
 //    }
 
 //    printf("Update C downstream.\n");
-    update_C_downstream(root, icon);
+    update_C_downstream(root);
 
 //    printf("load_rg_subgraph_Tdel\n");
-    load_Tdel(root, 0.,icon);
+    load_Tdel(root, 0.);
 
 //    printf("load_Tdel_in_net_delay_structure\n");
     load_Tdel_in_net_delay_structure(cons[icon].net, node_map, delays);
@@ -117,15 +112,20 @@ update_route_graph(int icon, t_rg_node *root, t_rr_to_rg_node_hash_map* node_map
     return (sink_rg_node);
 }
 
+
+
 static void
 load_Tdel_in_net_delay_structure(int net, t_rr_to_rg_node_hash_map* node_map, float* delays){
-	int ipin;
-	int first_con = clb_net[net].con;
-
-	for(ipin=0; ipin<clb_net[net].num_sinks; ipin++){
+	int first_con = g_clbs_nlist.net[net].first_con;
+	for(unsigned int ipin=0; ipin<g_clbs_nlist.net[net].pins.size()-1; ipin++) {
 		if(back_trace_head_con[first_con+ipin]!=NULL){
-			delays[ipin+1] =  get_rr_to_rg_node_entry(node_map,back_trace_head_con[first_con+ipin]->next->index)->rg_node->Tdel;
-		}
+            if(get_rr_to_rg_node_entry(node_map,back_trace_head_con[first_con+ipin]->next->index) == NULL){
+                    vpr_printf_warning(__FILE__,__LINE__,"Net %d, sink %d, get_rr_to_rg_node_entry(node_map,back_trace_head_con[first_con+ipin]->next->index) is null.\n",net,ipin);
+            }else{
+                 delays[ipin+1] =  get_rr_to_rg_node_entry(node_map,back_trace_head_con[first_con+ipin]->next->index)->rg_node->Tdel;           }
+        }else{
+            //printf("Error: back_trace_head_con[%d] is null.",first_con+ipin);
+        }
 	}
 
 }
@@ -152,11 +152,239 @@ void print_rg(t_rg_node * node, int level){
 		if(node->visited != child->edge->child->visited){
 			print_rg(child->edge->child,level+1);
 		}else{
-			printf("Warning: print_rg is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d. The node will be discarded.\n");
+			printf("Warning: print_rg is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d. The node will be discarded.\n", node->inode);
 		}
 		child=child->next;
 	}
 
+}
+
+void print_rg_to_dot(t_rg_node * node, bool original_root_status){
+    printf("print_rg_to_dot %d - %d %d\n",node->inode,node->visited, original_root_status);
+    if(node->visited==original_root_status){
+	t_linked_rg_edge_ref* child = node->child_list;
+	/* Flip visited switch*/
+	node->visited = !node->visited;
+	/* Print out children */
+	while(child!=NULL){
+            printf("\t%d -> %d\n",node->inode,child->edge->child->inode);
+            child=child->next;
+	}
+	child = node->child_list;
+	/* Recursive call for all children */
+        printf("Recursive call for all children %d\n",child);
+	while(child!=NULL){
+            if(node->visited != child->edge->child->visited){
+                    print_rg_to_dot(child->edge->child, original_root_status);
+            }
+            child=child->next;
+	}
+    }
+}
+
+void
+finalize_route_graph(int net, t_rg_node *root, float* delays)
+{
+
+    //remove_slowest_parents(root,root->visited);
+    remove_secundary_parents(root,NULL,root->visited);
+    update_C_downstream(root);
+    load_Tdel(root, 0.);
+    load_Tdel_in_net_delay_structure(net, &node_maps[net], delays);
+}
+
+bool
+find_nodes_with_multiple_parents(t_rg_node * node){
+	t_linked_rg_edge_ref* child = node->child_list;
+	/* Flip visited switch*/
+	if(node->no_parents > 1){
+            printf("node %d has %d parents.\n",node->inode,node->no_parents);
+            t_linked_rg_edge_ref * pref = node->u.parent_list;
+            t_linked_rg_edge_ref * fastest = NULL;
+            float lowestDelay = 1000.0;
+            while(pref!=NULL){
+                t_rg_node* parent = pref->edge->u.parent;
+                if(parent->Tdel<lowestDelay){
+                    lowestDelay = parent->Tdel;
+                    fastest = pref;
+                }
+                printf("parent %d: Tdel %.10e, edge usage %d\n",parent->inode,parent->Tdel,pref->edge->usage);
+                pref = pref->next;
+            }
+            printf("fastest parent %d: Tdel %.10e, edge %d\n",fastest->edge->u.parent->inode,fastest->edge->u.parent->Tdel,fastest->edge->usage);
+            return true;
+        }else if(child == NULL){
+            return false;
+        }else{
+            /* Recursive call for all children */
+            bool multiple_parent_downstream = false; 
+            while(child!=NULL){
+                multiple_parent_downstream = find_nodes_with_multiple_parents(child->edge->child);
+                if(multiple_parent_downstream) return true;
+                child=child->next;
+            }
+            return false;
+        }
+
+}
+
+static bool
+remove_slowest_parents(t_rg_node * node, bool original_root_flag){
+    
+    if(node->visited != original_root_flag){
+        printf("stumble on a node %d already visited\n",node->inode);
+        return false;
+    }else{
+        /* Flip visited switch*/
+        node->visited = !original_root_flag;
+        bool ret = false;
+        if(node->no_parents > 1){
+            printf("remove_slowest_parents: node %d has %d parents.\n",node->inode,node->no_parents);
+            // Find fastest parent
+            t_linked_rg_edge_ref * pref = node->u.parent_list;
+            t_linked_rg_edge_ref * fastest = NULL;
+            
+            float lowestDelay = 1000.0;
+            while(pref!=NULL){
+                t_rg_node* parent = pref->edge->u.parent;
+                if(parent->Tdel<lowestDelay){
+                    lowestDelay = parent->Tdel;
+                    fastest = pref;
+                }
+                printf("parent %d: Tdel %.10e, edge %d\n",parent->inode,parent->Tdel,pref->edge->usage);
+                pref = pref->next;
+            }
+            printf("fastest parent %d: Tdel %.10e, edge %d\n",fastest->edge->u.parent->inode,fastest->edge->u.parent->Tdel,fastest->edge->usage);
+            //Delete all other parents that are slower
+            pref = node->u.parent_list;
+            t_linked_rg_edge_ref * next;
+            while(pref!=NULL){
+                next = pref->next;  
+                if(pref != fastest){
+                    printf("Removing parent %d from node %d (no_parents from %d to %d)\n",pref->edge->u.parent->inode, node->inode, node->no_parents,node->no_parents-1);
+                    node->no_parents--;
+                    
+                    remove_parent(pref);
+                }
+                pref = next;
+            }
+            node->u.parent_list = fastest;
+            fastest->next = NULL;
+            ret = true;
+        }
+        
+        /* Recursive call for all children */
+        t_linked_rg_edge_ref* child = node->child_list;
+        if(child != NULL){
+            bool multiple_parent_downstream = false; 
+            while(child!=NULL){
+                printf("node %d, calling remove_slowest_parents node for %d\n",node->inode, child->edge->child->inode);
+                multiple_parent_downstream = remove_slowest_parents(child->edge->child,original_root_flag);
+                ret = ret || multiple_parent_downstream;
+                child=child->next;
+            }
+        } 
+        
+        return ret;
+    }
+}
+
+static bool
+remove_secundary_parents(t_rg_node * node, t_rg_edge * via_edge, bool original_root_flag){
+    
+    if(node->visited != original_root_flag){
+        //printf("stumble on a node %d already visited\n",node->inode);
+        return false;
+    }else{
+        /* Flip visited switch*/
+        node->visited = !original_root_flag;
+        bool ret = false;
+        if(node->no_parents > 1){
+            // delete parents that we did not go through 
+            t_linked_rg_edge_ref * via_ref = NULL;
+            t_linked_rg_edge_ref * pref = node->u.parent_list;
+            t_linked_rg_edge_ref * next = NULL;
+            while(pref!=NULL){
+                next = pref->next;  
+                if(pref->edge != via_edge){
+                    //printf("Removing parent %d from node %d (no_parents from %d to %d)\n",pref->edge->u.parent->inode, node->inode, node->no_parents,node->no_parents-1);
+                    node->no_parents--;
+                    remove_parent(pref);
+                }else{
+                  via_ref = pref; 
+                }
+                pref = next;
+            }
+            node->u.parent_list = via_ref;
+            ret = true;
+        }
+        
+        /* Recursive call for all children */
+        t_linked_rg_edge_ref* child = node->child_list;
+        if(child != NULL){
+            bool multiple_parent_downstream = false; 
+            while(child!=NULL){
+                //printf("node %d, calling remove_slowest_parents node for %d\n",node->inode, child->edge->child->inode);
+                multiple_parent_downstream = remove_secundary_parents(child->edge->child, child->edge, original_root_flag);
+                ret = ret || multiple_parent_downstream;
+                child=child->next;
+            }
+        } 
+        
+        return ret;
+    }
+}
+
+static void
+remove_parent(t_linked_rg_edge_ref * pref)
+{
+    t_rg_node* parent = pref->edge->u.parent;
+    t_rg_edge* edge = pref->edge;   
+    int no_children = 0;
+    //remove child edge ref of the parent
+    t_linked_rg_edge_ref* prev = NULL;
+    t_linked_rg_edge_ref * child_edge = parent->child_list;
+    while(child_edge!=NULL){
+        no_children++;
+        if(child_edge->edge == edge){
+            if(prev == NULL){
+                parent->child_list = child_edge->next;
+                child_edge->next = NULL;  
+                //EV: Leaking here, could be prevented by keeping track of the tail of the free_link_list
+                free(child_edge);
+                child_edge = parent->child_list;
+            }else{
+                prev->next = child_edge->next;
+                free_rg_link(child_edge);
+                child_edge = prev->next;
+            }        
+        }else{
+            prev = child_edge;
+            child_edge=child_edge->next;
+        }
+    }
+    //remove edge
+    free_rg_edge(edge);
+    //remove parent edge ref of the child
+    pref->next = NULL;
+    free(pref);
+    
+    if(no_children==1){
+        //Remove node and check parent
+        if(parent->no_parents>1){
+            vpr_printf_warning(__FILE__,__LINE__,"Remove_parent: Not yet implemented for non used nodes with multiple parents!");
+        }else{
+            t_linked_rg_edge_ref * p_gparent = parent->u.parent_list;
+            
+            free_rg_node(parent);
+            //Recursive call
+            remove_parent(p_gparent);
+        }
+        
+        
+    }
+    
+    
 }
 
 void
@@ -296,8 +524,9 @@ init_graph_to_source(int inet, t_rg_node** rg_sinks, t_rr_to_rg_node_hash_map* n
  * node of the rt_tree (which is just the net source).                       */
 
     t_rg_node *rg_root;
-    t_rg_node *sink_rg_node;
-    int inode, isink;
+ //   t_rg_node *sink_rg_node;
+    int inode;
+//    int isink;
 
     if(node_map->node_entries==NULL){
         int size = 32;
@@ -310,7 +539,7 @@ init_graph_to_source(int inet, t_rg_node** rg_sinks, t_rr_to_rg_node_hash_map* n
     rg_root->child_list = NULL;
     rg_root->no_parents = 0;
     rg_root->u.parent_list=NULL;
-    rg_root->re_expand = TRUE;
+    rg_root->re_expand = true;
     inode = net_rr_terminals[inet][0];	/* Net source */
     rg_root->inode = inode;
     rg_root->C_downstream = rr_node[inode].C;
@@ -336,7 +565,7 @@ init_graph_to_source(int inet, t_rg_node** rg_sinks, t_rr_to_rg_node_hash_map* n
     return (rg_root);
 }
 
-static t_rg_node *
+ static t_rg_node *
 add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_rr_to_rg_node_hash_map* node_map) {
 
     /* Adds the most recent wire segment, ending at the SINK indicated by hptr, *
@@ -350,14 +579,12 @@ add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_r
     t_linked_rg_edge_ref *link;
     t_linked_rg_edge_ref *prev_link;
     t_linked_rg_edge_ref *parent_link;
-    t_linked_rg_edge_ref *it;
     t_rg_edge *edge;
     t_rr_to_rg_node_entry *node_entry;
-    boolean sink_found = FALSE;
+    bool sink_found = false;
     
     t_rg_node * rg_node = root;
     t_rg_node * prev_rg_node = NULL;
-    int i;
     
 
     tptr = trace_head_con[icon];
@@ -401,7 +628,7 @@ add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_r
             link->edge = edge;
 #ifdef DEBUG
             if (prev_link == NULL) {
-                printf("Error in add_connection_path_to_route_graph. prev_edge is NULL, while switching between branches.\n", tptr->index ,tptr->next->index);
+                printf("Error in add_connection_path_to_route_graph. prev_edge is NULL, while switching between branches.\n");
                 exit(1);
             }
 #endif
@@ -419,10 +646,10 @@ add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_r
             edge->u.parent = prev_rg_node;
             edge->usage=1;
             
-            if(switch_inf[link->edge->iswitch].buffered){
-                R_upstream = switch_inf[edge->iswitch].R + rr_node[rg_node->inode].R;
+            if(g_rr_switch_inf[link->edge->iswitch].buffered){
+                R_upstream = g_rr_switch_inf[edge->iswitch].R + rr_node[rg_node->inode].R;
             }else{
-                R_upstream = R_upstream + switch_inf[edge->iswitch].R + rr_node[rg_node->inode].R;
+                R_upstream = R_upstream + g_rr_switch_inf[edge->iswitch].R + rr_node[rg_node->inode].R;
             }
             
             if(R_upstream>rg_node->R_upstream) {
@@ -451,17 +678,17 @@ add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_r
             get_rr_to_rg_node_entry(node_map, tptr->index)->rg_node = rg_node;
             if(prev_rg_node!=NULL) rg_node->visited = prev_rg_node->visited;
 
-        	edge = alloc_rg_edge();
-        	//printf("prev_tptr->index %d\n",prev_tptr->index);
-        	edge->iswitch = prev_tptr->iswitch;
+            edge = alloc_rg_edge();
+            //printf("prev_tptr->index %d\n",prev_tptr->index);
+            edge->iswitch = prev_tptr->iswitch;
             edge->child = rg_node;
             edge->u.parent = prev_rg_node;
             edge->usage = 1;
 
-            if(switch_inf[edge->iswitch].buffered)
-                rg_node->R_upstream = switch_inf[edge->iswitch].R + rr_node[rg_node->inode].R;
+            if(g_rr_switch_inf[edge->iswitch].buffered)
+                rg_node->R_upstream = g_rr_switch_inf[edge->iswitch].R + rr_node[rg_node->inode].R;
             else
-                rg_node->R_upstream = R_upstream + switch_inf[edge->iswitch].R + rr_node[rg_node->inode].R;
+                rg_node->R_upstream = R_upstream + g_rr_switch_inf[edge->iswitch].R + rr_node[rg_node->inode].R;
         	
             /* Child link */
             link = alloc_linked_rg_edge_ref();
@@ -487,10 +714,10 @@ add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_r
 
                 //printf("Add %d\n",rg_node->inode);
 
-                if(switch_inf[prev_tptr->iswitch].buffered)
-                    rg_node->R_upstream = switch_inf[prev_tptr->iswitch].R + rr_node[rg_node->inode].R;
+                if(g_rr_switch_inf[prev_tptr->iswitch].buffered)
+                    rg_node->R_upstream = g_rr_switch_inf[prev_tptr->iswitch].R + rr_node[rg_node->inode].R;
                 else
-                    rg_node->R_upstream = prev_rg_node->R_upstream + switch_inf[prev_tptr->iswitch].R + rr_node[rg_node->inode].R;
+                    rg_node->R_upstream = prev_rg_node->R_upstream + g_rr_switch_inf[prev_tptr->iswitch].R + rr_node[rg_node->inode].R;
 
                 /* Edge */
                 edge = alloc_rg_edge();
@@ -547,16 +774,16 @@ add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_r
                 parent_link->next = rg_node->u.parent_list;
                 rg_node->u.parent_list = parent_link;
                 rg_node->no_parents++;
-                if(!switch_inf[tptr->iswitch].buffered){
+                if(!g_rr_switch_inf[tptr->iswitch].buffered){
                 	link = parent_link;
                 	R_upstream_max = 0.0;
                     while(link->next!=NULL){
-                        if(!switch_inf[link->edge->iswitch].buffered && (link->edge->child->R_upstream > R_upstream_max)) R_upstream_max = link->edge->child->R_upstream;
+                        if(!g_rr_switch_inf[link->edge->iswitch].buffered && (link->edge->child->R_upstream > R_upstream_max)) R_upstream_max = link->edge->child->R_upstream;
                         link = link->next;
                     }
                     /* Update R_upstream */
                     if((prev_rg_node->R_upstream - R_upstream_max)>0.0001){
-                        rg_node->R_upstream = prev_rg_node->R_upstream + switch_inf[prev_tptr->iswitch].R + rr_node[rg_node->inode].R;
+                        rg_node->R_upstream = prev_rg_node->R_upstream + g_rr_switch_inf[prev_tptr->iswitch].R + rr_node[rg_node->inode].R;
                         update_subtree(rg_node);
                     }
                 }
@@ -575,7 +802,7 @@ add_con_path_to_route_graph_and_update_R_upstream(int icon, t_rg_node *root, t_r
 
 static void
 update_subtree(t_rg_node * rg_node){
-    float R_upstream_max;
+    float r_upstream_max;
     
     t_linked_rg_edge_ref *child_link = rg_node->child_list;
     t_rg_node * child = NULL;
@@ -584,18 +811,18 @@ update_subtree(t_rg_node * rg_node){
     
     while(child_link!=NULL){
         child = child_link->edge->child;
-        if(!switch_inf[child_link->edge->iswitch].buffered){
-            R_upstream_max = 0.0;
+        if(!g_rr_switch_inf[child_link->edge->iswitch].buffered){
+            r_upstream_max = 0.0;
             parent_link = child->u.parent_list;
             while(parent_link!=NULL){
                 parent = parent_link->edge->u.parent;
-                if(parent->inode!=rg_node->inode && !switch_inf[parent_link->edge->iswitch].buffered && parent->R_upstream > R_upstream_max){
-                    R_upstream_max = parent->R_upstream;
+                if(parent->inode!=rg_node->inode && !g_rr_switch_inf[parent_link->edge->iswitch].buffered && parent->R_upstream > r_upstream_max){
+                    r_upstream_max = parent->R_upstream;
                 }
                 parent_link = parent_link->next;    
             }
-            if(rg_node->R_upstream>R_upstream_max){
-                child->R_upstream = rg_node->R_upstream + switch_inf[child_link->edge->iswitch].R + rr_node[child->inode].R;
+            if(rg_node->R_upstream>r_upstream_max){
+                child->R_upstream = rg_node->R_upstream + g_rr_switch_inf[child_link->edge->iswitch].R + rr_node[child->inode].R;
                 update_subtree(child);
             }
         }
@@ -622,7 +849,7 @@ recursive_update(t_rg_node * rg_node, float C_downstream_addition)
     while(parent_it!=NULL) {
         parent_rg_node = parent_it->edge->u.parent;
         iswitch = parent_it->edge->iswitch;
-        if (switch_inf[iswitch].buffered == FALSE) {
+        if (g_rr_switch_inf[iswitch].buffered == false) {
             recursive_update(parent_rg_node,C_downstream_addition/parent_rg_node->no_parents);
         }
         parent_it = parent_it->next;
@@ -638,11 +865,11 @@ remove_connection_from_route_timing_graph(int icon, t_rg_node *root, t_rg_node *
      * a pointer to the rt_node of the SINK that it adds to the routing.        */
 
     t_rg_node *rg_node, *parent_rg_node;
-    t_linked_rg_edge_ref *parent_link, *child_link, *it, *prev, *sel;
+    t_linked_rg_edge_ref *parent_link, *it, *prev, *sel;
     t_rg_edge *edge;
     struct s_trace *btptr;
     float R_upstream_max;
-    boolean found;
+    bool found;
 
     if (root->child_list == NULL || sink_rg_node == NULL) return;
 
@@ -652,101 +879,100 @@ remove_connection_from_route_timing_graph(int icon, t_rg_node *root, t_rg_node *
     rg_node = sink_rg_node;
     btptr = back_trace_head_con[icon]->next->next;
     parent_link = rg_node->u.parent_list;
-    child_link = NULL;
 #ifdef DEBUG
-    if(parent_link == NULL){
+    if (parent_link == NULL) {
         printf("Error: parent of IPIN is NULL, should be a wire node.\n");
         exit(5);
     }
 #endif
-    while(parent_link != NULL){
-    	edge = parent_link->edge;
-    	parent_rg_node = edge->u.parent ;
+    while (parent_link != NULL) {
+        edge = parent_link->edge;
+        parent_rg_node = edge->u.parent;
 
-    	if(edge->usage==1){
-			//printf("inode %d, type %d, parent %d\n", rg_node->inode, rr_node[rg_node->inode].type,parent_rg_node->inode);
+        if (edge->usage == 1) {
+            //printf("inode %d, type %d, parent %d\n", rg_node->inode, rr_node[rg_node->inode].type,parent_rg_node->inode);
+            rg_node->no_parents--;
+        /* Select and remove parent link */
+            //printf("Select and remove parent link\n");
+            R_upstream_max = 0.0;
+            sel = NULL;
+            prev = NULL;
+            found = false;
+            it = rg_node->u.parent_list;
+            while (it != NULL) {
+                //printf("it->edge->u.parent->inode %d, parent_rg_node->inode %d\n",it->edge->u.parent->inode,parent_rg_node->inode);
+                if (!found && it->edge->u.parent->inode == parent_rg_node->inode) {
+                    sel = it;
+                    found = true;
+                } else if ((it->edge->u.parent->R_upstream > R_upstream_max)) {
+                    R_upstream_max = it->edge->u.parent->R_upstream;
+                }
+                if (!found) prev = it;
+                it = it->next;
+            }
+            if (sel->edge->u.parent->R_upstream > R_upstream_max) {
+                rg_node->R_upstream = R_upstream_max;
+                update_subtree(rg_node);
+            }
+            if (prev == NULL) {
+                rg_node->u.parent_list = sel->next;
+            } else {
+                prev->next = sel->next;
+            }
+            free_rg_link(sel);
 
-			/* Select and remove parent link */
-			//printf("Select and remove parent link\n");
-			R_upstream_max = 0.0;
-		    sel = NULL;
-		    prev = NULL;
-		    found = FALSE;
-			it = rg_node->u.parent_list;
-			while(it!=NULL){
-				//printf("it->edge->u.parent->inode %d, parent_rg_node->inode %d\n",it->edge->u.parent->inode,parent_rg_node->inode);
-				if(!found && it->edge->u.parent->inode==parent_rg_node->inode){
-					sel = it;
-					found =  TRUE;
-				}else if((it->edge->u.parent->R_upstream>R_upstream_max)){
-					R_upstream_max = it->edge->u.parent->R_upstream;
-				}
-				if(!found) prev = it;
-				it = it->next;
-			}
-		    if(sel->edge->u.parent->R_upstream>R_upstream_max){
-		        rg_node->R_upstream = R_upstream_max;
-		        update_subtree(rg_node);
-		    }
-			if(prev == NULL){
-				rg_node->u.parent_list = sel->next;
-			}else{
-				prev->next = sel->next;
-			}
-			free_rg_link(sel);
+        /* Select and remove child link of parent */
+            //printf("Select and remove child link of parent\n");
+            prev = NULL;
+            it = parent_rg_node->child_list;
+            //printf("it->edge->child->inode %d, rg_node->inode %d\n",it->edge->child->inode,rg_node->inode);
+            while (it->edge->child->inode != rg_node->inode) {
+                prev = it;
+                it = it->next;
+                //printf("it->edge->child->inode %d, rg_node->inode %d\n",it->edge->child->inode,rg_node->inode);
+            }
+            if (prev == NULL) {
+                parent_rg_node->child_list = it->next;
+            } else {
+                prev->next = it->next;
+            }
+            free_rg_link(it);
+            if (rr_node_route_inf[rg_node->inode].usage == 0) {
+                free_rg_node(rg_node);
+            }
 
-			/* Select and remove child link of parent */
-			//printf("Select and remove child link of parent\n");
-			prev = NULL;
-			it = parent_rg_node->child_list;
-			//printf("it->edge->child->inode %d, rg_node->inode %d\n",it->edge->child->inode,rg_node->inode);
-			while(it->edge->child->inode!=rg_node->inode){
-				prev = it;
-				it=it->next;
-				//printf("it->edge->child->inode %d, rg_node->inode %d\n",it->edge->child->inode,rg_node->inode);
-			}
-			if(prev == NULL){
-				parent_rg_node->child_list = it->next;
-			}else{
-				prev->next = it->next;
-			}
-			free_rg_link(it);
-			if(rr_node_route_inf[rg_node->inode].usage == 0){
-				free_rg_node(rg_node);
-			}
+            free_rg_edge(edge);
+        } else {
+            edge->usage--;
+        }
 
-			free_rg_edge(edge);
-    	}else{
-    		edge->usage--;
-    	}
+        rg_node = parent_rg_node;
+        btptr = btptr->next;
+        parent_link = rg_node->u.parent_list;
+        //		printf("rg_node->inode %d\n",rg_node->inode);
+        //		if(btptr!=NULL) printf("btptr->index %d, parent_link %d\n",btptr->index,parent_link);
+        //		else printf("btptr NULL, parent_link %d\n",parent_link);
 
-		rg_node = parent_rg_node;
-		btptr = btptr->next;
-		parent_link = rg_node->u.parent_list;
-//		printf("rg_node->inode %d\n",rg_node->inode);
-//		if(btptr!=NULL) printf("btptr->index %d, parent_link %d\n",btptr->index,parent_link);
-//		else printf("btptr NULL, parent_link %d\n",parent_link);
-
-		while(parent_link != NULL && parent_link->edge->u.parent->inode != btptr->index){
-			//printf("parent_link %d, parent_link->edge->u.parent->inode %d\n",parent_link,parent_link->edge->u.parent->inode);
-			parent_link = parent_link->next;
-		}
-//		if(parent_link==NULL){
-//			printf("parent_link null\n");
-//		}else{
-//			printf("parent_link->edge->u.parent->inode %d, btptr->index %d\n",parent_link->edge->u.parent->inode, btptr->index);
-//		}
-//		printf("a\n");
+        while (parent_link != NULL && parent_link->edge->u.parent->inode != btptr->index) {
+            //printf("parent_link %d, parent_link->edge->u.parent->inode %d\n",parent_link,parent_link->edge->u.parent->inode);
+            parent_link = parent_link->next;
+        }
+        //		if(parent_link==NULL){
+        //			printf("parent_link null\n");
+        //		}else{
+        //			printf("parent_link->edge->u.parent->inode %d, btptr->index %d\n",parent_link->edge->u.parent->inode, btptr->index);
+        //		}
+        //		printf("a\n");
     }
-//    printf("return rg node inode %d, type %d child list %d, no_parents %d\n", rg_node->inode, rr_node[rg_node->inode].type,rg_node->child_list,rg_node->no_parents);
+    //    printf("return rg node inode %d, type %d child list %d, no_parents %d\n", rg_node->inode, rr_node[rg_node->inode].type,rg_node->child_list,rg_node->no_parents);
 
-//    printf("Update C downstream.\n");
+    //    printf("Update C downstream.\n");
     //update_C_downstream(root,icon);
 }
 
 static void
 load_Tdel(t_rg_node * subtree_rt_root,
-		     float Tarrival, int con)
+		     float Tarrival)
 {
 
 /* Updates the Tdel values of the subtree rooted at subtree_rt_root by      *
@@ -782,9 +1008,9 @@ load_Tdel(t_rg_node * subtree_rt_root,
 
 	    if(child_node->visited != subtree_rt_root->visited){
 		    iswitch = link->edge->iswitch;
-		    Tchild = Tdel + switch_inf[iswitch].R * child_node->C_downstream;
-		    Tchild += switch_inf[iswitch].Tdel;	/* Intrinsic switch delay. */
-			load_Tdel(child_node, Tchild, con);
+		    Tchild = Tdel + g_rr_switch_inf[iswitch].R * child_node->C_downstream;
+		    Tchild += g_rr_switch_inf[iswitch].Tdel;	/* Intrinsic switch delay. */
+                    load_Tdel(child_node, Tchild);
 		}else{
 //			printf("Warning: load_rg_subgraph_Tdel is visiting a node that is already been visited. This means that loops are present in the routing graph of connection %d. The node will be discarded.\n");
 			stumbles_1++;
@@ -795,10 +1021,9 @@ load_Tdel(t_rg_node * subtree_rt_root,
 }
 
 static float
-update_C_downstream(t_rg_node * rg_node, int icon){
+update_C_downstream(t_rg_node * rg_node){
 	float C, C_downstream;
     t_linked_rg_edge_ref *child_link;
-    short iswitch;
 
     rg_node->visited = !rg_node->visited;
     C = rr_node[rg_node->inode].C;
@@ -806,8 +1031,8 @@ update_C_downstream(t_rg_node * rg_node, int icon){
 
     while(child_link!=NULL){
 		if(rg_node->visited != child_link->edge->child->visited){
-		    C_downstream = update_C_downstream(child_link->edge->child, icon);
-		    if(switch_inf[child_link->edge->iswitch].buffered == FALSE){
+		    C_downstream = update_C_downstream(child_link->edge->child);
+		    if(g_rr_switch_inf[child_link->edge->iswitch].buffered == false){
 		    	C += C_downstream;
 		    }
 		}else{
@@ -851,6 +1076,148 @@ free_rg(t_rg_node * rg_node)
     free_rg_node(rg_node);
 }
 
-//t_rg_node* get_rg_node(int rr_node){
-//    return rr_node_to_rt_node[rr_node];
-//}
+
+t_trace * trace_from_timing_rg(t_rg_node * root){
+    
+    
+    //initialization of the source trace element
+    t_trace * head = alloc_trace_data();
+    head->index = root->inode;
+    head->next = NULL;
+    // head->iswitch will be assigned by the depth_first_search
+    //printf("Root %d, parent_list %d \n", root->inode, root->u.parent_list);
+    
+    bool flip_switch_hook = true;
+    
+    t_rg_node * hook_nd = root;
+    t_trace *  hook_tr = head;
+    t_trace * tail = NULL;
+    bool original_root_status = root->visited;
+    while(hook_nd != NULL){
+        //printf("Initiating DFS\n");
+            t_rg_node * sink = depth_first_search(hook_nd,hook_tr,tail,original_root_status,flip_switch_hook);
+        //printf("Backtrace\n");
+        hook_nd = backtrace(sink,original_root_status,false);
+       
+        if(hook_nd != NULL){
+            hook_tr = alloc_trace_data();
+            hook_tr->index = hook_nd->inode;
+            hook_tr->next = NULL;
+            tail->next = hook_tr;
+            flip_switch_hook = false;
+        }else{
+            tail->next = NULL;
+        }
+    }
+    
+    return head;
+    
+}
+
+t_trace * trace_from_timing_rg_dbg(t_rg_node * root, int net){
+    
+    
+    //initialization of the source trace element
+    t_trace * head = alloc_trace_data();
+    head->index = root->inode;
+    head->next = NULL;
+    // head->iswitch will be assigned by the depth_first_search
+    //printf("Root %d, parent_list %d \n", root->inode, root->u.parent_list);
+    
+    bool flip_switch_hook = true;
+    
+    t_rg_node * hook_nd = root;
+    t_trace *  hook_tr = head;
+    t_trace * tail = NULL;
+    bool original_root_status = root->visited;
+    while(hook_nd != NULL){
+        //printf("Initiating DFS\n");
+            t_rg_node * sink = depth_first_search(hook_nd,hook_tr,tail,original_root_status,flip_switch_hook);
+        //printf("Backtrace\n");
+        if(net==40){
+            hook_nd = backtrace(sink,original_root_status,true);
+        }else{
+            hook_nd = backtrace(sink,original_root_status,false);
+        }
+       
+        if(hook_nd != NULL){
+            hook_tr = alloc_trace_data();
+            hook_tr->index = hook_nd->inode;
+            hook_tr->next = NULL;
+            tail->next = hook_tr;
+            flip_switch_hook = false;
+        }else{
+            tail->next = NULL;
+        }
+    }
+    
+    return head;
+    
+}
+
+t_rg_node * depth_first_search(t_rg_node * parent_nd, t_trace * parent_tr, t_trace * &tr_tail, bool original_root_status, bool flip_switch){
+    //printf("Call dfs %d\n",parent_nd->inode);
+    if(flip_switch) parent_nd->visited = ! parent_nd->visited;
+    
+    if(parent_nd->child_list == NULL){
+        //Return parent_nd for backtracing purpose
+        
+        int num_edges = rr_node[parent_tr->index].get_num_edges();
+#ifdef DEBUG
+        if(num_edges!=1) vpr_printf_info(__FILE__,__LINE__,"Expected only one edge here. This could have consequences further on.");
+#endif
+        int to_node = rr_node[parent_tr->index].edges[0];
+        int iswitch = rr_node[parent_tr->index].switches[0];
+        
+        parent_tr->iswitch = iswitch;
+        t_trace * ptr = alloc_trace_data();
+        ptr->index = to_node;
+        parent_tr->next = ptr;
+        ptr->next = NULL;
+        ptr->iswitch = -1;
+        tr_tail = ptr;
+        //printf("return parent_tr %d, num_edges %d\n",parent_tr->index,num_edges);
+        return parent_nd;
+    }
+    
+    //find a child that is not been visited before
+    t_linked_rg_edge_ref * child_ref = parent_nd->child_list;
+    while((child_ref != NULL)
+          && (child_ref->edge->child->visited != original_root_status)){
+        child_ref = child_ref->next;
+    }
+    if(child_ref == NULL){
+        vpr_printf_error(__FILE__, __LINE__,"Depth_first_search: Did not find a child that was not visited before.\n");
+    }
+    
+    parent_tr->iswitch = child_ref->edge->iswitch;
+    t_trace * ptr = alloc_trace_data();
+    ptr->index = child_ref->edge->child->inode;
+    parent_tr->next = ptr;
+    ptr->next = NULL;
+    
+    //printf("%d -> %d\n", parent_nd->inode, child_ref->edge->child->inode);
+    return depth_first_search(child_ref->edge->child, ptr, tr_tail, original_root_status, true);
+    
+    
+    
+}
+
+t_rg_node * backtrace(t_rg_node * node, bool original_root_status, bool print){
+    t_linked_rg_edge_ref * child_ref = node->child_list;
+    while((child_ref != NULL)
+          && (child_ref->edge->child->visited != original_root_status)){
+        child_ref = child_ref->next;
+    }
+    if(child_ref == NULL){ //No children that are not visited yet
+        //Backtrace via recursive call 
+        if(node->u.parent_list == NULL){
+            //Back at the root 
+            return NULL;
+        }else{
+            return backtrace(node->u.parent_list->edge->u.parent, original_root_status, print);
+        }
+    }else{
+        return node;
+    }
+}

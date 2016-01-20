@@ -133,7 +133,7 @@
 
 
 #ifndef PLACE_MACRO_H
-#define PALCE_MACRO_H
+#define PLACE_MACRO_H
 
 /* These are the placement macro structure. 
  * It is in the form of array of structs instead of
@@ -160,7 +160,7 @@ typedef struct s_pl_macro{
 } t_pl_macro;
 
 /* These are the function declarations. */
-int alloc_and_load_placement_macros(t_direct_inf* directs, int num_directs, t_pl_macro ** chains);
+int alloc_and_load_placement_macros(t_direct_inf* directs, int num_directs, int num_segments, t_pl_macro ** chains);
 void get_imacro_from_iblk(int * imacro, int iblk, t_pl_macro * macros, int num_macros);
 void free_placement_macros_structs(void);
 

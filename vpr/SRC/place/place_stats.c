@@ -1,5 +1,7 @@
-#include <stdio.h>
-#include <math.h>
+#include <cstdio>
+#include <cmath>
+using namespace std;
+
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
@@ -26,9 +28,10 @@ print_relative_pos_distr(void)
 #endif /* PRINT_REL_POS_DISTR */
 
 	int inet, len, rp, src_x, src_y, dst_x, dst_y, del_x, del_y, min_del,
-	sink_pin, sum;
+		sum;
 	int *total_conn;
 	int **relapos;
+	unsigned int sink_pin
 	double **relapos_distr;
 
 	total_conn = (int *)my_malloc((nx + ny + 1) * sizeof(int));
@@ -41,19 +44,19 @@ print_relative_pos_distr(void)
 		(double *)my_calloc((len / 2 + 1), sizeof(double));
 	}
 
-	for (inet = 0; inet < num_nets; inet++)
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++)
 	{
-		if (clb_net[inet].is_global == FALSE)
+		if (g_clbs_nlist.net[inet].is_global == false)
 		{
 
-			src_x = block[clb_net[inet].node_block[0]].x;
-			src_y = block[clb_net[inet].node_block[0]].y;
+			src_x = block[g_clbs_nlist.net[inet].pins[0].block].x;
+			src_y = block[g_clbs_nlist.net[inet].pins[0].block].y;
 
-			for (sink_pin = 1; sink_pin <= clb_net[inet].num_sinks;
+			for (sink_pin = 1; sink_pin < g_clbs_nlist.net[inet].pins.size();
 					sink_pin++)
 			{
-				dst_x = block[clb_net[inet].node_block[sink_pin]].x;
-				dst_y = block[clb_net[inet].node_block[sink_pin]].y;
+				dst_x = block[g_clbs_nlist.net[inet].pins[sink_pin].block].x;
+				dst_y = block[g_clbs_nlist.net[inet].pins[sink_pin].block].y;
 
 				del_x = ABS_DIFF(dst_x, src_x);
 				del_y = ABS_DIFF(dst_y, src_y);
@@ -64,9 +67,9 @@ print_relative_pos_distr(void)
 
 				if (!(min_del <= (len / 2)))
 				{
-					vpr_printf(TIO_MESSAGE_ERROR, "Error calculating relative location min_del = %d, len = %d\n",
-						min_del, len);
-					exit(1);
+					vpr_printf_error(VPR_ERROR_PLACE, __FILE__, __LINE__,
+							"Error calculating relative location min_del = %d, len = %d\n",
+							min_del, len);
 				}
 				else
 				{
@@ -104,9 +107,9 @@ print_relative_pos_distr(void)
 
 				/* updating the binary record at "len" */
 #ifdef PRINT_REL_POS_DISTR
-				vpr_printf(TIO_MESSAGE_ERROR, "old %d increased by %d\n", rp_rec.num_rp[rp], relapos[len][rp]);
+				vpr_printf_error(__FILE__, __LINE__, "old %d increased by %d\n", rp_rec.num_rp[rp], relapos[len][rp]);
 				rp_rec.num_rp[rp] += relapos[len][rp];
-				vpr_printf(TIO_MESSAGE_ERROR, "becomes %d\n", rp_rec.num_rp[rp]);
+				vpr_printf_error(__FILE__, __LINE__,"becomes %d\n", rp_rec.num_rp[rp]);
 #endif /* PRINT_REL_POS_DISTR */
 			}
 #ifdef PRINT_REL_POS_DISTR

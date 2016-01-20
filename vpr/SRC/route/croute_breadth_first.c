@@ -13,26 +13,28 @@
 
 
 /********************* Subroutines local to this module *********************/
+//2delete begin
+//static void breadth_first_expand_trace_segment(struct s_trace *start_ptr,
+//        int
+//        remaining_connections_to_sink);
+//
+//static void breadth_first_expand_neighbours(int inode,
+//        float pcost,
+//        int inet,
+//        float bend_cost);
+//
+//static void breadth_first_add_source_to_heap(int inet);
+//2delete end
 
-static void breadth_first_expand_trace_segment(struct s_trace *start_ptr,
-        int
-        remaining_connections_to_sink);
-
-static void breadth_first_expand_neighbours(int inode,
-        float pcost,
-        int inet,
-        float bend_cost);
-
-static void breadth_first_add_source_to_heap(int inet);
 /* name:  ASCII connection name for informative annotations in the output.
  * source_block: The source block
  * sink_block_port: Port index (on a block) to which the sink terminal connects. 
  * sink_block_pin: Contains the index of the pin (on a block) to 
  *          which sink connects.  */
 
-static boolean breadth_first_route_con(int icon, float bend_cost, float pres_fac, int itry);
+static bool breadth_first_route_con(int icon, float bend_cost, float pres_fac, int itry);
 
-static boolean breadth_first_route_con_fast(int icon, float bend_cost, float pres_fac, int itry);
+static bool breadth_first_route_con_fast(int icon, float bend_cost, float pres_fac, int itry);
 
 static void
 breadth_first_expand_neighbours_con(int inode,
@@ -53,19 +55,26 @@ static void
 breadth_first_add_source_to_heap_con(int icon);
 
 /************************ Subroutine definitions ****************************/
-boolean
+bool
 try_breadth_first_route_conr(struct s_router_opts router_opts,
         t_ivec ** clb_opins_used_locally,
         int width_fac) {
 
     /* Iterated maze router ala Pathfinder Negotiated Congestion algorithm,  *
-     * (FPGA 95 p. 111).  Returns TRUE if it can route this FPGA, FALSE if   *
+     * (FPGA 95 p. 111).  Returns true if it can route this FPGA, false if   *
      * it can't.                                                             */
 
-    float pres_fac;
-    boolean success, is_routable, rip_up_local_opins;
-    int itry, inet, icon, i;
+    bool success, is_routable, rip_up_local_opins;
+    unsigned itry, inet;
+    unsigned icon;
+    
     clock_t c0, c1, c2, c3;
+    
+    /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
+     * the shortest path and get a congestion map.  For fast compiles, I set  *
+     * pres_fac high even for the first iteration.                            */
+    float pres_fac = router_opts.first_iter_pres_fac;
+    
     
     c0 = clock();
     /* Create Connection Array 
@@ -73,7 +82,7 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
     int maxFO = 0;
     num_cons = 0;
     for (inet = 0; inet < num_nets; inet++) {
-        if (clb_net[inet].is_global == FALSE) { /* Skip global nets. */
+        if (clb_net[inet].is_global == false) { /* Skip global nets. */
             num_cons += clb_net[inet].num_sinks;
             if(clb_net[inet].num_sinks > maxFO) maxFO = clb_net[inet].num_sinks;
         }
@@ -88,7 +97,7 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
     int isink;
     for (inet = 0; inet < num_nets; inet++) {
         if (icon > (num_cons - 1))break;
-        if (clb_net[inet].is_global == FALSE) { /* Skip global nets. */
+        if (clb_net[inet].is_global == false) { /* Skip global nets. */
             for (isink = 0; isink < clb_net[inet].num_sinks; isink++) {
                 if (icon > (num_cons - 1))break;
                 cons[icon].net = inet;
@@ -120,16 +129,10 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
     }
     
     float* sorting_values = (float*) my_calloc(num_cons, sizeof (float));
-    for (i = 0; i < num_cons; i++) {
-        sorting_values[i]= (maxBB-bbs[i])+clb_net[cons[i].net].num_sinks*1./(maxFO+1);
+    for (unsigned int ui = 0; ui < num_cons; ui++) {
+        sorting_values[ui]= (maxBB-bbs[ui])+clb_net[cons[ui].net].num_sinks*1./(maxFO+1);
     }
     heapsort(con_index, sorting_values, num_cons, 1);
-
-    /* Usually the first iteration uses a very small (or 0) pres_fac to find  *
-     * the shortest path and get a congestion map.  For fast compiles, I set  *
-     * pres_fac high even for the first iteration.                            */
-
-    pres_fac = router_opts.first_iter_pres_fac;
 
     trace_head_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
     trace_tail_con = (struct s_trace **) my_calloc(num_cons, sizeof (struct s_trace *));
@@ -139,8 +142,8 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
     for (itry = 1; itry <= router_opts.max_router_iterations; itry++) {
         printf("Routing iteration: %d ...\n", itry);
 
-        for (i = 0; i < num_cons; i++) {
-            icon = con_index[i];
+        for (unsigned ui = 0; ui < num_cons; ui++) {
+            icon = con_index[ui];
             //printf("Rip up connection %d\n",icon);
             /*Rip up*/
             rip_up_con(icon, pres_fac);
@@ -155,7 +158,7 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
             /* Impossible to route? (disconnected rr_graph) */
             if (!is_routable) {
                 printf("Routing failed.\n");
-                return (FALSE);
+                return (false);
             }
 
             //printf("Add connection %d\n",icon);
@@ -166,11 +169,11 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
          * to them are reserved for that purpose.                                 */
 
         if (itry == 1)
-            rip_up_local_opins = FALSE;
+            rip_up_local_opins = false;
         else
-            rip_up_local_opins = TRUE;
+            rip_up_local_opins = true;
 
-        reserve_locally_used_opins(pres_fac, rip_up_local_opins,
+        reserve_locally_used_opins(pres_fac, router_opts.acc_fac, rip_up_local_opins,
                 clb_opins_used_locally);
 
         /*Check if the routing is feasible*/
@@ -210,7 +213,7 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
             free(cons);
             c3 = clock();
             printf("Overhead due adaptation to vpr standards: %f sec (CPU time)\n", (float) ((c1 - c0) + (c2 - c3))/CLOCKS_PER_SEC);
-            return (TRUE);
+            return (true);
         } 
 
         if (itry == 1) {
@@ -226,20 +229,20 @@ try_breadth_first_route_conr(struct s_router_opts router_opts,
     
     free(cons);
     printf("Routing failed.\n");
-    return (FALSE);
+    return (false);
 }
 
-boolean
+bool
 try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
         t_ivec ** clb_opins_used_locally,
         int width_fac) {
 
     /* Iterated maze router ala Pathfinder Negotiated Congestion algorithm,  *
-     * (FPGA 95 p. 111).  Returns TRUE if it can route this FPGA, FALSE if   *
+     * (FPGA 95 p. 111).  Returns true if it can route this FPGA, false if   *
      * it can't.                                                             */
 
     float pres_fac;
-    boolean success, is_routable, rip_up_local_opins;
+    bool success, is_routable, rip_up_local_opins;
     int itry, inet, icon;
     clock_t c0, c1, c2, c3;
     
@@ -248,7 +251,7 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
      * 1. Calculate the size of the Connection Array*/
     num_cons = 0;
     for (inet = 0; inet < num_nets; inet++) {
-        if (clb_net[inet].is_global == FALSE) { /* Skip global nets. */
+        if (clb_net[inet].is_global == false) { /* Skip global nets. */
             num_cons += clb_net[inet].num_sinks;
         }
     }
@@ -262,7 +265,7 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
     int isink;
     for (inet = 0; inet < num_nets; inet++) {
         if (icon > (num_cons - 1))break;
-        if (clb_net[inet].is_global == FALSE) { /* Skip global nets. */
+        if (clb_net[inet].is_global == false) { /* Skip global nets. */
             for (isink = 0; isink < clb_net[inet].num_sinks; isink++) {
                 if (icon > (num_cons - 1))break;
                 cons[icon].net = inet;
@@ -343,7 +346,7 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
             /* Impossible to route? (disconnected rr_graph) */
             if (!is_routable) {
                 printf("Routing failed.\n");
-                return (FALSE);
+                return (false);
             }
 
             //printf("Add connection %d\n",icon);
@@ -354,11 +357,11 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
          * to them are reserved for that purpose.                                 */
 
         if (itry == 1)
-            rip_up_local_opins = FALSE;
+            rip_up_local_opins = false;
         else
-            rip_up_local_opins = TRUE;
+            rip_up_local_opins = true;
 
-        reserve_locally_used_opins(pres_fac, rip_up_local_opins,
+        reserve_locally_used_opins(pres_fac, router_opts.acc_fac, rip_up_local_opins,
                 clb_opins_used_locally);
 
         /*Check if the routing is feasible*/
@@ -398,7 +401,7 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
             free(cons);
             c3 = clock();
             printf("Overhead due adaptation to vpr standards: %f sec (CPU time)\n", (float) ((c1 - c0) + (c2 - c3))/CLOCKS_PER_SEC);
-            return (TRUE);
+            return (true);
         } 
 
         if (itry == 1) {
@@ -414,21 +417,21 @@ try_breadth_first_route_conr_alloc(struct s_router_opts router_opts,
     
     free(cons);
     printf("Routing failed.\n");
-    return (FALSE);
+    return (false);
 }
 
-boolean
+bool
 try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
         t_ivec ** clb_opins_used_locally,
         int width_fac) {
 
     /* Iterated maze router ala Pathfinder Negotiated Congestion algorithm,  *
-     * (FPGA 95 p. 111).  Returns TRUE if it can route this FPGA, FALSE if   *
+     * (FPGA 95 p. 111).  Returns true if it can route this FPGA, false if   *
      * it can't.                                                             */
 
     float pres_fac;
-    boolean success, is_routable, rip_up_local_opins;
-    int itry, inet, icon, i;
+    bool success, is_routable, rip_up_local_opins;
+    int itry, icon, i;
     clock_t c0, c1, c2, c3;
     
     c0 = clock();
@@ -436,8 +439,8 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
      * 1. Calculate the size of the Connection Array*/
     int maxFO = 0;
     num_cons = 0;
-    for (inet = 0; inet < num_nets; inet++) {
-        if (clb_net[inet].is_global == FALSE) { /* Skip global nets. */
+    for (int inet = 0; inet < num_nets; inet++) {
+        if (clb_net[inet].is_global == false) { /* Skip global nets. */
             num_cons += clb_net[inet].num_sinks;
             if(clb_net[inet].num_sinks > maxFO) maxFO = clb_net[inet].num_sinks;
         }
@@ -450,9 +453,9 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
     printf("Assigning values to connection structs\n");
     icon = 0;
     int isink;
-    for (inet = 0; inet < num_nets; inet++) {
+    for (int inet = 0; inet < num_nets; inet++) {
         if (icon > (num_cons - 1))break;
-        if (clb_net[inet].is_global == FALSE) { /* Skip global nets. */
+        if (clb_net[inet].is_global == false) { /* Skip global nets. */
             for (isink = 0; isink < clb_net[inet].num_sinks; isink++) {
                 if (icon > (num_cons - 1))break;
                 cons[icon].net = inet;
@@ -503,7 +506,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
     
 //    congested = (boolean*) my_malloc(num_cons * sizeof (boolean));
 //    for(icon=0; icon<num_cons;icon++){
-//        congested[icon]=TRUE;
+//        congested[icon]=true;
 //    }
     
     c1 = clock();
@@ -514,8 +517,8 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
         for (i = 0; i < num_cons; i++) {
             icon = i;
 //            icon = con_index[i];
-            inet = cons[icon].net;
-            t_node_hash_map* node_hash_map = &node_hash_maps[inet];
+            int net = cons[icon].net;
+            t_node_hash_map* node_hash_map = &node_hash_maps[net];
             
             //printf("Rip up connection %d\n",icon);
             /*Rip up*/
@@ -531,7 +534,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
             /* Impossible to route? (disconnected rr_graph) */
             if (!is_routable) {
                 printf("Routing failed.\n");
-                return (FALSE);
+                return (false);
             }
 
             //printf("Add connection %d\n",icon);
@@ -542,11 +545,11 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
          * to them are reserved for that purpose.                                 */
         //printf("Ending routing iteration\n");
         if (itry == 1)
-            rip_up_local_opins = FALSE;
+            rip_up_local_opins = false;
         else
-            rip_up_local_opins = TRUE;
+            rip_up_local_opins = true;
 
-        reserve_locally_used_opins(pres_fac, rip_up_local_opins,
+        reserve_locally_used_opins(pres_fac, router_opts.acc_fac, rip_up_local_opins,
                 clb_opins_used_locally);
 
         /*Check if the routing is feasible*/
@@ -557,14 +560,14 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
             printf("Successfully routed after %d routing iterations.\n",
                     itry);
             c2 = clock();
-            for (icon = 0; icon < num_cons; icon++) {
-                int netnr = cons[icon].net;
-                if (trace_head[cons[icon].net] == NULL) {
-                    trace_head[netnr] = trace_head_con[icon];
-                    trace_tail[netnr] = trace_tail_con[icon];
+            for (unsigned int con = 0; con < num_cons; con++) {
+                int netnr = cons[con].net;
+                if (trace_head[cons[con].net] == NULL) {
+                    trace_head[netnr] = trace_head_con[con];
+                    trace_tail[netnr] = trace_tail_con[con];
                 } else {
                     struct s_trace* netit;
-                    struct s_trace* conit = trace_head_con[icon];
+                    struct s_trace* conit = trace_head_con[con];
                     struct s_trace* conprevit = NULL;
                     int iteration =0;
                     int moves = 1;
@@ -582,13 +585,13 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
                     }
 
                     trace_tail[netnr]->next = conprevit;
-                    trace_tail[netnr] = trace_tail_con[icon];
+                    trace_tail[netnr] = trace_tail_con[con];
                 }
             }
             free(cons);
             c3 = clock();
             printf("Overhead due adaptation to vpr standards: %f sec (CPU time)\n", (float) ((c1 - c0) + (c2 - c3))/CLOCKS_PER_SEC);
-            return (TRUE);
+            return (true);
         } 
 
         if (itry == 1) {
@@ -604,7 +607,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
     
     free(cons);
     printf("Routing failed.\n");
-    return (FALSE);
+    return (false);
 }
 
 //boolean
@@ -613,7 +616,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //        int width_fac) {
 //
 //    /* Iterated maze router ala Pathfinder Negotiated Congestion algorithm,  *
-//     * (FPGA 95 p. 111).  Returns TRUE if it can route this FPGA, FALSE if   *
+//     * (FPGA 95 p. 111).  Returns true if it can route this FPGA, false if   *
 //     * it can't.                                                             */
 //
 //    float pres_fac;
@@ -629,7 +632,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //    congested = (boolean*) my_malloc(num_nets * sizeof (boolean));
 //    
 //    for(inet=0; inet<num_nets;inet++){
-//        congested[inet]=TRUE;
+//        congested[inet]=true;
 //    }
 //
 //    for (itry = 1; itry <= router_opts.max_router_iterations; itry++) {
@@ -649,7 +652,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //
 //                if (!is_routable) {
 //                    printf("Routing failed.\n");
-//                    return (FALSE);
+//                    return (false);
 //                }
 //
 //                pathfinder_update_one_cost(trace_head[inet], 1,
@@ -663,9 +666,9 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //         * to them are reserved for that purpose.                                 */
 //
 //        if (itry == 1)
-//            rip_up_local_opins = FALSE;
+//            rip_up_local_opins = false;
 //        else
-//            rip_up_local_opins = TRUE;
+//            rip_up_local_opins = true;
 //
 //        reserve_locally_used_opins(pres_fac, rip_up_local_opins,
 //                clb_opins_used_locally);
@@ -675,7 +678,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //            printf
 //                    ("Successfully routed after %d routing iterations.\n",
 //                    itry);
-//            return (TRUE);
+//            return (true);
 //        }
 //
 //        if (itry == 1)
@@ -689,7 +692,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //    }
 //
 //    printf("Routing failed.\n");
-//    return (FALSE);
+//    return (false);
 //}
 
 //void
@@ -705,7 +708,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //    for (;;) {
 //        inode = tptr->index;
 //        /*Check if node is already used by source*/
-//        boolean source_found = FALSE;
+//        boolean source_found = false;
 ////        struct s_linked_vptr* current_element;
 ////        struct s_linked_vptr* prev_element = NULL;
 //        struct s_source* current_element;
@@ -718,7 +721,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 ////                    source_entry* so = (source_entry*) current_element->data_vptr;
 ////                    if (so->source == source) {
 //                    if(current_element->source == source){
-//                        source_found = TRUE;
+//                        source_found = true;
 //                        break;
 //                    }
 //                    if (current_element->next == NULL) {
@@ -773,7 +776,7 @@ try_breadth_first_route_conr_fast(struct s_router_opts router_opts,
 //
 //    } /* End while loop -- did an entire traceback. */
 //}
-static boolean
+static bool
 breadth_first_route_con(int icon, float bend_cost, float pres_fac, int itry) {
 
     /* Uses a maze routing (Dijkstra's) algorithm to route a connection.  The net       *
@@ -786,13 +789,12 @@ breadth_first_route_con(int icon, float bend_cost, float pres_fac, int itry) {
      * routing), since global routes with lots of bends are tougher to detailed  *
      * route (using a detailed router like SEGA).                                *
      * If this routine finds that a net *cannot* be connected (due to a complete *
-     * lack of potential paths, rather than congestion), it returns FALSE, as    *
-     * routing is impossible on this architecture.  Otherwise it returns TRUE.   */
+     * lack of potential paths, rather than congestion), it returns false, as    *
+     * routing is impossible on this architecture.  Otherwise it returns true.   */
 
-    int i, inode, prev_node, net;
+    int inode, prev_node, net;
     float pcost, new_pcost;
     struct s_heap *current;
-    struct s_trace *tptr;
 
     net = cons[icon].net;
     
@@ -801,11 +803,11 @@ breadth_first_route_con(int icon, float bend_cost, float pres_fac, int itry) {
     breadth_first_add_source_to_heap_con(cons[icon].source);
     /*Set sink target flag*/
     rr_node_route_inf[cons[icon].target_node].target_flag++;
-    tptr = NULL;
+    
     current = get_heap_head();
     if (current == NULL) { /* Infeasible routing.  No possible path for net. */
         reset_path_costs(); /* Clean up before leaving. */
-        return (FALSE);
+        return (false);
     }
 
     inode = current->index;
@@ -829,7 +831,7 @@ breadth_first_route_con(int icon, float bend_cost, float pres_fac, int itry) {
         current = get_heap_head();
         if (current == NULL) { /* Impossible routing. No path for net. */
             reset_path_costs();
-            return (FALSE);
+            return (false);
         }
 
         inode = current->index;
@@ -843,10 +845,10 @@ breadth_first_route_con(int icon, float bend_cost, float pres_fac, int itry) {
     empty_heap();
     //printf("%f\n",rr_node_route_inf[prev_node].path_cost);
     reset_path_costs();
-    return (TRUE);
+    return (true);
 }
 
-static boolean
+static bool
 breadth_first_route_con_fast(int icon, float bend_cost, float pres_fac, int itry) {
 
     /* Uses a maze routing (Dijkstra's) algorithm to route a connection.  The net       *
@@ -859,14 +861,13 @@ breadth_first_route_con_fast(int icon, float bend_cost, float pres_fac, int itry
      * routing), since global routes with lots of bends are tougher to detailed  *
      * route (using a detailed router like SEGA).                                *
      * If this routine finds that a net *cannot* be connected (due to a complete *
-     * lack of potential paths, rather than congestion), it returns FALSE, as    *
-     * routing is impossible on this architecture.  Otherwise it returns TRUE.   */
+     * lack of potential paths, rather than congestion), it returns false, as    *
+     * routing is impossible on this architecture.  Otherwise it returns true.   */
 
-    int i, inode, prev_node, net;
+    int inode, prev_node, net;
     float pcost, new_pcost;
     struct s_heap *current;
-    struct s_trace *tptr;
-
+    
     net = cons[icon].net;
     
     free_traceback_con(icon);
@@ -874,11 +875,10 @@ breadth_first_route_con_fast(int icon, float bend_cost, float pres_fac, int itry
     breadth_first_add_source_to_heap_con(cons[icon].source);
     /*Set sink target flag*/
     rr_node_route_inf[cons[icon].target_node].target_flag++;
-    tptr = NULL;
     current = get_heap_head();
     if (current == NULL) { /* Infeasible routing.  No possible path for net. */
         reset_path_costs(); /* Clean up before leaving. */
-        return (FALSE);
+        return (false);
     }
 
     inode = current->index;
@@ -902,7 +902,7 @@ breadth_first_route_con_fast(int icon, float bend_cost, float pres_fac, int itry
         current = get_heap_head();
         if (current == NULL) { /* Impossible routing. No path for net. */
             reset_path_costs();
-            return (FALSE);
+            return (false);
         }
 
         inode = current->index;
@@ -916,7 +916,7 @@ breadth_first_route_con_fast(int icon, float bend_cost, float pres_fac, int itry
     empty_heap();
     //printf("%f\n",rr_node_route_inf[prev_node].path_cost);
     reset_path_costs();
-    return (TRUE);
+    return (true);
 }
 
 static void
@@ -935,15 +935,15 @@ breadth_first_expand_neighbours_con(int inode,
     t_rr_type from_type, to_type;
     float tot_cost;
 
-    num_edges = rr_node[inode].num_edges;
+    num_edges = rr_node[inode].get_num_edges();
     for (edge = 0; edge < num_edges; edge++) {
         to_node = rr_node[inode].edges[edge];
 
         //doesn't work, getting empty heap errors
-        if (rr_node[to_node].xhigh < route_bb[net].xmin ||
-                rr_node[to_node].xlow > route_bb[net].xmax ||
-                rr_node[to_node].yhigh < route_bb[net].ymin ||
-                rr_node[to_node].ylow > route_bb[net].ymax)
+        if (rr_node[to_node].get_xhigh() < route_bb[net].xmin ||
+                rr_node[to_node].get_xlow() > route_bb[net].xmax ||
+                rr_node[to_node].get_yhigh() < route_bb[net].ymin ||
+                rr_node[to_node].get_ylow() > route_bb[net].ymax)
             continue; /* Node is outside (expanded) bounding box. */
 
         float getcost = get_rr_cong_cost_con(to_node, icon, pres_fac);
@@ -976,15 +976,15 @@ breadth_first_expand_neighbours_con_fast(int inode,
     t_rr_type from_type, to_type;
     float tot_cost;
 
-    num_edges = rr_node[inode].num_edges;
+    num_edges = rr_node[inode].get_num_edges();
     for (edge = 0; edge < num_edges; edge++) {
         to_node = rr_node[inode].edges[edge];
 
         //doesn't work, getting empty heap errors
-        if (rr_node[to_node].xhigh < route_bb[net].xmin ||
-                rr_node[to_node].xlow > route_bb[net].xmax ||
-                rr_node[to_node].yhigh < route_bb[net].ymin ||
-                rr_node[to_node].ylow > route_bb[net].ymax)
+        if (rr_node[to_node].get_xhigh() < route_bb[net].xmin ||
+                rr_node[to_node].get_xlow() > route_bb[net].xmax ||
+                rr_node[to_node].get_yhigh() < route_bb[net].ymin ||
+                rr_node[to_node].get_ylow() > route_bb[net].ymax)
             continue; /* Node is outside (expanded) bounding box. */
 
         float getcost = get_rr_cong_cost(to_node);

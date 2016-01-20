@@ -29,8 +29,8 @@
 /************************* FUNCTION DECLARATIONS ********************/
 
 /* Pins */
-float pin_dens(t_pb * pb, t_pb_graph_pin * pin);
-float pin_prob(t_pb * pb, t_pb_graph_pin * pin);
+float pin_dens(t_pb * pb, t_pb_graph_pin * pin, int iblk);
+float pin_prob(t_pb * pb, t_pb_graph_pin * pin, int iblk);
 int power_calc_pin_fanout(t_pb_graph_pin * pin, int mode_idx);
 void pb_foreach_pin(t_pb_graph_node * pb_node,
 		void (*fn)(t_pb_graph_pin *, void *), void * context);
@@ -51,15 +51,15 @@ float calc_buffer_stage_effort(int N, float final_stage_size);
 float power_buffer_size_from_logical_effort(float C_load);
 
 /* Multiplexers */
-boolean mux_find_selector_values(int * selector_values, t_mux_node * mux_node,
+bool mux_find_selector_values(int * selector_values, t_mux_node * mux_node,
 		int selected_input_pin);
 t_mux_arch * power_get_mux_arch(int num_mux_inputs, float transistor_size);
 void mux_arch_fix_levels(t_mux_arch * mux_arch);
 
 /* Power Methods */
-boolean power_method_is_transistor_level(
+bool power_method_is_transistor_level(
 		e_power_estimation_method estimation_method);
-boolean power_method_is_recursive(
+bool power_method_is_recursive(
 		e_power_estimation_method method);
 
 char * transistor_type_name(e_tx_type type);

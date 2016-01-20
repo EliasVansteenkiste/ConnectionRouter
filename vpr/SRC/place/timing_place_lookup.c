@@ -1,18 +1,23 @@
-#include <stdio.h>
-#include <math.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
+#include <cmath>
+using namespace std;
+
+#include <assert.h>
+#include <time.h>
+
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
-#include "route_common.h"
 #include "place_and_route.h"
+#include "route_common.h"
 #include "route_tree_timing.h"
 #include "route_timing.h"
-#include "timing_place_lookup.h"
-#include "rr_graph.h"
 #include "route_export.h"
-#include <assert.h>
+#include "rr_graph.h"
+#include "timing_place_lookup.h"
 #include "read_xml_arch_file.h"
+#include "netlist.h"
 
 /*this file contains routines that generate the array containing*/
 /*the delays between blocks, this is used in the timing driven  */
@@ -55,7 +60,7 @@
 #define DEBUG_TIMING_PLACE_LOOKUP	/*initialize arrays to known state */
 
 #define DUMPFILE "lookup_dump.echo"
-/* #define PRINT_ARRAYS *//*only used during debugging, calls routine to  */
+/*#define PRINT_ARRAYS*//*only used during debugging, calls routine to  */
 /*print out the various lookup arrays           */
 
 /***variables that are exported to other modules***/
@@ -96,6 +101,8 @@ static FILE *lookup_dump; /* If debugging mode is on, print out to
 
 static void alloc_net(void);
 
+static void alloc_vnet(void);
+
 static void alloc_block(void);
 
 static void load_simplified_device(void);
@@ -103,17 +110,17 @@ static void restore_original_device(void);
 
 static void alloc_and_assign_internal_structures(struct s_net **original_net,
 		struct s_block **original_block, int *original_num_nets,
-		int *original_num_blocks);
+		int *original_num_blocks, vector<t_vnet> & original_vnet);
 
 static void free_and_reset_internal_structures(struct s_net *original_net,
 		struct s_block *original_block, int original_num_nets,
-		int original_num_blocks);
+		int original_num_blocks, vector<t_vnet> & original_vnet);
 
 static void setup_chan_width(struct s_router_opts router_opts,
 		t_chan_width_dist chan_width_dist);
 
 static void alloc_routing_structs(struct s_router_opts router_opts,
-		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf,
+		struct s_det_routing_arch *det_routing_arch, t_segment_inf * segment_inf,
 		t_timing_inf timing_inf, INP t_direct_inf *directs, 
 		INP int num_directs);
 
@@ -161,7 +168,7 @@ static void compute_delta_arrays(struct s_router_opts router_opts,
 		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf,
 		t_timing_inf timing_inf, int longest_length);
 
-static int get_first_pin(enum e_pin_type pintype, t_type_ptr type);
+static int get_best_pin(enum e_pin_type pintype, t_type_ptr type);
 
 static int get_longest_segment_length(
 		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf);
@@ -175,22 +182,38 @@ static void print_array(float **array_to_print,
 		int y2);
 #endif
 /**************************************/
-static int get_first_pin(enum e_pin_type pintype, t_type_ptr type) {
 
-	/*this code assumes logical equivilance between all driving pins */
-	/*global pins are not hooked up to the temporary net */
+static int get_best_pin(enum e_pin_type pintype, t_type_ptr type) {
 
-	int i, currpin;
+	/*This function tries to identify the best pin class to hook up
+     * for delay calculation.  The assumption is that we should pick
+     * the pin class with the largest number of pins. This makes
+     * sense, since it ensures we pick commonly used pins, and 
+     * removes order dependance on how the pins are specified 
+     * in the architecture (except in the case were the two largest pin classes
+     * of a particular pintype have the same number of pins, in which case the 
+     * first pin class is used).
+     * 
+     * Also, global pins are not hooked up to the temporary net */
 
+	int i, currpin, best_class_num_pins, best_class;
+    
+    best_class = -1;
+    best_class_num_pins = 0;
 	currpin = 0;
 	for (i = 0; i < type->num_class; i++) {
-		if (type->class_inf[i].type == pintype && !type->is_global_pin[currpin])
-			return (type->class_inf[i].pinlist[0]);
+		if (type->class_inf[i].type == pintype && !type->is_global_pin[currpin] &&
+                type->class_inf[i].num_pins > best_class_num_pins) {
+            //Save the best class
+            best_class_num_pins = type->class_inf[i].num_pins;
+            best_class = i;
+        }
 		else
 			currpin += type->class_inf[i].num_pins;
 	}
-	assert(0);
-	exit(0); /*should never hit this line */
+
+    assert(best_class >= 0 && best_class < type->num_class);
+    return (type->class_inf[best_class].pinlist[0]);
 }
 
 /**************************************/
@@ -217,7 +240,9 @@ static void alloc_net(void) {
 		/* FIXME: We *really* shouldn't be allocating write-once copies */
 		len = strlen("TEMP_NET");
 		clb_net[i].name = (char *) my_malloc((len + 1) * sizeof(char));
-		clb_net[i].is_global = FALSE;
+		clb_net[i].is_routed = false;
+		clb_net[i].is_fixed = false;
+		clb_net[i].is_global = false;
 		strcpy(clb_net[NET_USED].name, "TEMP_NET");
 
 		clb_net[i].num_sinks = (BLOCK_COUNT - 1);
@@ -227,9 +252,31 @@ static void alloc_net(void) {
 
 		clb_net[i].node_block_pin = (int *) my_malloc(
 				BLOCK_COUNT * sizeof(int));
-		/*the values for this are allocated in assign_blocks_and_route_net */
+		/*the values for this are assigned in assign_blocks_and_route_net */
 
 	}
+}
+
+static void alloc_vnet(){
+
+	int i, len;
+
+	g_clbs_nlist.net.resize(NET_COUNT);
+	for(i = 0; i < NET_COUNT; i++){
+		len = strlen("TEMP_NET");
+		g_clbs_nlist.net[i].name = (char *) my_malloc((len + 1) * sizeof(char));
+		g_clbs_nlist.net[i].is_routed = false;
+		g_clbs_nlist.net[i].is_fixed = false;
+		g_clbs_nlist.net[i].is_global = false;
+		strcpy(g_clbs_nlist.net[NET_USED].name, "TEMP_NET");
+	
+		g_clbs_nlist.net[i].pins.resize(BLOCK_COUNT);
+		g_clbs_nlist.net[i].pins[NET_USED_SOURCE_BLOCK].block = NET_USED_SOURCE_BLOCK;
+		g_clbs_nlist.net[i].pins[NET_USED_SINK_BLOCK].block = NET_USED_SINK_BLOCK;
+
+		/*the values for nodes[].block_pin are assigned in assign_blocks_and_route_net */
+	}
+
 }
 
 /**************************************/
@@ -244,7 +291,7 @@ static void alloc_block(void) {
 
 	max_pins = 0;
 	for (i = 0; i < NUM_TYPES_USED; i++) {
-		max_pins = std::max(max_pins, type_descriptors[i].num_pins);
+		max_pins = max(max_pins, type_descriptors[i].num_pins);
 	}
 
 	block = (struct s_block *) my_malloc(num_blocks * sizeof(struct s_block));
@@ -263,7 +310,7 @@ static void alloc_block(void) {
 
 /**************************************/
 static void load_simplified_device(void) {
-	int i, j;
+	int i, j, k;
 
 	/* Backup original globals */
 	EMPTY_TYPE_BACKUP = EMPTY_TYPE;
@@ -300,9 +347,12 @@ static void load_simplified_device(void) {
 			} else {
 				grid[i][j].type = FILL_TYPE;
 			}
-			grid[i][j].blocks = (int*)my_malloc(
-					grid[i][j].type->capacity * sizeof(int));
-			grid[i][j].offset = 0;
+			grid[i][j].width_offset = 0;
+			grid[i][j].height_offset = 0;
+			grid[i][j].blocks = (int*)my_malloc(grid[i][j].type->capacity * sizeof(int));
+			for (k = 0; k < grid[i][j].type->capacity; k++) {
+				grid[i][j].blocks[k] = EMPTY;
+			}
 		}
 	}
 }
@@ -334,7 +384,9 @@ static void reset_placement(void) {
 		for (j = 0; j <= ny + 1; j++) {
 			grid[i][j].usage = 0;
 			for (k = 0; k < grid[i][j].type->capacity; k++) {
-				grid[i][j].blocks[k] = EMPTY;
+				if (grid[i][j].blocks[k] != INVALID) {
+					grid[i][j].blocks[k] = EMPTY;
+				}
 			}
 		}
 	}
@@ -343,7 +395,7 @@ static void reset_placement(void) {
 /**************************************/
 static void alloc_and_assign_internal_structures(struct s_net **original_net,
 		struct s_block **original_block, int *original_num_nets,
-		int *original_num_blocks) {
+		int *original_num_blocks, vector<t_vnet> & original_vnet) {
 	/*allocate new data structures to hold net, and block info */
 
 	*original_net = clb_net;
@@ -351,13 +403,17 @@ static void alloc_and_assign_internal_structures(struct s_net **original_net,
 	num_nets = NET_COUNT;
 	alloc_net();
 
+	original_vnet.swap(g_clbs_nlist.net);
+	alloc_vnet();
+
 	*original_block = block;
 	*original_num_blocks = num_blocks;
 	num_blocks = BLOCK_COUNT;
 	alloc_block();
 
 	/* [0..num_nets-1][1..num_pins-1] */
-	net_delay = (float **) alloc_matrix(0, NET_COUNT - 1, 1, BLOCK_COUNT - 1, sizeof(float));
+	net_delay = (float **) alloc_matrix(0, NET_COUNT - 1, 1, BLOCK_COUNT - 1,
+			sizeof(float));
 
 	reset_placement();
 }
@@ -365,7 +421,7 @@ static void alloc_and_assign_internal_structures(struct s_net **original_net,
 /**************************************/
 static void free_and_reset_internal_structures(struct s_net *original_net,
 		struct s_block *original_block, int original_num_nets,
-		int original_num_blocks) {
+		int original_num_blocks, vector<t_vnet> & original_vnet) {
 	/*reset gloabal data structures to the state that they were in before these */
 	/*lookup computation routines were called */
 
@@ -379,6 +435,10 @@ static void free_and_reset_internal_structures(struct s_net *original_net,
 	}
 	free(clb_net);
 	clb_net = original_net;
+
+	//Free new netlist data structure
+	free_global_nlist_net(&g_clbs_nlist);
+	g_clbs_nlist.net.swap(original_vnet);
 
 	for (i = 0; i < BLOCK_COUNT; i++) {
 		free(block[i].name);
@@ -404,7 +464,7 @@ static void setup_chan_width(struct s_router_opts router_opts,
 
 	max_pins_per_clb = 0;
 	for (i = 0; i < num_types; i++) {
-		max_pins_per_clb = std::max(max_pins_per_clb, type_descriptors[i].num_pins);
+		max_pins_per_clb = max(max_pins_per_clb, type_descriptors[i].num_pins);
 	}
 
 	if (router_opts.fixed_channel_width == NO_FIXED_CHANNEL_WIDTH)
@@ -414,12 +474,12 @@ static void setup_chan_width(struct s_router_opts router_opts,
 	else
 		width_fac = router_opts.fixed_channel_width;
 
-	init_chan(width_fac, chan_width_dist);
+	init_chan(width_fac, 0, chan_width_dist);
 }
 
 /**************************************/
 static void alloc_routing_structs(struct s_router_opts router_opts,
-		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf,
+		struct s_det_routing_arch *det_routing_arch, t_segment_inf * segment_inf,
 		t_timing_inf timing_inf, INP t_direct_inf *directs, 
 		INP int num_directs) {
 
@@ -432,7 +492,7 @@ static void alloc_routing_structs(struct s_router_opts router_opts,
 	/*must set up dummy blocks for the first pass through to setup locally used opins */
 	/* Only one block per tile */
 	assign_locations(FILL_TYPE, 1, 1, 0, FILL_TYPE, nx, ny, 0);
-
+        printf("alloc_route_structs;\n");
 	clb_opins_used_locally = alloc_route_structs();
 
 	free_rr_graph();
@@ -440,23 +500,40 @@ static void alloc_routing_structs(struct s_router_opts router_opts,
 	if (router_opts.route_type == GLOBAL) {
 		graph_type = GRAPH_GLOBAL;
 	} else {
-		graph_type = (det_routing_arch.directionality == BI_DIRECTIONAL ? GRAPH_BIDIR : GRAPH_UNIDIR);
+		graph_type = (det_routing_arch->directionality == BI_DIRECTIONAL ?
+				GRAPH_BIDIR : GRAPH_UNIDIR);
 	}
-
+        printf("build_rr_graph;\n");
 	build_rr_graph(graph_type, num_types, dummy_type_descriptors, nx, ny, grid,
-			chan_width_x[0], NULL, det_routing_arch.switch_block_type,
-			det_routing_arch.Fs, det_routing_arch.num_segment,
-			det_routing_arch.num_switch, segment_inf,
-			det_routing_arch.global_route_switch,
-			det_routing_arch.delayless_switch, timing_inf,
-			det_routing_arch.wire_to_ipin_switch, router_opts.base_cost_type,
-			NULL, 0, TRUE, /* do not send in direct connections because we care about general placement timing instead of special pin placement timing */
+			&chan_width, NULL, det_routing_arch->switch_block_type,
+			det_routing_arch->Fs, det_routing_arch->switchblocks,
+			det_routing_arch->num_segment,
+			g_num_arch_switches, segment_inf,
+			det_routing_arch->global_route_switch,
+			det_routing_arch->delayless_switch, timing_inf,
+			det_routing_arch->wire_to_arch_ipin_switch,
+			router_opts.base_cost_type,
+			router_opts.trim_empty_channels,
+			router_opts.trim_obs_channels,
+			directs, num_directs, /* Do send in direct connections because we care about some direct 
+                        connections, such as directlinks between adjacent blocks. We don't need
+                        to worry about special cases such as carry chains, since we do
+                        delay estimation between the most numerous pins on the block,
+                        which should not be carry chain pins. */
+			true, 
+			det_routing_arch->dump_rr_structs_file,
+			&det_routing_arch->wire_to_rr_ipin_switch,
+			&g_num_rr_switches,
 			&warnings);
-
+        
+        printf("alloc_and_load_rr_node_route_structs\n");
 	alloc_and_load_rr_node_route_structs();
 
-	alloc_timing_driven_route_structs(&pin_criticality, &sink_order, &rt_node_of_sink);
+        printf("alloc_timing_driven_route_structs\n");
+	alloc_timing_driven_route_structs(&pin_criticality, &sink_order,
+			&rt_node_of_sink);
 
+        printf("init_route_structs\n");
 	bb_factor = nx + ny; /*set it to a huge value */
 	init_route_structs(bb_factor);
 }
@@ -503,10 +580,15 @@ static void assign_locations(t_type_ptr source_type, int source_x_loc,
 	grid[source_x_loc][source_y_loc].blocks[source_z_loc] = SOURCE_BLOCK;
 	grid[sink_x_loc][sink_y_loc].blocks[sink_z_loc] = SINK_BLOCK;
 
-	clb_net[NET_USED].node_block_pin[NET_USED_SOURCE_BLOCK] = get_first_pin(
+	clb_net[NET_USED].node_block_pin[NET_USED_SOURCE_BLOCK] = get_best_pin(
 			DRIVER, block[SOURCE_BLOCK].type);
-	clb_net[NET_USED].node_block_pin[NET_USED_SINK_BLOCK] = get_first_pin(
+	clb_net[NET_USED].node_block_pin[NET_USED_SINK_BLOCK] = get_best_pin(
 			RECEIVER, block[SINK_BLOCK].type);
+
+	g_clbs_nlist.net[NET_USED].pins[NET_USED_SOURCE_BLOCK].block_pin = get_best_pin(
+			DRIVER, block[SOURCE_BLOCK].type);
+	g_clbs_nlist.net[NET_USED].pins[NET_USED_SINK_BLOCK].block_pin = get_best_pin(
+			RECEIVER, block[SOURCE_BLOCK].type);
 
 	grid[source_x_loc][source_y_loc].usage += 1;
 	grid[sink_x_loc][sink_y_loc].usage += 1;
@@ -519,29 +601,27 @@ static float assign_blocks_and_route_net(t_type_ptr source_type,
 		int sink_x_loc, int sink_y_loc, struct s_router_opts router_opts,
 		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf,
 		t_timing_inf timing_inf) {
+
 	/*places blocks at the specified locations, and routes a net between them */
 	/*returns the delay of this net */
 
-	float pres_fac, net_delay_value;
-
-	int source_z_loc, sink_z_loc;
-
 	/* Only one block per tile */
-	source_z_loc = 0;
-	sink_z_loc = 0;
+	int source_z_loc = 0;
+	int sink_z_loc = 0;
 
-	net_delay_value = IMPOSSIBLE; /*set to known value for debug purposes */
+	float net_delay_value = IMPOSSIBLE; /*set to known value for debug purposes */
 
 	assign_locations(source_type, source_x_loc, source_y_loc, source_z_loc,
 			sink_type, sink_x_loc, sink_y_loc, sink_z_loc);
 
 	load_net_rr_terminals(rr_node_indices);
 
-	pres_fac = 0; /* ignore congestion */
+	int itry = 1;
+	float pres_fac = 0.0; /* ignore congestion */
 
 	/* Route this net with a dummy criticality of 0 by calling 
 	timing_driven_route_net with slacks set to NULL. */
-	timing_driven_route_net(NET_USED, pres_fac,
+	timing_driven_route_net(NET_USED, itry, pres_fac,
 			router_opts.max_criticality, router_opts.criticality_exp,
 			router_opts.astar_fac, router_opts.bend_cost, 
 			pin_criticality, sink_order, rt_node_of_sink, 
@@ -714,7 +794,6 @@ static void compute_delta_clb_to_clb(struct s_router_opts router_opts,
 	for (source_y = 1; source_y <= end_y; source_y++) {
 		delta_x = abs(sink_x - source_x);
 		delta_y = abs(sink_y - source_y);
-
 		delta_clb_to_clb[delta_x][delta_y] = assign_blocks_and_route_net(
 				source_type, source_x, source_y, sink_type, sink_x, sink_y,
 				router_opts, det_routing_arch, segment_inf, timing_inf);
@@ -944,13 +1023,13 @@ static void compute_delta_arrays(struct s_router_opts router_opts,
 		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf,
 		t_timing_inf timing_inf, int longest_length) {
 
-	vpr_printf(TIO_MESSAGE_INFO, "Computing delta_io_to_io lookup matrix, may take a few seconds, please wait...\n");
+	vpr_printf_info("Computing delta_io_to_io lookup matrix, may take a few seconds, please wait...\n");
 	compute_delta_io_to_io(router_opts, det_routing_arch, segment_inf, timing_inf);
-	vpr_printf(TIO_MESSAGE_INFO, "Computing delta_io_to_clb lookup matrix, may take a few seconds, please wait...\n");
+	vpr_printf_info("Computing delta_io_to_clb lookup matrix, may take a few seconds, please wait...\n");
 	compute_delta_io_to_clb(router_opts, det_routing_arch, segment_inf, timing_inf);
-	vpr_printf(TIO_MESSAGE_INFO, "Computing delta_clb_to_io lookup matrix, may take a few seconds, please wait...\n");
+	vpr_printf_info("Computing delta_clb_to_io lookup matrix, may take a few seconds, please wait...\n");
 	compute_delta_clb_to_io(router_opts, det_routing_arch, segment_inf, timing_inf);
-	vpr_printf(TIO_MESSAGE_INFO, "Computing delta_clb_to_clb lookup matrix, may take a few seconds, please wait...\n");
+	vpr_printf_info("Computing delta_clb_to_clb lookup matrix, may take a few seconds, please wait...\n");
 	compute_delta_clb_to_clb(router_opts, det_routing_arch, segment_inf, timing_inf, longest_length);
 
 #ifdef PRINT_ARRAYS
@@ -972,9 +1051,12 @@ static void compute_delta_arrays(struct s_router_opts router_opts,
 
 /**************************************/
 void compute_delay_lookup_tables(struct s_router_opts router_opts,
-		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf,
+		struct s_det_routing_arch *det_routing_arch, t_segment_inf * segment_inf,
 		t_timing_inf timing_inf, t_chan_width_dist chan_width_dist, INP t_direct_inf *directs, 
 		INP int num_directs) {
+
+	vpr_printf_info("\nStarting placement delay look-up...\n");
+    clock_t begin = clock();
 
 	static struct s_net *original_net; /*this will be used as a pointer to remember what */
 
@@ -986,27 +1068,52 @@ void compute_delay_lookup_tables(struct s_router_opts router_opts,
 	static int original_num_nets;
 	static int original_num_blocks;
 	static int longest_length;
+	vector<t_vnet> original_vnet;
 
 	load_simplified_device();
 
-	alloc_and_assign_internal_structures(&original_net, &original_block, &original_num_nets, &original_num_blocks);
+	alloc_and_assign_internal_structures(&original_net, &original_block,
+			&original_num_nets, &original_num_blocks, original_vnet);
 	setup_chan_width(router_opts, chan_width_dist);
 
-	alloc_routing_structs(router_opts, det_routing_arch, segment_inf, timing_inf, directs, num_directs);
+#ifdef INTERPOSER_BASED_ARCHITECTURE
+	/* Change the number of cuts to zero to avoid running the cut routine
+	 * at build_rr_graph. This is because placement uses only deltas to estimate
+	 * the delay between two points, and having a non-homogeneous chip only
+	 * generates noise */
+	int temp_num_cuts = num_cuts;
+	num_cuts = 0;
+#endif
+        printf("alloc_routing_structs\n");
+	alloc_routing_structs(router_opts, det_routing_arch, segment_inf,
+			timing_inf, directs, num_directs);
 
-	longest_length = get_longest_segment_length(det_routing_arch, segment_inf);
+#ifdef INTERPOSER_BASED_ARCHITECTURE
+	num_cuts = temp_num_cuts;
+#endif
+        printf("get_longest_segment_length\n");
+	longest_length = get_longest_segment_length((*det_routing_arch), segment_inf);
 
 	/*now setup and compute the actual arrays */
+        printf("alloc_delta_arrays\n");
 	alloc_delta_arrays();
-	compute_delta_arrays(router_opts, det_routing_arch, segment_inf, timing_inf, longest_length);
+        printf("compute_delta_arrays\n");
+	compute_delta_arrays(router_opts, (*det_routing_arch), segment_inf, timing_inf,
+			longest_length);
 
 	/*free all data structures that are no longer needed */
-	free_routing_structs(router_opts, det_routing_arch, segment_inf, timing_inf);
+	free_routing_structs(router_opts, (*det_routing_arch), segment_inf,
+			timing_inf);
 
 	restore_original_device();
 
 	free_and_reset_internal_structures(original_net, original_block,
-			original_num_nets, original_num_blocks);
+			original_num_nets, original_num_blocks, original_vnet);
+
+    clock_t end = clock();
+
+    float time = (float) (end - begin) / CLOCKS_PER_SEC;
+	vpr_printf_info("Placement delay look-up took %g seconds\n", time);
 }
 
 /**************************************/

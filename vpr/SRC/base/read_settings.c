@@ -1,5 +1,7 @@
-#include <string.h>
-#include <assert.h>
+#include <cstring>
+#include <cassert>
+using namespace std;
+
 #include "read_xml_util.h"
 #include "read_settings.h"
 
@@ -58,7 +60,7 @@ int read_settings_file(char * file_name, char *** outv)
 	Cur = ezxml_parse_file(file_name);
 	assert(*outv == NULL);
 	assert(! strcmp("settings",Cur->name));
-	Cur = FindElement(Cur, "arguments", FALSE);
+	Cur = FindElement(Cur, "arguments", false);
 
 	count = process_settings(Cur, *outv);
 

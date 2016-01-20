@@ -3,29 +3,36 @@
  Print complex block information to a file
  */
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+using namespace std;
+#include <vector>
+
 #include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
+#include "pack_types.h"
+#include "cluster_router.h"
 #include "output_clustering.h"
 #include "read_xml_arch_file.h"
+#include "ReadOptions.h"
+#include "vpr_utils.h"
+#include "output_blif.h"
 
 #define LINELENGTH 1024
 #define TAB_LENGTH 4
 
-/****************** Subroutines local to this module ************************/
+//#define OUTPUT_BLIF /* Dump blif representation of logic block for debugging using formal verification */
+
+/****************** Static variables local to this module ************************/
+
+static t_pb_graph_pin ***pb_graph_pin_lookup_from_index_by_type = NULL; /* [0..num_types-1][0..num_pb_graph_pins-1] lookup pointer to pb_graph_pin from pb_graph_pin index */
+
 
 /**************** Subroutine definitions ************************************/
-
-static void print_tabs(FILE *fpout, int num_tabs) {
-	int i;
-	for (i = 0; i < num_tabs; i++) {
-		fprintf(fpout, "\t");
-	}
-}
 
 static void print_string(const char *str_ptr, int *column, int num_tabs, FILE * fpout) {
 
@@ -37,8 +44,8 @@ static void print_string(const char *str_ptr, int *column, int num_tabs, FILE * 
 
 	len = strlen(str_ptr);
 	if (len + 3 > LINELENGTH) {
-		vpr_printf(TIO_MESSAGE_ERROR, "in print_string: String %s is too long for desired maximum line length.\n", str_ptr);
-		exit(1);
+		vpr_throw(VPR_ERROR_PACK, __FILE__, __LINE__, 
+				"in print_string: String %s is too long for desired maximum line length.\n", str_ptr);
 	}
 
 	if (*column + len + 2 > LINELENGTH) {
@@ -53,9 +60,9 @@ static void print_string(const char *str_ptr, int *column, int num_tabs, FILE * 
 
 static void print_net_name(int inet, int *column, int num_tabs, FILE * fpout) {
 
-	/* This routine prints out the vpack_net name (or open) and limits the    *
+	/* This routine prints out the g_atoms_nlist.net name (or open) and limits the    *
 	 * length of a line to LINELENGTH characters by using \ to continue *
-	 * lines.  net_num is the index of the vpack_net to be printed, while     *
+	 * lines.  net_num is the index of the g_atoms_nlist.net to be printed, while     *
 	 * column points to the current printing column (column is both     *
 	 * used and updated by this routine).  fpout is the output file     *
 	 * pointer.                                                         */
@@ -65,17 +72,17 @@ static void print_net_name(int inet, int *column, int num_tabs, FILE * fpout) {
 	if (inet == OPEN)
 		str_ptr = "open";
 	else
-		str_ptr = vpack_net[inet].name;
+		str_ptr = g_atoms_nlist.net[inet].name;
 
 	print_string(str_ptr, column, num_tabs, fpout);
 }
 
-static void print_interconnect(int inode, int *column, int num_tabs,
+static void print_interconnect(t_type_ptr type, int inode, int *column, int num_tabs, t_pb_route *pb_route, 
 		FILE * fpout) {
 
-	/* This routine prints out the vpack_net name (or open) and limits the    *
+	/* This routine prints out the g_atoms_nlist.net name (or open) and limits the    *
 	 * length of a line to LINELENGTH characters by using \ to continue *
-	 * lines.  net_num is the index of the vpack_net to be printed, while     *
+	 * lines.  net_num is the index of the g_atoms_nlist.net to be printed, while     *
 	 * column points to the current printing column (column is both     *
 	 * used and updated by this routine).  fpout is the output file     *
 	 * pointer.                                                         */
@@ -84,52 +91,64 @@ static void print_interconnect(int inode, int *column, int num_tabs,
 	int prev_node, prev_edge;
 	int len;
 
-	if (rr_node[inode].net_num == OPEN) {
+
+	if (pb_route[inode].atom_net_idx == OPEN) {
 		print_string("open", column, num_tabs, fpout);
 	} else {
 		str_ptr = NULL;
-		prev_node = rr_node[inode].prev_node;
-		prev_edge = rr_node[inode].prev_edge;
+		prev_node = pb_route[inode].prev_pb_pin_id;
 
-		if (prev_node == OPEN
-				&& rr_node[inode].pb_graph_pin->port->parent_pb_type->num_modes
-						== 0
-				&& rr_node[inode].pb_graph_pin->port->type == OUT_PORT) { /* This is a primitive output */
-			print_net_name(rr_node[inode].net_num, column, num_tabs, fpout);
+		if (prev_node == OPEN) {
+			/* No previous driver implies that this is either a top-level input pin or a primitive output pin */
+			t_pb_graph_pin *cur_pin = pb_graph_pin_lookup_from_index_by_type[type->index][inode];
+			assert(cur_pin->parent_node->pb_type->parent_mode == NULL || 
+					(cur_pin->parent_node->pb_type->num_modes == 0 && cur_pin->port->type == OUT_PORT)
+					);
+			print_net_name(pb_route[inode].atom_net_idx, column, num_tabs, fpout);
 		} else {
-			name =
-					rr_node[prev_node].pb_graph_pin->output_edges[prev_edge]->interconnect->name;
-			if (rr_node[prev_node].pb_graph_pin->port->parent_pb_type->depth
-					>= rr_node[inode].pb_graph_pin->port->parent_pb_type->depth) {
+			t_pb_graph_pin *cur_pin = pb_graph_pin_lookup_from_index_by_type[type->index][inode];
+			t_pb_graph_pin *prev_pin = pb_graph_pin_lookup_from_index_by_type[type->index][prev_node];
+			
+			for(prev_edge = 0; prev_edge < prev_pin->num_output_edges; prev_edge++) {
+				assert(prev_pin->output_edges[prev_edge]->num_output_pins == 1);
+				if(prev_pin->output_edges[prev_edge]->output_pins[0]->pin_count_in_cluster == inode) {
+					break;
+				}
+			}
+			assert(prev_edge < prev_pin->num_output_edges);
+
+			name =	prev_pin->output_edges[prev_edge]->interconnect->name;
+			if (prev_pin->port->parent_pb_type->depth
+					>= cur_pin->port->parent_pb_type->depth) {
 				/* Connections from siblings or children should have an explicit index, connections from parent does not need an explicit index */
 				len =
 						strlen(
-								rr_node[prev_node].pb_graph_pin->parent_node->pb_type->name)
-								+ rr_node[prev_node].pb_graph_pin->parent_node->placement_index
+								prev_pin->parent_node->pb_type->name)
+								+ prev_pin->parent_node->placement_index
 										/ 10
 								+ strlen(
-										rr_node[prev_node].pb_graph_pin->port->name)
-								+ rr_node[prev_node].pb_graph_pin->pin_number
+										prev_pin->port->name)
+								+ prev_pin->pin_number
 										/ 10 + strlen(name) + 11;
 				str_ptr = (char*)my_malloc(len * sizeof(char));
 				sprintf(str_ptr, "%s[%d].%s[%d]->%s ",
-						rr_node[prev_node].pb_graph_pin->parent_node->pb_type->name,
-						rr_node[prev_node].pb_graph_pin->parent_node->placement_index,
-						rr_node[prev_node].pb_graph_pin->port->name,
-						rr_node[prev_node].pb_graph_pin->pin_number, name);
+						prev_pin->parent_node->pb_type->name,
+						prev_pin->parent_node->placement_index,
+						prev_pin->port->name,
+						prev_pin->pin_number, name);
 			} else {
 				len =
 						strlen(
-								rr_node[prev_node].pb_graph_pin->parent_node->pb_type->name)
+								prev_pin->parent_node->pb_type->name)
 								+ strlen(
-										rr_node[prev_node].pb_graph_pin->port->name)
-								+ rr_node[prev_node].pb_graph_pin->pin_number
+										prev_pin->port->name)
+								+ prev_pin->pin_number
 										/ 10 + strlen(name) + 8;
 				str_ptr = (char*)my_malloc(len * sizeof(char));
 				sprintf(str_ptr, "%s.%s[%d]->%s ",
-						rr_node[prev_node].pb_graph_pin->parent_node->pb_type->name,
-						rr_node[prev_node].pb_graph_pin->port->name,
-						rr_node[prev_node].pb_graph_pin->pin_number, name);
+						prev_pin->parent_node->pb_type->name,
+						prev_pin->port->name,
+						prev_pin->pin_number, name);
 			}
 			print_string(str_ptr, column, num_tabs, fpout);
 		}
@@ -138,14 +157,13 @@ static void print_interconnect(int inode, int *column, int num_tabs,
 	}
 }
 
-static void print_open_pb_graph_node(t_pb_graph_node * pb_graph_node,
-		int pb_index, boolean is_used, int tab_depth, FILE * fpout) {
+static void print_open_pb_graph_node(t_type_ptr type, t_pb_graph_node * pb_graph_node,
+		int pb_index, bool is_used, t_pb_route *pb_route, int tab_depth, FILE * fpout) {
 	int column = 0;
 	int i, j, k, m;
 	const t_pb_type * pb_type, *child_pb_type;
 	t_mode * mode = NULL;
 	int prev_edge, prev_node;
-	t_pb_graph_pin *pb_graph_pin;
 	int mode_of_edge, port_index, node_index;
 
 	mode_of_edge = UNDEFINED;
@@ -164,14 +182,21 @@ static void print_open_pb_graph_node(t_pb_graph_node * pb_graph_node,
 					node_index =
 							pb_graph_node->output_pins[port_index][j].pin_count_in_cluster;
 					if (pb_type->num_modes > 0
-							&& rr_node[node_index].net_num != OPEN) {
-						prev_edge = rr_node[node_index].prev_edge;
-						prev_node = rr_node[node_index].prev_node;
-						pb_graph_pin = rr_node[prev_node].pb_graph_pin;
+						&& pb_route[node_index].atom_net_idx != OPEN) {
+						prev_node = pb_route[node_index].prev_pb_pin_id;
+						t_pb_graph_pin *prev_pin = pb_graph_pin_lookup_from_index_by_type[type->index][prev_node];
+						for(prev_edge = 0; prev_edge < prev_pin->num_output_edges; prev_edge++) {
+							assert(prev_pin->output_edges[prev_edge]->num_output_pins == 1);
+							if(prev_pin->output_edges[prev_edge]->output_pins[0]->pin_count_in_cluster == node_index) {
+								break;
+							}
+						}
+						assert(prev_edge < prev_pin->num_output_edges);
 						mode_of_edge =
-								pb_graph_pin->output_edges[prev_edge]->interconnect->parent_mode_index;
+								prev_pin->output_edges[prev_edge]->interconnect->parent_mode_index;
 						assert(
 								mode == NULL || &pb_type->modes[mode_of_edge] == mode);
+						assert(mode_of_edge == 0); /* for now, unused blocks must always default to use mode 0 */
 						mode = &pb_type->modes[mode_of_edge];
 					}
 				}
@@ -196,7 +221,7 @@ static void print_open_pb_graph_node(t_pb_graph_node * pb_graph_node,
 				for (j = 0; j < pb_type->ports[i].num_pins; j++) {
 					node_index =
 							pb_graph_node->input_pins[port_index][j].pin_count_in_cluster;
-					print_interconnect(node_index, &column, tab_depth + 2,
+					print_interconnect(type, node_index, &column, tab_depth + 2, pb_route,
 							fpout);
 				}
 				fprintf(fpout, "</port>\n");
@@ -219,7 +244,7 @@ static void print_open_pb_graph_node(t_pb_graph_node * pb_graph_node,
 				for (j = 0; j < pb_type->ports[i].num_pins; j++) {
 					node_index =
 							pb_graph_node->output_pins[port_index][j].pin_count_in_cluster;
-					print_interconnect(node_index, &column, tab_depth + 2,
+					print_interconnect(type, node_index, &column, tab_depth + 2, pb_route,
 							fpout);
 				}
 				fprintf(fpout, "</port>\n");
@@ -242,7 +267,7 @@ static void print_open_pb_graph_node(t_pb_graph_node * pb_graph_node,
 				for (j = 0; j < pb_type->ports[i].num_pins; j++) {
 					node_index =
 							pb_graph_node->clock_pins[port_index][j].pin_count_in_cluster;
-					print_interconnect(node_index, &column, tab_depth + 2,
+					print_interconnect(type, node_index, &column, tab_depth + 2, pb_route,
 							fpout);
 				}
 				fprintf(fpout, "</port>\n");
@@ -257,24 +282,24 @@ static void print_open_pb_graph_node(t_pb_graph_node * pb_graph_node,
 				child_pb_type = &mode->pb_type_children[i];
 				for (j = 0; j < mode->pb_type_children[i].num_pb; j++) {
 					port_index = 0;
-					is_used = FALSE;
+					is_used = false;
 					for (k = 0; k < child_pb_type->num_ports && !is_used; k++) {
 						if (child_pb_type->ports[k].type == OUT_PORT) {
 							for (m = 0; m < child_pb_type->ports[k].num_pins;
 									m++) {
 								node_index =
 										pb_graph_node->child_pb_graph_nodes[mode_of_edge][i][j].output_pins[port_index][m].pin_count_in_cluster;
-								if (rr_node[node_index].net_num != OPEN) {
-									is_used = TRUE;
+								if (pb_route[node_index].atom_net_idx != OPEN) {
+									is_used = true;
 									break;
 								}
 							}
 							port_index++;
 						}
 					}
-					print_open_pb_graph_node(
+					print_open_pb_graph_node(type, 
 							&pb_graph_node->child_pb_graph_nodes[mode_of_edge][i][j],
-							j, is_used, tab_depth + 1, fpout);
+							j, is_used, pb_route, tab_depth + 1, fpout);
 				}
 			}
 		}
@@ -287,7 +312,7 @@ static void print_open_pb_graph_node(t_pb_graph_node * pb_graph_node,
 	}
 }
 
-static void print_pb(FILE *fpout, t_pb * pb, int pb_index, int tab_depth) {
+static void print_pb(FILE *fpout, t_type_ptr type, t_pb * pb, int pb_index, t_pb_route *pb_route, int tab_depth) {
 
 	int column;
 	int i, j, k, m;
@@ -295,8 +320,9 @@ static void print_pb(FILE *fpout, t_pb * pb, int pb_index, int tab_depth) {
 	t_pb_graph_node *pb_graph_node;
 	t_mode *mode;
 	int port_index, node_index;
-	boolean is_used;
+	bool is_used;
 
+	
 	pb_type = pb->pb_graph_node->pb_type;
 	pb_graph_node = pb->pb_graph_node;
 	mode = &pb_type->modes[pb->mode];
@@ -322,10 +348,10 @@ static void print_pb(FILE *fpout, t_pb * pb, int pb_index, int tab_depth) {
 				node_index =
 						pb->pb_graph_node->input_pins[port_index][j].pin_count_in_cluster;
 				if (pb_type->parent_mode == NULL) {
-					print_net_name(rr_node[node_index].net_num, &column,
+					print_net_name(pb_route[node_index].atom_net_idx, &column,
 							tab_depth, fpout);
 				} else {
-					print_interconnect(node_index, &column, tab_depth + 2,
+					print_interconnect(type, node_index, &column, tab_depth + 2, pb_route,
 							fpout);
 				}
 			}
@@ -349,7 +375,7 @@ static void print_pb(FILE *fpout, t_pb * pb, int pb_index, int tab_depth) {
 			for (j = 0; j < pb_type->ports[i].num_pins; j++) {
 				node_index =
 						pb->pb_graph_node->output_pins[port_index][j].pin_count_in_cluster;
-				print_interconnect(node_index, &column, tab_depth + 2, fpout);
+				print_interconnect(type, node_index, &column, tab_depth + 2, pb_route, fpout);
 			}
 			fprintf(fpout, "</port>\n");
 			port_index++;
@@ -371,10 +397,10 @@ static void print_pb(FILE *fpout, t_pb * pb, int pb_index, int tab_depth) {
 				node_index =
 						pb->pb_graph_node->clock_pins[port_index][j].pin_count_in_cluster;
 				if (pb_type->parent_mode == NULL) {
-					print_net_name(rr_node[node_index].net_num, &column,
+					print_net_name(pb_route[node_index].atom_net_idx, &column,
 							tab_depth, fpout);
 				} else {
-					print_interconnect(node_index, &column, tab_depth + 2,
+					print_interconnect(type, node_index, &column, tab_depth + 2, pb_route,
 							fpout);
 				}
 			}
@@ -391,9 +417,9 @@ static void print_pb(FILE *fpout, t_pb * pb, int pb_index, int tab_depth) {
 				/* If child pb is not used but routing is used, I must print things differently */
 				if ((pb->child_pbs[i] != NULL)
 						&& (pb->child_pbs[i][j].name != NULL)) {
-					print_pb(fpout, &pb->child_pbs[i][j], j, tab_depth + 1);
+					print_pb(fpout, type, &pb->child_pbs[i][j], j, pb_route, tab_depth + 1);
 				} else {
-					is_used = FALSE;
+					is_used = false;
 					child_pb_type = &mode->pb_type_children[i];
 					port_index = 0;
 
@@ -403,17 +429,17 @@ static void print_pb(FILE *fpout, t_pb * pb, int pb_index, int tab_depth) {
 									m++) {
 								node_index =
 										pb_graph_node->child_pb_graph_nodes[pb->mode][i][j].output_pins[port_index][m].pin_count_in_cluster;
-								if (rr_node[node_index].net_num != OPEN) {
-									is_used = TRUE;
+								if (pb_route[node_index].atom_net_idx != OPEN) {
+									is_used = true;
 									break;
 								}
 							}
 							port_index++;
 						}
 					}
-					print_open_pb_graph_node(
+					print_open_pb_graph_node(type, 
 							&pb_graph_node->child_pb_graph_nodes[pb->mode][i][j],
-							j, is_used, tab_depth + 1, fpout);
+							j, is_used, pb_route, tab_depth + 1, fpout);
 				}
 			}
 		}
@@ -430,11 +456,12 @@ static void print_clusters(t_block *clb, int num_clusters, FILE * fpout) {
 	int icluster;
 
 	for (icluster = 0; icluster < num_clusters; icluster++) {
-		rr_node = clb[icluster].pb->rr_graph;
-
 		/* TODO: Must do check that total CLB pins match top-level pb pins, perhaps check this earlier? */
-
-		print_pb(fpout, clb[icluster].pb, icluster, 1);
+		if(clb[icluster].pb_route != NULL) {
+			print_pb(fpout, clb[icluster].type, clb[icluster].pb, icluster, clb[icluster].pb_route, 1);
+		} else {
+			print_pb(fpout, clb[icluster].type, clb[icluster].pb, icluster, NULL, 1);
+		}
 	}
 }
 
@@ -443,10 +470,11 @@ static void print_stats(t_block *clb, int num_clusters) {
 	/* Prints out one cluster (clb).  Both the external pins and the *
 	 * internal connections are printed out.                         */
 
-	int ipin, icluster, itype, inet;/*, iblk;*/
+	int ipin, icluster, itype;/*, iblk;*/
+	unsigned int inet;
 	/*int unabsorbable_ffs;*/
 	int total_nets_absorbed;
-	boolean * nets_absorbed;
+	bool * nets_absorbed;
 
 	int *num_clb_types, *num_clb_inputs_used, *num_clb_outputs_used;
 
@@ -458,9 +486,9 @@ static void print_stats(t_block *clb, int num_clusters) {
 	num_clb_outputs_used = (int*) my_calloc(num_types, sizeof(int));
 
 
-	nets_absorbed = (boolean *) my_calloc(num_logical_nets, sizeof(boolean));
-	for (inet = 0; inet < num_logical_nets; inet++) {
-		nets_absorbed[inet] = TRUE;
+	nets_absorbed = (bool *) my_calloc(g_atoms_nlist.net.size(), sizeof(bool));
+	for (inet = 0; inet < g_atoms_nlist.net.size(); inet++) {
+		nets_absorbed[inet] = true;
 	}
 
 #if 0
@@ -470,30 +498,48 @@ static void print_stats(t_block *clb, int num_clusters) {
 	unabsorbable_ffs = 0;
 	for (iblk = 0; iblk < num_logical_blocks; iblk++) {
 		if (strcmp(logical_block[iblk].model->name, "latch") == 0) {
-			if (vpack_net[logical_block[iblk].nets->input_nets[0][0]].num_sinks > 1
+			if (g_atoms_nlist.net[logical_block[iblk].nets->input_nets[0][0]].num_sinks() > 1
 					|| strcmp(
-							logical_block[vpack_net[logical_block[iblk].nets->input_nets[0][0]].node_block[0]].model->name,
+							logical_block[g_atoms_nlist.net[logical_block[iblk].nets->input_nets[0][0]].pins[0].block].model->name,
 							"names") != 0) {
 				unabsorbable_ffs++;
 			}
 		}
 	}
-	vpr_printf(TIO_MESSAGE_INFO, "\n");
-	vpr_printf(TIO_MESSAGE_INFO, "%d FFs in input netlist not absorbable (ie. impossible to form BLE).\n", unabsorbable_ffs);
+	vpr_printf_info("\n");
+	vpr_printf_info("%d FFs in input netlist not absorbable (ie. impossible to form BLE).\n", unabsorbable_ffs);
 #endif
 
 	/* Counters used only for statistics purposes. */
 
 	for (icluster = 0; icluster < num_clusters; icluster++) {
 		for (ipin = 0; ipin < clb[icluster].type->num_pins; ipin++) {
-			if (clb[icluster].nets[ipin] != OPEN) {
-				nets_absorbed[clb[icluster].nets[ipin]] = FALSE;
-				if (clb[icluster].type->class_inf[clb[icluster].type->pin_class[ipin]].type
+			if (clb[icluster].pb_route == NULL) {
+				if (clb[icluster].nets[ipin] != OPEN) {
+					nets_absorbed[clb[icluster].nets[ipin]] = false;
+					if (clb[icluster].type->class_inf[clb[icluster].type->pin_class[ipin]].type
 						== RECEIVER) {
-					num_clb_inputs_used[clb[icluster].type->index]++;
-				} else if (clb[icluster].type->class_inf[clb[icluster].type->pin_class[ipin]].type
+						num_clb_inputs_used[clb[icluster].type->index]++;
+					}
+					else if (clb[icluster].type->class_inf[clb[icluster].type->pin_class[ipin]].type
 						== DRIVER) {
-					num_clb_outputs_used[clb[icluster].type->index]++;
+						num_clb_outputs_used[clb[icluster].type->index]++;
+					}
+				}
+			}
+			else {
+				int pb_graph_pin_id = get_pb_graph_node_pin_from_block_pin(icluster, ipin)->pin_count_in_cluster;
+				int atom_net_idx = clb[icluster].pb_route[pb_graph_pin_id].atom_net_idx;
+				if (atom_net_idx != OPEN) {
+					nets_absorbed[atom_net_idx] = false;
+					if (clb[icluster].type->class_inf[clb[icluster].type->pin_class[ipin]].type
+						== RECEIVER) {
+						num_clb_inputs_used[clb[icluster].type->index]++;
+					}
+					else if (clb[icluster].type->class_inf[clb[icluster].type->pin_class[ipin]].type
+						== DRIVER) {
+						num_clb_outputs_used[clb[icluster].type->index]++;
+					}
 				}
 			}
 		}
@@ -502,10 +548,10 @@ static void print_stats(t_block *clb, int num_clusters) {
 
 	for (itype = 0; itype < num_types; itype++) {
 		if (num_clb_types[itype] == 0) {
-			vpr_printf(TIO_MESSAGE_INFO, "\t%s: # blocks: %d, average # input + clock pins used: %g, average # output pins used: %g\n",
+			vpr_printf_info("\t%s: # blocks: %d, average # input + clock pins used: %g, average # output pins used: %g\n",
 					type_descriptors[itype].name, num_clb_types[itype], 0.0, 0.0);
 		} else {
-			vpr_printf(TIO_MESSAGE_INFO, "\t%s: # blocks: %d, average # input + clock pins used: %g, average # output pins used: %g\n",
+			vpr_printf_info("\t%s: # blocks: %d, average # input + clock pins used: %g, average # output pins used: %g\n",
 					type_descriptors[itype].name, num_clb_types[itype],
 					(float) num_clb_inputs_used[itype] / (float) num_clb_types[itype],
 					(float) num_clb_outputs_used[itype] / (float) num_clb_types[itype]);
@@ -513,13 +559,13 @@ static void print_stats(t_block *clb, int num_clusters) {
 	}
 
 	total_nets_absorbed = 0;
-	for (inet = 0; inet < num_logical_nets; inet++) {
-		if (nets_absorbed[inet] == TRUE) {
+	for (inet = 0; inet < g_atoms_nlist.net.size(); inet++) {
+		if (nets_absorbed[inet] == true) {
 			total_nets_absorbed++;
 		}
 	}
-	vpr_printf(TIO_MESSAGE_INFO, "Absorbed logical nets %d out of %d nets, %d nets not absorbed.\n",
-			total_nets_absorbed, num_logical_nets, num_logical_nets - total_nets_absorbed);
+	vpr_printf_info("Absorbed logical nets %d out of %d nets, %d nets not absorbed.\n",
+			total_nets_absorbed, (int)g_atoms_nlist.net.size(), (int)g_atoms_nlist.net.size() - total_nets_absorbed);
 	free(nets_absorbed);
 	free(num_clb_types);
 	free(num_clb_inputs_used);
@@ -527,8 +573,8 @@ static void print_stats(t_block *clb, int num_clusters) {
 	/* TODO: print more stats */
 }
 
-void output_clustering(t_block *clb, int num_clusters, boolean global_clocks,
-		boolean * is_clock, char *out_fname, boolean skip_clustering) {
+void output_clustering(const t_arch *arch, t_block *clb, int num_clusters, const vector < vector <t_intra_lb_net> * > &intra_lb_routing, bool global_clocks,
+		bool * is_clock, char *out_fname, bool skip_clustering) {
 
 	/* 
 	 * This routine dumps out the output netlist in a format suitable for  *
@@ -536,8 +582,22 @@ void output_clustering(t_block *clb, int num_clusters, boolean global_clocks,
 	 * the cluster, in essentially a graph based format.                           */
 
 	FILE *fpout;
-	int bnum, netnum, column;
+	int bnum, column;
+	unsigned netnum;
 
+	if(!intra_lb_routing.empty()) {
+		assert((int)intra_lb_routing.size() == num_clusters);
+		for(int icluster = 0; icluster < num_clusters; icluster++) {
+			clb[icluster].pb_route = alloc_and_load_pb_route(intra_lb_routing[icluster], clb[icluster].pb->pb_graph_node);
+		}
+	}
+
+	pb_graph_pin_lookup_from_index_by_type = new t_pb_graph_pin **[num_types];
+	for(int itype = 0; itype < num_types; itype++) {
+		pb_graph_pin_lookup_from_index_by_type[itype] = alloc_and_load_pb_graph_pin_lookup_from_index(&type_descriptors[itype]);
+	}
+
+	
 	fpout = fopen(out_fname, "w");
 
 	fprintf(fpout, "<block name=\"%s\" instance=\"FPGA_packed_netlist[0]\">\n",
@@ -565,9 +625,9 @@ void output_clustering(t_block *clb, int num_clusters, boolean global_clocks,
 	if (global_clocks) {
 		fprintf(fpout, "\n\t<clocks>\n\t\t");
 
-		for (netnum = 0; netnum < num_logical_nets; netnum++) {
+		for (netnum = 0; netnum < g_atoms_nlist.net.size(); netnum++) {
 			if (is_clock[netnum]) {
-				print_string(vpack_net[netnum].name, &column, 2, fpout);
+				print_string(g_atoms_nlist.net[netnum].name, &column, 2, fpout);
 			}
 		}
 		fprintf(fpout, "\n\t</clocks>\n\n");
@@ -587,23 +647,39 @@ void output_clustering(t_block *clb, int num_clusters, boolean global_clocks,
 			break;
 
 		case VPACK_EMPTY:
-			vpr_printf(TIO_MESSAGE_ERROR, "in output_netlist: logical_block %d is VPACK_EMPTY.\n",
+			vpr_throw(VPR_ERROR_PACK, __FILE__, __LINE__, 
+					"in output_netlist: logical_block %d is VPACK_EMPTY.\n",
 					bnum);
-			exit(1);
 			break;
 
 		default:
-			vpr_printf(TIO_MESSAGE_ERROR, "in output_netlist: Unexpected type %d for logical_block %d.\n", 
+			vpr_printf_error(__FILE__, __LINE__, 
+					"in output_netlist: Unexpected type %d for logical_block %d.\n", 
 					logical_block[bnum].type, bnum);
 		}
 	}
 
-	if (skip_clustering == FALSE)
+	if (skip_clustering == false)
 		print_clusters(clb, num_clusters, fpout);
 
 	fprintf(fpout, "</block>\n\n");
 
 	fclose(fpout);
 
+#ifdef OUTPUT_BLIF
+		output_blif (arch, clb, num_clusters, getEchoFileName(E_ECHO_POST_PACK_NETLIST));
+#endif
+
 	print_stats(clb, num_clusters);
+	if(!intra_lb_routing.empty()) {
+		for(int icluster = 0; icluster < num_clusters; icluster++) {
+			free_pb_route(clb[icluster].pb_route);
+			clb[icluster].pb_route = NULL;
+		}
+	}
+
+	for(int itype = 0; itype < num_types; itype++) {
+		free_pb_graph_pin_lookup_from_index (pb_graph_pin_lookup_from_index_by_type[itype]);
+	}
+	delete[] pb_graph_pin_lookup_from_index_by_type;
 }

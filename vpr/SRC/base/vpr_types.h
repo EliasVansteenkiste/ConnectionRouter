@@ -15,7 +15,7 @@
 
  logical_block - One node in the input technology-mapped netlist
  net - Connectivity data structure for the user netlist
- block - An already clustered logic block
+ block - An already clustered logic block, the placer finds physical locations for these blocks.  Intra-logic block interconnect stored in pb_route.
  rr_node - The basic building block of the interconnect in the FPGA architecture
 
  Cluster-specific main data structure:
@@ -23,16 +23,13 @@
  t_pb: Stores the mapping between the user netlist and the logic blocks on the FPGA achitecture.  For example, if a user design has 10 clusters of 5 LUTs each, you will have 10 t_pb instances of type cluster and within each of those clusters another 5 t_pb instances of type LUT.
  The t_pb hierarchy follows what is described by t_pb_graph_node
 
- Each top-level pb stores the entire routing resource graph (rr_graph).  The traceback information is included in this rr_graph so if you needed to determine connectivity down to the wire level, this is the data structure that you would traverse.
- The rr_graph is generated based on the pb_graph_node netlist of that pb.  Each pb_graph_node has a member variable called pin_count that serves as the index for the rr_node (in retrospect, I should have used rr_node_index instead of pin_count for the member variable to be more descriptive).  
- This makes it easy to identify which rr_node corresponds to which pb_graph_pin.  Additional sources and sinks are generated at the inputs and outputs of the complex logic block to match with what has already been packed into the cluster.
- 
-
  */
 
 #ifndef VPR_TYPES_H
 #define VPR_TYPES_H
 
+#include <vector>
+#include <unordered_map>
 #include "arch_types.h"
 #include <map>
 
@@ -56,7 +53,6 @@ typedef struct s_net_power t_net_power;
 /*#define PRINT_TIMING_GRAPH*//*prints out the timing graph */
 /*#define PRINT_REL_POS_DISTR *//*prints out the relative distribution graph for placements */
 /*#define DUMP_BLIF_ECHO*//*dump blif of internal representation of user circuit.  Useful for ensuring functional correctness via logical equivalence with input blif*/
-/*#define HACK_LUT_PIN_SWAPPING*//* Hack to enable LUT input pin swapping for delay purposes */
 
 #ifdef SPEC
 #define NO_GRAPHICS		/* Rips out graphics (for non-X11 systems)      */
@@ -88,6 +84,9 @@ typedef size_t bitfield;
 #define FIRST_ITER_WIRELENTH_LIMIT 0.85 /* If used wirelength exceeds this value in first iteration of routing, do not route */
 
 #define EMPTY -1
+#define INVALID -2
+
+#define ROUTING_PREDICTOR_RUNNING_AVERAGE_BASE 5 /* Base number of previous iterations used to compute reduction in congestion */
 
 /*******************************************************************************
  * Packing specific data types and constants
@@ -110,63 +109,17 @@ enum logical_block_types {
 
 /* Selection algorithm for selecting next seed  */
 enum e_cluster_seed {
-	VPACK_TIMING, VPACK_MAX_INPUTS
+	VPACK_TIMING, VPACK_MAX_INPUTS, VPACK_BLEND
 };
 
 enum e_block_pack_status {
 	BLK_PASSED, BLK_FAILED_FEASIBLE, BLK_FAILED_ROUTE, BLK_STATUS_UNDEFINED
 };
 
-struct s_rr_node;
-/* defined later, but need to declare here because it is used */
+/* these are defined later, but need to declare here because it is used */
+typedef class RR_Node t_rr_node;
 struct s_pack_molecule;
-/* defined later, but need to declare here because it is used */
-
-/* Stores statistical information for pb such as cost information */
-typedef struct s_pb_stats {
-	/* Packing statistics */
-	std::map<int, float> gain; /* Attraction (inverse of cost) function */
-
-	std::map<int, float> timinggain; /* [0..num_logical_blocks-1]. The timing criticality score of this logical_block. 
-	 Determined by the most critical vpack_net between this logical_block and any logical_block in the current pb */
-	std::map<int, float> connectiongain; /* [0..num_logical_blocks-1] Weighted sum of connections to attraction function */
-	std::map<int, float> prevconnectiongainincr; /* [0..num_logical_blocks-1] Prev sum to weighted sum of connections to attraction function */
-	std::map<int, float> sharinggain; /* [0..num_logical_blocks-1]. How many nets on this logical_block are already in the pb under consideration */
-
-	/* [0..num_logical_blocks-1]. This is the gain used for hill-climbing. It stores*
-	 * the reduction in the number of pins that adding this logical_block to the the*
-	 * current pb will have. This reflects the fact that sometimes the *
-	 * addition of a logical_block to a pb may reduce the number of inputs     *
-	 * required if it shares inputs with all other BLEs and it's output is  *
-	 * used by all other child pbs in this parent pb.                               */
-	std::map<int, float> hillgain;
-
-	/* [0..num_marked_nets] and [0..num_marked_blocks] respectively.  List  *
-	 * the indices of the nets and blocks that have had their num_pins_of_  *
-	 * net_in_pb and gain entries altered.                             */
-	int *marked_nets, *marked_blocks;
-	int num_marked_nets, num_marked_blocks;
-	int num_child_blocks_in_pb;
-
-	int tie_break_high_fanout_net; /* If no marked candidate atoms, use this high fanout net to determine the next candidate atom */
-
-	/* [0..num_logical_nets-1].  How many pins of each vpack_net are contained in the *
-	 * currently open pb?                                          */
-	std::map<int, int> num_pins_of_net_in_pb;
-
-	/* Record of pins of class used TODO: Jason Luu: Should really be using hash table for this for speed, too lazy to write one now, performance isn't too bad since I'm at most iterating over the number of pins of a pb which is effectively a constant for reasonable architectures */
-	int **input_pins_used; /* [0..pb_graph_node->num_pin_classes-1][0..pin_class_size] number of input pins of this class that are used */
-	int **output_pins_used; /* [0..pb_graph_node->num_pin_classes-1][0..pin_class_size] number of output pins of this class that are used */
-
-	int **lookahead_input_pins_used; /* [0..pb_graph_node->num_pin_classes-1][0..pin_class_size] number of input pins of this class that are speculatively used */
-	int **lookahead_output_pins_used; /* [0..pb_graph_node->num_pin_classes-1][0..pin_class_size] number of output pins of this class that are speculatively used */
-
-	/* Array of feasible blocks to select from [0..max_array_size-1] 
-	 Sorted in ascending gain order so that the last block is the most desirable (this makes it easy to pop blocks off the list
-	 */
-	struct s_pack_molecule **feasible_blocks;
-	int num_feasible_blocks; /* [0..num_marked_models-1] */
-} t_pb_stats;
+struct s_pb_stats;
 
 /* An FPGA complex block is represented by a hierarchy of physical blocks.  
  These include leaf physical blocks that a netlist block can map to (such as LUTs, flip-flops, memory slices, etc),
@@ -185,23 +138,43 @@ typedef struct s_pb {
 	struct s_pb **child_pbs; /* children pbs attached to this pb [0..num_child_pb_types - 1][0..child_type->num_pb - 1] */
 	struct s_pb *parent_pb; /* pointer to parent node */
 
-	struct s_rr_node *rr_graph; /* pointer to rr_graph connecting pbs of cluster */
-	struct s_pb **rr_node_to_pb_mapping; /* [0..num_local_rr_nodes-1] pointer look-up of which pb this rr_node belongs based on index, NULL if pb does not exist  */
 	struct s_pb_stats *pb_stats; /* statistics for current pb */
-
-	struct s_net *local_nets; /* Records post-packing connections, valid only for top-level */
-	int num_local_nets; /* Records post-packing connections, valid only for top-level */
 
 	int clock_net; /* Records clock net driving a flip-flop, valid only for lowest-level, flip-flop PBs */
 
-	int *lut_pin_remap; /* [0..num_lut_inputs-1] applies only to LUT primitives, stores how LUT inputs were swapped during CAD flow, 
-	 LUT inputs can be swapped by changing the logic in the LUT, this is useful because the fastest LUT input compared to the slowest is often significant (2-5x),
-	 so this optimization is crucial for handling LUT based FPGAs.
-	 */
+	int get_num_child_types() const {
+		if (child_pbs != NULL && has_modes()) {
+			return pb_graph_node->pb_type->modes[mode].num_pb_type_children;
+		} else {
+			return 0;
+		}
+	}
+	int get_num_children_of_type(int type_index) const {
+		return get_mode()->pb_type_children[type_index].num_pb;
+	}
+	t_mode* get_mode() const {
+		if (has_modes()) {
+			return &pb_graph_node->pb_type->modes[mode];
+		} else {
+			return NULL;
+		}
+	}
+	bool has_modes() const {
+		return pb_graph_node->pb_type->num_modes > 0;
+	}
 } t_pb;
 
 struct s_tnode;
+/* Representation of intra-logic block routing */
+struct t_pb_route {
+	int atom_net_idx;	/* which net in the atomic netlist uses this pin */
+	int prev_pb_pin_id; /* The pb_graph_pin id of the pb_pin that drives this pin */
 
+	t_pb_route() {
+		atom_net_idx = OPEN;
+		prev_pb_pin_id = OPEN;
+	}
+};
 typedef struct s_nets {
 	int **input_nets; /* [0..num_input_ports-1][0..num_port_pins-1] List of input nets connected to this logical_block. */
 	int **output_nets; /* [0..num_output_ports-1][0..num_port_pins-1] List of output nets connected to this logical_block. */
@@ -213,7 +186,7 @@ typedef struct s_nets {
 
 /* Technology-mapped user netlist block */
 typedef struct s_logical_block {
-	char *name; /* Taken from the first vpack_net which it drives. */
+	char *name; /* Taken from the first g_atoms_nlist.net which it drives. */
 	enum logical_block_types type; /* I/O, combinational logic, or latch */
 	t_model* model; /* Technology-mapped type (eg. LUT, Flip-flop, memory slice, inpad, etc) */
 
@@ -239,9 +212,12 @@ typedef struct s_logical_block {
 	struct s_linked_vptr *packed_molecules; /* List of t_pack_molecules that this logical block is a part of */
 
 	t_pb_graph_node *expected_lowest_cost_primitive; /* predicted ideal primitive to use for this logical block */
+
+	char ***input_pin_names; /* [0..num_ports-1][0..num_pins-1] save the input name so that it can be labelled correctly later for formal equivalence verification, we do the same thing for unused inputs as formal equivalence requires this */
+	char ***output_pin_names; /* [0..num_ports-1][0..num_pins-1] save the output name so that it can be labelled correctly later for formal equivalence verification, we do the same thing for unused inputs as formal equivalence requires this */
+	char *clock_pin_name; /* save the clock name so that it can be labelled correctly later for formal equivalence verification, we do the same thing for unused inputs as formal equivalence requires this */
+
 } t_logical_block;
-
-
 
 typedef struct s_map_block {
 	char *name;
@@ -271,7 +247,7 @@ typedef struct s_pack_molecule {
 	t_pack_patterns *pack_pattern; /* If this is a forced_pack molecule, pattern this molecule matches */
 	t_model_chain_pattern *chain_pattern; /* If this is a chain molecule, chain that this molecule matches */
 	t_logical_block **logical_block_ptrs; /* [0..num_blocks-1] ptrs to logical blocks that implements this molecule, index on pack_pattern_block->index of pack pattern */
-	boolean valid; /* Whether or not this molecule is still valid */
+	bool valid; /* Whether or not this molecule is still valid */
 
 	int num_blocks; /* number of logical blocks of molecule */
 	int root; /* root index of molecule, logical_block_ptrs[root] is ptr to root logical block */
@@ -352,6 +328,8 @@ typedef enum {
 	TN_FF_SINK, /* sink (D) pin of flip-flop */
 	TN_FF_SOURCE, /* source (Q) pin of flip-flop */
 	TN_FF_CLOCK, /* clock pin of flip-flop */
+    TN_CLOCK_SOURCE, /* An on-chip clock generator such as a pll */
+    TN_CLOCK_OPIN, /* Output pin from an on-chip clock source - comes from TN_CLOCK_SOURCE */
 	TN_CONSTANT_GEN_SOURCE /* source of a constant logic 1 or 0 */
 } e_tnode_type;
 
@@ -397,6 +375,9 @@ typedef struct s_tnode {
 
 	/* Used in pre-packing timing graph only: */
 	t_prepacked_tnode_data * prepacked_data;
+
+	unsigned int is_comb_loop_breakpoint : 1; /* Indicates that this tnode had input edges purposely
+											  disconnected to break a combinational loop */
 } t_tnode;
 
 /* Other structures storing timing information */
@@ -405,7 +386,7 @@ typedef struct s_clock {
 	/* Stores information on clocks given timing constraints.
 	 Used in SDC parsing and timing analysis. */
 	char * name;
-	boolean is_netlist_clock; /* Is this a netlist or virtual (external) clock? */
+	bool is_netlist_clock; /* Is this a netlist or virtual (external) clock? */
 	int fanout;
 } t_clock;
 
@@ -439,7 +420,7 @@ typedef struct s_timing_stats {
 
 typedef struct s_slack {
 	/* Matrices storing slacks and criticalities of each sink pin on each net
-	 [0..num_nets-1][1..num_pins-1] for both pre- and post-packed netlists. */
+	 [0..net.size()-1][1..num_pins-1] for both pre- and post-packed netlists. */
 	float ** slack;
 	float ** timing_criticality;
 #ifdef PATH_COUNTING
@@ -537,6 +518,8 @@ struct s_net_power {
  *          which each net terminal connects. 
  * node_block_pin: [0..num_sinks]. Contains the index of the pin (on a block) to 
  *          which each net terminal connects. 
+ * is_routed: not routed (has been pre-routed)
+ * is_fixed: not routed (has been pre-routed)
  * is_global: not routed
  * is_const_gen: constant generator (does not affect timing) */
 typedef struct s_net {
@@ -545,22 +528,25 @@ typedef struct s_net {
 	int *node_block;
 	int *node_block_port;
 	int *node_block_pin;
-	boolean is_global;
-	boolean is_const_gen;
-	t_net_power * net_power;
-        /* index of the first connection in the net * Added by Elias Vansteenkiste */
-        int con;
+	unsigned int is_routed : 1;
+	unsigned int is_fixed : 1;
+	unsigned int is_global : 1;
+	unsigned int is_const_gen : 1;
+    /* index of the first connection in the net * Added by Elias Vansteenkiste */
+    int con;
 } t_net;
 
 /* s_grid_tile is the minimum tile of the fpga                         
  * type:  Pointer to type descriptor, NULL for illegal, IO_TYPE for io 
- * offset: Number of grid tiles above the bottom location of a block 
+ * width_offset: Number of grid tiles reserved based on width (right) of a block
+ * height_offset: Number of grid tiles reserved based on height (top) of a block
  * usage: Number of blocks used in this grid tile
  * blocks[]: Array of logical blocks placed in a physical position, EMPTY means
  no block at that index */
 typedef struct s_grid_tile {
 	t_type_ptr type;
-	int offset;
+	int width_offset;
+	int height_offset;
 	int usage;
 	int *blocks;
 } t_grid_tile;
@@ -585,6 +571,46 @@ struct s_place_region {
 	float cost;
 };
 
+/* Stores the information of the move for a block that is       *
+ * moved during placement                                       *
+ * block_num: the index of the moved block                      *
+ * xold: the x_coord that the block is moved from               *
+ * xnew: the x_coord that the block is moved to                 *
+ * yold: the y_coord that the block is moved from               *
+ * xnew: the x_coord that the block is moved to                 *
+ */
+typedef struct s_pl_moved_block {
+	int block_num;
+	int xold;
+	int xnew;
+	int yold;
+	int ynew;
+	int zold;
+	int znew;
+	int swapped_to_was_empty;
+	int swapped_from_is_empty;
+} t_pl_moved_block;
+
+/* Stores the list of blocks to be moved in a swap during       *
+ * placement.                                                   *
+ * num_moved_blocks: total number of blocks moved when          *
+ *                   swapping two blocks.                       *
+ * moved blocks: a list of moved blocks data structure with     *
+ *               information on the move.                       *
+ *               [0...num_moved_blocks-1]                       *
+ */
+typedef struct s_pl_blocks_to_be_moved {
+	int num_moved_blocks;
+	t_pl_moved_block * moved_blocks;
+} t_pl_blocks_to_be_moved;
+
+/* legal positions for type */
+typedef struct s_legal_pos {
+	int x;
+	int y;
+	int z;
+} t_legal_pos;
+
 /*
  Represents a clustered logic block of a user circuit that fits into one unit of space in an FPGA grid block
  name: identifier for this block
@@ -594,7 +620,8 @@ struct s_place_region {
  y: y-coordinate
  z: occupancy coordinate
  pb: Physical block representing the clustering of this CLB
- isFixed: TRUE if this block's position is fixed by the user and shouldn't be moved during annealing
+ pb_pin_route_stats: [0..num_pb_graph_pins-1] Representation of intra logic block routing within CLB
+ is_fixed: true if this block's position is fixed by the user and shouldn't be moved during annealing
  */
 struct s_block {
 	char *name;
@@ -604,10 +631,10 @@ struct s_block {
 	int y;
 	int z;
 
-	t_pb *pb;
+	t_pb *pb; /* Internal-to-block hierarchy */
+	t_pb_route *pb_route; /* Internal-to-block routing */
 
-	boolean isFixed;
-
+	unsigned int is_fixed : 1;
 };
 typedef struct s_block t_block;
 
@@ -627,6 +654,7 @@ struct s_file_name_opts {
 
 /* Options for packing
  * TODO: document each packing parameter         */
+
 enum e_packer_algorithm {
 	PACK_GREEDY, PACK_BRUTE_FORCE
 };
@@ -635,10 +663,10 @@ struct s_packer_opts {
 	char *blif_file_name;
 	char *sdc_file_name;
 	char *output_file;
-	boolean global_clocks;
-	boolean hill_climbing_flag;
-	boolean sweep_hanging_nets_and_inputs;
-	boolean timing_driven;
+	bool global_clocks;
+	bool hill_climbing_flag;
+	bool sweep_hanging_nets_and_inputs;
+	bool timing_driven;
 	enum e_cluster_seed cluster_seed_type;
 	float alpha;
 	float beta;
@@ -646,12 +674,12 @@ struct s_packer_opts {
 	float block_delay;
 	float intra_cluster_net_delay;
 	float inter_cluster_net_delay;
-	boolean auto_compute_inter_cluster_net_delay;
-	boolean skip_clustering;
-	boolean allow_unrelated_clustering;
-	boolean allow_early_exit;
-	boolean connection_driven;
-	boolean doPacking;
+	bool auto_compute_inter_cluster_net_delay;
+	bool skip_clustering;
+	bool allow_unrelated_clustering;
+	bool allow_early_exit;
+	bool connection_driven;
+	bool doPacking;
 	enum e_packer_algorithm packer_algorithm;
 	float aspect;
 };
@@ -661,34 +689,13 @@ struct s_packer_opts {
  * num_blocks^4/3 to find the number of moves per temperature.  The       *
  * remaining information is used only for USER_SCHED, and have the        *
  * obvious meanings.                                                      */
+
 struct s_annealing_sched {
 	enum sched_type type;
 	float inner_num;
 	float init_t;
 	float alpha_t;
 	float exit_t;
-};
-
-enum e_place_algorithm {
-	BOUNDING_BOX_PLACE, NET_TIMING_DRIVEN_PLACE, PATH_TIMING_DRIVEN_PLACE
-};
-
-struct s_placer_opts {
-	enum e_place_algorithm place_algorithm;
-	float timing_tradeoff;
-	int block_dist;
-	float place_cost_exp;
-	int place_chan_width;
-	enum e_pad_loc_type pad_loc_type;
-	char *pad_loc_file;
-	enum pfreq place_freq;
-	int recompute_crit_iter;
-	boolean enable_timing_computations;
-	int inner_loop_recompute_divider;
-	float td_place_exp_first;
-	int seed;
-	float td_place_exp_last;
-	boolean doPlacement;
 };
 
 /* Various options for the placer.                                           *
@@ -717,39 +724,28 @@ struct s_placer_opts {
  * td_place_exp_first: exponent that is used on the timing_driven criticlity *
  *               it is the value that the exponent starts at.                *
  * td_place_exp_last: value that the criticality exponent will be at the end *
- * doPlacement: TRUE if placement is supposed to be done in the CAD flow, FALSE otherwise */
+ * doPlacement: true if placement is supposed to be done in the CAD flow, false otherwise */
 
-enum e_route_type {
-	GLOBAL, DETAILED
-};
-enum e_router_algorithm {
-	BREADTH_FIRST, BREADTH_FIRST_CONR, TIMING_DRIVEN, TIMING_DRIVEN_CONR, DIRECTED_SEARCH_CONR, NO_TIMING
-};
-enum e_base_cost_type {
-	INTRINSIC_DELAY, DELAY_NORMALIZED, DEMAND_ONLY
+enum e_place_algorithm {
+	BOUNDING_BOX_PLACE, NET_TIMING_DRIVEN_PLACE, PATH_TIMING_DRIVEN_PLACE
 };
 
-#define NO_FIXED_CHANNEL_WIDTH -1
-
-typedef struct s_router_opts t_router_opts;
-struct s_router_opts {
-	float first_iter_pres_fac;
-	float initial_pres_fac;
-	float pres_fac_mult;
-	float acc_fac;
-	float bend_cost;
-	int max_router_iterations;
-	int bb_factor;
-	enum e_route_type route_type;
-	int fixed_channel_width;
-	enum e_router_algorithm router_algorithm;
-	enum e_base_cost_type base_cost_type;
-	float astar_fac;
-	float max_criticality;
-	float criticality_exp;
-	boolean verify_binary_search;
-	boolean full_stats;
-	boolean doRouting;
+struct s_placer_opts {
+	enum e_place_algorithm place_algorithm;
+	float timing_tradeoff;
+	int block_dist;
+	float place_cost_exp;
+	int place_chan_width;
+	enum e_pad_loc_type pad_loc_type;
+	char *pad_loc_file;
+	enum pfreq place_freq;
+	int recompute_crit_iter;
+	bool enable_timing_computations;
+	int inner_loop_recompute_divider;
+	float td_place_exp_first;
+	int seed;
+	float td_place_exp_last;
+	bool doPlacement;
 };
 
 /* All the parameters controlling the router's operation are in this        *
@@ -765,6 +761,9 @@ struct s_router_opts {
  * bend_cost:  Cost of a bend (usually non-zero only for global routing).   *
  * max_router_iterations:  Maximum number of iterations before giving       *
  *                up.                                                       *
+ * min_incremental_reroute_fanout: Minimum fanout a net needs to have 		*
+ *				for incremental reroute to be applied to it through route 	*
+ *				tree pruning. Larger circuits should get larger thresholds	*
  * bb_factor:  Linear distance a route can go outside the net bounding      *
  *             box.                                                         *
  * route_type:  GLOBAL or DETAILED.                                         *
@@ -791,20 +790,52 @@ struct s_router_opts {
  *                  will ever have (i.e. clip criticality to this number).  *
  * criticality_exp: Set criticality to (path_length(sink) / longest_path) ^ *
  *                  criticality_exp (then clip to max_criticality).         
- * doRouting: True if routing is supposed to be done, FALSE otherwise */
+ * doRouting: true if routing is supposed to be done, false otherwise	    *
+ * routing_failure_predictor: sets the configuration to be used by the	    *
+ * routing failure predictor, how aggressive the threshold used to judge
+ * and abort routings deemed unroutable */
 
-typedef struct s_det_routing_arch t_det_routing_arch;
-struct s_det_routing_arch {
-	enum e_directionality directionality; /* UDSD by AY */
-	int Fs;
-	enum e_switch_block_type switch_block_type;
-	int num_segment;
-	short num_switch;
-	short global_route_switch;
-	short delayless_switch;
-	short wire_to_ipin_switch;
-	float R_minW_nmos;
-	float R_minW_pmos;
+enum e_route_type {
+	GLOBAL, DETAILED
+};
+enum e_router_algorithm {
+	BREADTH_FIRST, TIMING_DRIVEN, NO_TIMING, BREADTH_FIRST_CONR, TIMING_DRIVEN_CONR, DIRECTED_SEARCH_CONR
+};
+enum e_base_cost_type {
+	INTRINSIC_DELAY, DELAY_NORMALIZED, DEMAND_ONLY
+};
+enum e_routing_failure_predictor {
+	OFF, SAFE, AGGRESSIVE
+};
+
+#define NO_FIXED_CHANNEL_WIDTH -1
+
+typedef struct s_router_opts t_router_opts;
+struct s_router_opts {
+	float first_iter_pres_fac;
+	float initial_pres_fac;
+	float pres_fac_mult;
+	float acc_fac;
+	float bend_cost;
+	int max_router_iterations;
+	int min_incremental_reroute_fanout;
+	int bb_factor;
+	enum e_route_type route_type;
+	int fixed_channel_width;
+	bool trim_empty_channels;
+	bool trim_obs_channels;
+	enum e_router_algorithm router_algorithm;
+	enum e_base_cost_type base_cost_type;
+	float astar_fac;
+	float max_criticality;
+	float criticality_exp;
+	bool verify_binary_search;
+	bool full_stats;
+	bool congestion_analysis;
+	bool fanout_analysis;
+    bool switch_usage_analysis;
+	bool doRouting;
+	enum e_routing_failure_predictor routing_failure_predictor;
 };
 
 /* Defines the detailed routing architecture of the FPGA.  Only important   *
@@ -819,80 +850,116 @@ struct s_det_routing_arch {
  *           to track i in other channels.  See Steve Wilton, Phd Thesis,   *
  *           University of Toronto, 1996.  The UNIVERSAL switch block is    *
  *           from Y. W. Chang et al, TODAES, Jan. 1996, pp. 80 - 101.       *
+ *           A CUSTOM switch block has also been added which allows a user  *
+ *           to describe custom permutation functions and connection        *
+ *           patterns. See comment at top of SRC/route/build_switchblocks.c *
+ * switchblocks: A vector of custom switch block descriptions that is       *
+ *           used with the CUSTOM switch block type. See comment at top of  *
+ *           SRC/route/build_switchblocks.c                                 *
  * num_segment:  Number of distinct segment types in the FPGA.              *
- * num_switch:  Number of distinct switch types (pass transistors or        *
- *              buffers) in the FPGA.                                       *
  * delayless_switch:  Index of a zero delay switch (used to connect things  *
  *                    that should have no delay).                           *
- * wire_to_ipin_switch:  Index of a switch used to connect wire segments    *
- *                       to clb or pad input pins (IPINs).                  *
  * R_minW_nmos:  Resistance (in Ohms) of a minimum width nmos transistor.   *
  *               Used only in the FPGA area model.                          *
- * R_minW_pmos:  Resistance (in Ohms) of a minimum width pmos transistor.   */
+ * R_minW_pmos:  Resistance (in Ohms) of a minimum width pmos transistor.   *
+ * dump_rr_structs_file: routing resource structures will be dumped in      *
+ *                       build_rr_graph() to a file specified by this       *
+ *                       variable                                           */
+
+typedef struct s_det_routing_arch t_det_routing_arch;
+struct s_det_routing_arch {
+	enum e_directionality directionality; /* UDSD by AY */
+	int Fs;
+	enum e_switch_block_type switch_block_type;
+	std::vector<t_switchblock_inf> switchblocks;
+	int num_segment;
+
+	short global_route_switch;
+	short delayless_switch;
+	int wire_to_arch_ipin_switch;
+	int wire_to_rr_ipin_switch;
+	float R_minW_nmos;
+	float R_minW_pmos;
+
+	char *dump_rr_structs_file;
+};
+
+/* legacy routing drivers by Andy Ye (remove or integrate in future) */
 
 enum e_drivers {
 	MULTI_BUFFERED, SINGLE
 };
-/* legacy routing drivers by Andy Ye (remove or integrate in future) */
+
+/* UDSD by AY */
 
 enum e_direction {
 	INC_DIRECTION = 0, DEC_DIRECTION = 1, BI_DIRECTION = 2
 };
-/* UDSD by AY */
-
-typedef struct s_seg_details {
-	int length;
-	int start;
-	boolean longline;
-	boolean *sb;
-	boolean *cb;
-	short wire_switch;
-	short opin_switch;
-	float Rmetal;
-	float Cmetal;
-	boolean twisted;
-	enum e_direction direction; /* UDSD by AY */
-	enum e_drivers drivers; /* UDSD by AY */
-	int group_start;
-	int group_size;
-	int index;
-	float Cmetal_per_m; /* Used for power */
-} t_seg_details;
 
 /* Lists detailed information about segmentation.  [0 .. W-1].              *
  * length:  length of segment.                                              *
  * start:  index at which a segment starts in channel 0.                    *
- * longline:  TRUE if this segment spans the entire channel.                *
- * sb:  [0..length]:  TRUE for every channel intersection, relative to the  *
+ * longline:  true if this segment spans the entire channel.                *
+ * sb:  [0..length]:  true for every channel intersection, relative to the  *
  *      segment start, at which there is a switch box.                      *
- * cb:  [0..length-1]:  TRUE for every logic block along the segment at     *
+ * cb:  [0..length-1]:  true for every logic block along the segment at     *
  *      which there is a connection box.                                    *
- * wire_switch:  Index of the switch type that connects other wires *to*    *
- *               this segment.                                              *
- * opin_switch:  Index of the switch type that connects output pins (OPINs) *
- *               *to* this segment.                                         *
+ * arch_wire_switch: Index of the switch type that connects other wires     *
+ *                   *to* this segment. Note that this index is in relation *
+ *                   to the switches from the architecture file, not the    *
+ *                   expanded list of switches that is built at the end of  *
+ *                   build_rr_graph.                                        *
+ * arch_wire_switch: Index of the switch type that connects output pins     *
+ *                   (OPINs) *to* this segment. Note that this index is in  *
+ *                   relation to the switches from the architecture file,   *
+ *                   not the expanded list of switches that is is built     *
+ *                   at the end of build_rr_graph                           *
  * Cmetal: Capacitance of a routing track, per unit logic block length.     *
  * Rmetal: Resistance of a routing track, per unit logic block length.      *
  * (UDSD by AY) direction: The direction of a routing track.                *
  * (UDSD by AY) drivers: How do signals driving a routing track connect to  *
  *                       the track?                                         *
- * index: index of the segment type used for this track.                    */
+ * index: index of the segment type used for this track.                    *
+ * type_name_ptr: pointer to name of the segment type this track belongs    *
+ *                to. points to the appropriate name in s_segment_inf       */               
+
+typedef struct s_seg_details {
+	int length;
+	int start;
+	bool longline;
+	bool *sb;
+	bool *cb;
+	short arch_wire_switch;
+	short arch_opin_switch;
+	float Rmetal;
+	float Cmetal;
+	bool twisted;
+	enum e_direction direction; /* UDSD by AY */
+	enum e_drivers drivers; /* UDSD by AY */
+	int group_start;
+	int group_size;
+	int seg_start;
+	int seg_end;
+	int index;
+	float Cmetal_per_m; /* Used for power */
+	const char *type_name_ptr;
+} t_seg_details;
+
+/* Defines a 2-D array of t_seg_details data structures (one per channel)   */
+
+typedef struct s_seg_details** t_chan_details;
+
+/* A linked list of float pointers.  Used for keeping track of   *
+ * which pathcosts in the router have been changed.              */
 
 struct s_linked_f_pointer {
 	struct s_linked_f_pointer *next;
 	float *fptr;
 };
 
-/* A linked list of float pointers.  Used for keeping track of   *
- * which pathcosts in the router have been changed.              */
-
 /* Uncomment lines below to save some memory, at the cost of debugging ease. */
 /*enum e_rr_type {SOURCE, SINK, IPIN, OPIN, CHANX, CHANY}; */
 /* typedef short t_rr_type */
-
-typedef enum e_rr_type {
-	SOURCE = 0, SINK, IPIN, OPIN, CHANX, CHANY, INTRA_CLUSTER_EDGE, NUM_RR_TYPES
-} t_rr_type;
 
 /* Type of a routing resource node.  x-directed channel segment,   *
  * y-directed channel segment, input pin to a clb to pad, output   *
@@ -902,14 +969,12 @@ typedef enum e_rr_type {
  * SINK:    A dummy node that is a logical input within a block    *
  *          -- i.e. the gate that needs a signal.                  */
 
-typedef struct s_trace {
-	int index;
-	short iswitch;
-	int iblock;
-	int num_siblings;
-	struct s_trace *next;
-} t_trace;
-
+typedef enum e_rr_type {
+	SOURCE = 0, SINK, IPIN, OPIN, CHANX, CHANY, INTRA_CLUSTER_EDGE, NUM_RR_TYPES
+} t_rr_type;
+const std::vector<const char*> node_typename {
+	"SOURCE", "SINK", "IPIN", "OPIN", "CHANX", "CHANY", "ICE"
+};
 /* Basic element used to store the traceback (routing) of each net.        *
  * index:   Array index (ID) of this routing resource node.                *
  * iswitch: Index of the switch type used to go from this rr_node to       *
@@ -924,128 +989,17 @@ typedef struct s_trace {
  *               single child, '+1' defines branch with 2 or more children.*
  * next:    Pointer to the next traceback element in this route.           */
 
+typedef struct s_trace {
+	struct s_trace *next;
+	int index;
+	int iblock;
+	int num_siblings;
+	short iswitch;
+} t_trace;
+
 #define NO_PREVIOUS -1
 
-typedef struct s_rr_node {
-	short xlow;
-	short xhigh;
-	short ylow;
-	short yhigh;
-
-	short ptc_num;
-
-	short cost_index;
-	short occ;
-	short capacity;
-	short fan_in;
-	short num_edges;
-	t_rr_type type;
-	int *edges;
-	short *switches;
-
-	float R;
-	float C;
-
-	enum e_direction direction; /* UDSD by AY */
-	enum e_drivers drivers; /* UDSD by AY */
-	int num_wire_drivers; /* UDSD by WMF */
-	int num_opin_drivers; /* UDSD by WMF (could use "short") */
-
-	/* Used by clustering only (TODO, may wish to extend to regular router) */
-	int prev_node;
-	int prev_edge;
-	int net_num;
-	t_pb_graph_pin *pb_graph_pin;
-	t_tnode *tnode;
-	float pack_intrinsic_cost;
-
-	int z; /* For IPIN, source, and sink nodes, helps identify which location this rr_node belongs to */
-} t_rr_node;
-/* Main structure describing one routing resource node.  Everything in       *
- * this structure should describe the graph -- information needed only       *
- * to store algorithm-specific data should be stored in one of the           *
- * parallel rr_node_?? structures.                                           *
- *                                                                           *
- * xlow, xhigh, ylow, yhigh:  Integer coordinates (see route.c for           *
- *       coordinate system) of the ends of this routing resource.            *
- *       xlow = xhigh and ylow = yhigh for pins or for segments of           *
- *       length 1.  These values are used to decide whether or not this      *
- *       node should be added to the expansion heap, based on things         *
- *       like whether it's outside the net bounding box or is moving         *
- *       further away from the target, etc.                                  *
- * type:  What is this routing resource?                                     *
- * ptc_num:  Pin, track or class number, depending on rr_node type.          *
- *           Needed to properly draw.                                        *
- * cost_index: An integer index into the table of routing resource indexed   *
- *             data (this indirection allows quick dynamic changes of rr     *
- *             base costs, and some memory storage savings for fields that   *
- *             have only a few distinct values).                             *
- * occ:        Current occupancy (usage) of this node.                       *
- * capacity:   Capacity of this node (number of routes that can use it).     *
- * num_edges:  Number of edges exiting this node.  That is, the number       *
- *             of nodes to which it connects.                                *
- * edges[0..num_edges-1]:  Array of indices of the neighbours of this        *
- *                         node.                                             *
- * switches[0..num_edges-1]:  Array of switch indexes for each of the        *
- *                            edges leaving this node.                       *
- *                                                                           *
- * The following parameters are only needed for timing analysis.             *
- * R:  Resistance to go through this node.  This is only metal               *
- *     resistance (end to end, so conservative) -- it doesn't include the    *
- *     switch that leads to another rr_node.                                 *
- * C:  Total capacitance of this node.  Includes metal capacitance, the      *
- *     input capacitance of all switches hanging off the node, the           *
- *     output capacitance of all switches to the node, and the connection    *
- *     box buffer capacitances hanging off it.                               *
- * (UDSD by AY) direction: if the node represents a track, this field        *
- *                         indicates the direction of the track. Otherwise   *
- *                         the value contained in the field should be        *
- *                         ignored.                                          *
- * (UDSD by AY) drivers: if the node represents a track, this field          *
- *                       indicates the driving architecture of the track.    *
- *                       Otherwise the value contained in the field should   *
- *                       be ignored.                                         */
-
-typedef struct s_rr_indexed_data {
-	float base_cost;
-	float saved_base_cost;
-	int ortho_cost_index;
-	int seg_index;
-	float inv_length;
-	float T_linear;
-	float T_quadratic;
-	float C_load;
-
-
-	/* Power Estimation: Wire capacitance in (Farads * tiles / meter)
-	 * This is used to calculate capacitance of this segment, by
-	 * multiplying it by the length per tile (meters/tile).
-	 * This is only the wire capacitance, not including any switches */
-	float C_tile_per_m;
-} t_rr_indexed_data;
-
-/* Data that is pointed to by the .cost_index member of t_rr_node.  It's     *
- * purpose is to store the base_cost so that it can be quickly changed       *
- * and to store fields that have only a few different values (like           *
- * seg_index) or whose values should be an average over all rr_nodes of a    *
- * certain type (like T_linear etc., which are used to predict remaining     *
- * delay in the timing_driven router).                                       *
- *                                                                           *
- * base_cost:  The basic cost of using an rr_node.                           *
- * ortho_cost_index:  The index of the type of rr_node that generally        *
- *                    connects to this type of rr_node, but runs in the      *
- *                    orthogonal direction (e.g. vertical if the direction   *
- *                    of this member is horizontal).                         *
- * seg_index:  Index into segment_inf of this segment type if this type of   *
- *             rr_node is an CHANX or CHANY; OPEN (-1) otherwise.            *
- * inv_length:  1/length of this type of segment.                            *
- * T_linear:  Delay through N segments of this type is N * T_linear + N^2 *  *
- *            T_quadratic.  For buffered segments all delay is T_linear.     *
- * T_quadratic:  Dominant delay for unbuffered segments, 0 for buffered      *
- *               segments.                                                   *
- * C_load:  Load capacitance seen by the driver for each segment added to    *
- *          the chain driven by the driver.  0 for buffered segments.        */
-
+/* Index of the SOURCE, SINK, OPIN, IPIN, etc. member of rr_indexed_data.    */
 enum e_cost_indices {
 	SOURCE_COST_INDEX = 0,
 	SINK_COST_INDEX,
@@ -1054,13 +1008,21 @@ enum e_cost_indices {
 	CHANX_COST_INDEX_START
 };
 
-/* Gives the index of the SOURCE, SINK, OPIN, IPIN, etc. member of           *
- * rr_indexed_data.                                                          */
-
 /* Power estimation options */
 struct s_power_opts {
-	boolean do_power; /* Perform power estimation? */
+	bool do_power; /* Perform power estimation? */
 };
+
+/* Channel width data */
+typedef struct s_chan_width {
+	int max;
+	int x_max;
+	int y_max;
+	int x_min;
+	int y_min;
+	int *x_list;
+	int *y_list;
+} t_chan_width;
 
 /* Type to store our list of token to enum pairings */
 struct s_TokenPair {
@@ -1068,9 +1030,11 @@ struct s_TokenPair {
 	int Enum;
 };
 
+struct t_lb_type_rr_node; /* Defined in pack_types.h */
+
 /* Store settings for VPR */
 typedef struct s_vpr_setup {
-	boolean TimingEnabled; /* Is VPR timing enabled */
+	bool TimingEnabled; /* Is VPR timing enabled */
 	struct s_file_name_opts FileNameOpts; /* File names */
 	enum e_operation Operation; /* run VPR or do analysis only */
 	t_model * user_models; /* blif models defined by the user */
@@ -1080,10 +1044,12 @@ typedef struct s_vpr_setup {
 	struct s_annealing_sched AnnealSched; /* Placement option annealing schedule */
 	struct s_router_opts RouterOpts; /* router options */
 	struct s_det_routing_arch RoutingArch; /* routing architecture */
+	std::vector <t_lb_type_rr_node> *PackerRRGraph;
 	t_segment_inf * Segments; /* wires in routing architecture */
 	t_timing_inf Timing; /* timing information */
 	float constant_net_delay; /* timing information when place and route not run */
-	boolean ShowGraphics; /* option to show graphics */
+	bool ShowGraphics; /* option to show graphics */
+	bool gen_netlist_as_blif; /* option to print out post-pack/pre-place netlist as blif */
 	int GraphPause; /* user interactiveness graphics option */
 	t_power_opts PowerOpts;
 } t_vpr_setup;
@@ -1093,6 +1059,8 @@ typedef struct s_vpr_setup {
 typedef struct s_con {
     char *name;
     int net;
+    unsigned int is_routed;
+    unsigned int is_fixed;
     int source;
     int source_block;
     int source_block_port;
@@ -1100,62 +1068,43 @@ typedef struct s_con {
     int sink_block;
     int sink_block_port;
     int sink_block_pin;
-
     int target_node; /* sink node */
-    
     float previous_total_path_cost;
-    float neighborhood;
+//    float neighborhood;
     int previous_total_shares;
 } t_con;
 
-typedef struct s_node_entry {
-    int node;
-    short usage;
-} t_node_entry;
-
-
-typedef struct s_node_hash_map{
-    t_node_entry** node_entries;
-    int size;
-    int no_entries;
-} t_node_hash_map;
-
-struct s_linked_rg_edge_ref
+typedef  struct s_rg_edge
 {
-    struct s_rg_edge *edge;
-    struct s_linked_rg_edge_ref *next;
-};
-typedef struct s_linked_rg_edge_ref t_linked_rg_edge_ref;
-
-struct s_rg_edge
-{
-	struct s_rg_node *child;
+    struct s_rg_node *child;
     union{
 		struct s_rg_node *parent;
 		struct s_rg_edge *next;
     }u;
-
     short iswitch;
     short usage;
-};
-typedef struct s_rg_edge t_rg_edge;
+} t_rg_edge;
 
-struct s_rg_node
+typedef struct s_linked_rg_edge_ref{
+    struct s_rg_edge *edge;
+    struct s_linked_rg_edge_ref *next;
+} t_linked_rg_edge_ref;
+
+typedef struct s_rg_node
 {
-	t_linked_rg_edge_ref *child_list;
-	union{
-		t_linked_rg_edge_ref *parent_list;
-	    struct s_rg_node *next;
-	}u;
+    t_linked_rg_edge_ref *child_list;
+    union{
+        t_linked_rg_edge_ref *parent_list; 
+        struct s_rg_node *next;
+    }u;
     int no_parents;
     int inode;
     short re_expand;
-    short visited;
+    bool visited;
     float C_downstream;
     float R_upstream;
     float Tdel;
-};
-typedef struct s_rg_node t_rg_node;
+} t_rg_node;
 
 typedef struct s_rr_to_rg_node_entry {
     int rr_node;
@@ -1174,6 +1123,18 @@ typedef struct s_rr_to_rg_node_hash_map{
     int no_entries;
 } t_rr_to_rg_node_hash_map;
 
+typedef struct s_node_entry {
+    int node;
+    short usage;
+} t_node_entry;
+
+
+typedef struct s_node_hash_map{
+    t_node_entry** node_entries;
+    int size;
+    int no_entries;
+} t_node_hash_map;
+
+
 
 #endif
-

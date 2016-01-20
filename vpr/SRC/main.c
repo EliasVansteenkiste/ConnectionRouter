@@ -10,13 +10,14 @@
  3.  globals.h - Defines the global variables used by VPR.
  */
 
-
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
-#include <time.h>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+using namespace std;
 
 #include "vpr_api.h"
+#include "util.h" /* for CLOCKS_PER_SEC */
+#include "path_delay.h" /* for timing_analysis_runtime */
 
 /**
  * VPR program
@@ -30,6 +31,7 @@
  * 3.  Place-and-route and timing analysis
  * 4.  Clean up
  */
+
 int main(int argc, char **argv) {
 	t_options Options;
 	t_arch Arch;
@@ -38,39 +40,42 @@ int main(int argc, char **argv) {
 
 	entire_flow_begin = clock();
 
-	/* Read options, architecture, and circuit netlist */
-	vpr_init(argc, argv, &Options, &vpr_setup, &Arch);
+	try{
+		/* Read options, architecture, and circuit netlist */
+		vpr_init(argc, argv, &Options, &vpr_setup, &Arch);
 
-	/* If the user requests packing, do packing */
-	if (vpr_setup.PackerOpts.doPacking) {
-		vpr_pack(vpr_setup, Arch);
-	}
-
-	if (vpr_setup.PlacerOpts.doPlacement || vpr_setup.RouterOpts.doRouting) {
-		vpr_init_pre_place_and_route(vpr_setup, Arch);
-		vpr_place_and_route(vpr_setup, Arch);
-#if 0
-		if(vpr_setup.RouterOpts.doRouting) {
-			vpr_resync_post_route_netlist_to_TI_CLAY_v1_architecture(&Arch);
+		/* If the user requests packing, do packing */
+		if (vpr_setup.PackerOpts.doPacking) {
+			vpr_pack(vpr_setup, Arch);
 		}
-#endif
-	}
 
-	if (vpr_setup.PowerOpts.do_power) {
-		vpr_power_estimation(vpr_setup, Arch);
+		if (vpr_setup.PlacerOpts.doPlacement || vpr_setup.RouterOpts.doRouting) {
+			vpr_init_pre_place_and_route(vpr_setup, Arch);
+			
+			#ifdef INTERPOSER_BASED_ARCHITECTURE
+			vpr_setup_interposer_cut_locations(Arch);
+			#endif
+			
+			vpr_place_and_route(&vpr_setup, Arch);
+		}
+
+		if (vpr_setup.PowerOpts.do_power) {
+			vpr_power_estimation(vpr_setup, Arch);
+		}
+	
+		entire_flow_end = clock();
+
+        vpr_printf_info("Timing analysis took %g seconds.\n", float(timing_analysis_runtime) / CLOCKS_PER_SEC);
+		vpr_printf_info("The entire flow of VPR took %g seconds.\n", 
+				(float)(entire_flow_end - entire_flow_begin) / CLOCKS_PER_SEC);
+	
+		/* free data structures */
+		vpr_free_all(Arch, Options, vpr_setup);
+	}
+	catch(t_vpr_error* vpr_error){
+		vpr_print_error(vpr_error);
 	}
 	
-	entire_flow_end = clock();
-	
-	#ifdef CLOCKS_PER_SEC
-		vpr_printf(TIO_MESSAGE_INFO, "The entire flow of VPR took %g seconds.\n", (float)(entire_flow_end - entire_flow_begin) / CLOCKS_PER_SEC);
-	#else
-		vpr_printf(TIO_MESSAGE_INFO, "The entire flow of VPR took %g seconds.\n", (float)(entire_flow_end - entire_flow_begin) / CLK_PER_SEC);
-	#endif
-	
-	/* free data structures */
-	vpr_free_all(Arch, Options, vpr_setup);
-
 	/* Return 0 to single success to scripts */
 	return 0;
 }

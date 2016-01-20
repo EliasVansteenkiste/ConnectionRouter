@@ -1,5 +1,7 @@
-#include <stdio.h>
-#include <math.h>
+#include <cstdio>
+#include <cmath>
+using namespace std;
+
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
@@ -31,17 +33,18 @@ static void free_crit(t_chunk *chunk_list_ptr);
 static float ** alloc_crit(t_chunk *chunk_list_ptr) {
 
 	/* Allocates space for the timing_place_crit data structure *
-	 * [0..num_nets-1][1..num_pins-1].  I chunk the data to save space on large    *
+	 * [0..g_clbs_nlist.net.size()-1][1..num_pins-1].  I chunk the data to save space on large    *
 	 * problems.                                                                   */
 
-	float **local_crit; /* [0..num_nets-1][1..num_pins-1] */
+	float **local_crit; /* [0..g_clbs_nlist.net.size()-1][1..num_pins-1] */
 	float *tmp_ptr;
-	int inet;
+	unsigned int inet;
 
-	local_crit = (float **) my_malloc(num_nets * sizeof(float *));
+	local_crit = (float **) my_malloc(g_clbs_nlist.net.size() * sizeof(float *));
 
-	for (inet = 0; inet < num_nets; inet++) {
-		tmp_ptr = (float *) my_chunk_malloc( (clb_net[inet].num_sinks) * sizeof(float), chunk_list_ptr);
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
+		tmp_ptr = (float *) my_chunk_malloc(
+				(g_clbs_nlist.net[inet].num_sinks()) * sizeof(float), chunk_list_ptr);
 		local_crit[inet] = tmp_ptr - 1; /* [1..num_sinks] */
 	}
 
@@ -82,17 +85,17 @@ void load_criticalities(t_slack * slacks, float crit_exponent) {
 	  For every pin on every net (or, equivalently, for every tedge ending 
 	  in that pin), timing_place_crit = criticality^(criticality exponent) */
 
-	int inet, ipin;
+	unsigned int ipin, inet;
 #ifdef PATH_COUNTING
 	float timing_criticality, path_criticality; 
 #endif
 
-	for (inet = 0; inet < num_nets; inet++) {
-		if (inet == OPEN)
+	for (inet = 0; inet < g_clbs_nlist.net.size(); inet++) {
+		if ((int) inet == OPEN)
 			continue;
-		if (clb_net[inet].is_global)
+		if (g_clbs_nlist.net[inet].is_global)
 			continue;
-        for (ipin = 1; ipin <= clb_net[inet].num_sinks; ipin++) {
+		for (ipin = 1; ipin < g_clbs_nlist.net[inet].pins.size(); ipin++) {
 			if (slacks->timing_criticality[inet][ipin] < HUGE_NEGATIVE_FLOAT + 1) {
 				/* We didn't analyze this connection, so give it a timing_place_crit of 0. */
 				timing_place_crit[inet][ipin] = 0.;
@@ -119,15 +122,17 @@ void load_criticalities(t_slack * slacks, float crit_exponent) {
 /**************************************/
 t_slack * alloc_lookups_and_criticalities(t_chan_width_dist chan_width_dist,
 		struct s_router_opts router_opts,
-		struct s_det_routing_arch det_routing_arch, t_segment_inf * segment_inf,
+		struct s_det_routing_arch *det_routing_arch, t_segment_inf * segment_inf,
 		t_timing_inf timing_inf, float ***net_delay, INP t_direct_inf *directs, 
 		INP int num_directs) {
-
+    printf("call alloc_and_load_timing_graph\n");
 	t_slack * slacks = alloc_and_load_timing_graph(timing_inf);
 
-	(*net_delay) = alloc_net_delay(&net_delay_ch, clb_net, num_nets);
+	(*net_delay) = alloc_net_delay(&net_delay_ch, g_clbs_nlist.net,
+			g_clbs_nlist.net.size());
 
-	compute_delay_lookup_tables(router_opts, det_routing_arch, segment_inf,timing_inf, chan_width_dist, directs, num_directs);
+	compute_delay_lookup_tables(router_opts, det_routing_arch, segment_inf,
+			timing_inf, chan_width_dist, directs, num_directs);
 	
 	timing_place_crit = alloc_crit(&timing_place_crit_ch);
 

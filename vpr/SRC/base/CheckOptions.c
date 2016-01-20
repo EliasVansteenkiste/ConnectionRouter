@@ -1,4 +1,3 @@
-#include <assert.h>
 #include "util.h"
 #include "vpr_types.h"
 #include "globals.h"
@@ -9,30 +8,30 @@
 
 /* Checks that options don't conflict and that 
  * options aren't specified that may conflict */
-void CheckOptions(INP t_options Options, INP boolean TimingEnabled) {
-	boolean TimingPlacer;
-	boolean TimingRouter;
-	boolean default_flow;
+void CheckOptions(INP t_options Options, INP bool TimingEnabled) {
+	bool TimingPlacer;
+	bool TimingRouter;
+	bool default_flow;
 
 	const struct s_TokenPair *Cur;
 	enum e_OptionBaseToken Yes;
 
-	default_flow = (boolean) (Options.Count[OT_ROUTE] == 0
+	default_flow = (Options.Count[OT_ROUTE] == 0
 			&& Options.Count[OT_PLACE] == 0 && Options.Count[OT_PACK] == 0
 			&& Options.Count[OT_TIMING_ANALYZE_ONLY_WITH_NET_DELAY] == 0);
 
 	/* Check that all filenames were given */
 	if ((NULL == Options.CircuitName) || (NULL == Options.ArchFile)) {
-		vpr_printf(TIO_MESSAGE_ERROR, "Not enough args. Need at least 'vpr <archfile> <circuit_name>'.\n");
-		exit(1);
+		vpr_throw(VPR_ERROR_OTHER, __FILE__, __LINE__, 
+				"Not enough args. Need at least 'vpr <archfile> <circuit_name>'.\n");
 	}
 
 	/* Check that options aren't over specified */
 	Cur = OptionBaseTokenList;
 	while (Cur->Str) {
 		if (Options.Count[Cur->Enum] > 1) {
-			vpr_printf(TIO_MESSAGE_ERROR, "Parameter '%s' was specified more than once on command line.\n", Cur->Str);
-			exit(1);
+			vpr_throw(VPR_ERROR_OTHER, __FILE__, __LINE__, 
+					"Parameter '%s' was specified more than once on command line.\n", Cur->Str);
 		}
 		++Cur;
 	}
@@ -45,27 +44,34 @@ void CheckOptions(INP t_options Options, INP boolean TimingEnabled) {
 	if (Options.Count[OT_TIMING_ANALYZE_ONLY_WITH_NET_DELAY]
 			&& (Options.Count[OT_PACK] || Options.Count[OT_PLACE]
 					|| Options.Count[OT_ROUTE])) {
-		vpr_printf(TIO_MESSAGE_ERROR, "'cluster'/'route'/'place', and 'timing_analysis_only_with_net_delay' are mutually exclusive flags..\n");
-		exit(1);
+		vpr_throw(VPR_ERROR_OTHER, __FILE__, __LINE__, 
+				"'cluster'/'route'/'place', and 'timing_analysis_only_with_net_delay' are mutually exclusive flags..\n");
 	}
 
 	/* If placing and timing is enabled, default to a timing placer */
-	TimingPlacer = (boolean)((Options.Count[OT_PLACE] || default_flow) && TimingEnabled);
+	TimingPlacer =((Options.Count[OT_PLACE] || default_flow) && TimingEnabled);
 	if (Options.Count[OT_PLACE_ALGORITHM] > 0) {
 		if ((PATH_TIMING_DRIVEN_PLACE != Options.PlaceAlgorithm)
 				&& (NET_TIMING_DRIVEN_PLACE != Options.PlaceAlgorithm)) {
 			/* Turn off the timing placer if they request a different placer */
-			TimingPlacer = FALSE;
+			TimingPlacer = false;
 		}
 	}
 
 	/* If routing and timing is enabled, default to a timing router */
-	TimingRouter = (boolean)((Options.Count[OT_ROUTE] || default_flow) && TimingEnabled);
+	TimingRouter =((Options.Count[OT_ROUTE] || default_flow) && TimingEnabled);
 	if (Options.Count[OT_ROUTER_ALGORITHM] > 0) {
 		if (TIMING_DRIVEN != Options.RouterAlgorithm && TIMING_DRIVEN_CONR != Options.RouterAlgorithm) {
 			/* Turn off the timing router if they request a different router */
-			TimingRouter = FALSE;
+			TimingRouter = false;
 		}
+	}
+
+	/* If a dump of routing resource structs was requested then routing should have been specified at a
+	   fixed channel width */
+	if (Options.Count[OT_DUMP_RR_STRUCTS_FILE] && !Options.Count[OT_ROUTE_CHAN_WIDTH]){
+		vpr_throw(VPR_ERROR_OTHER, __FILE__, __LINE__,
+				"-route_chan_width option must be specified if dumping rr structs is requested (-dump_rr_structs_file option)\n");
 	}
 
 	Yes = OT_BASE_UNKNOWN;
@@ -108,8 +114,8 @@ void CheckOptions(INP t_options Options, INP boolean TimingEnabled) {
 		Cur = OptionBaseTokenList;
 		while (Cur->Str) {
 			if (Yes == Cur->Enum) {
-				vpr_printf(TIO_MESSAGE_ERROR, "Option '%s' is not allowed when placement is not run.\n", Cur->Str);
-				exit(1);
+				vpr_throw(VPR_ERROR_OTHER, __FILE__, __LINE__, 
+						"Option '%s' is not allowed when placement is not run.\n", Cur->Str);
 			}
 			++Cur;
 		}
@@ -132,12 +138,12 @@ void CheckOptions(INP t_options Options, INP boolean TimingEnabled) {
 		Yes = OT_TD_PLACE_EXP_LAST;
 	}
 	/* Make sure if place is off none of those options were given */
-	if ((FALSE == TimingPlacer) && (Yes < OT_BASE_UNKNOWN)) {
+	if ((false == TimingPlacer) && (Yes < OT_BASE_UNKNOWN)) {
 		Cur = OptionBaseTokenList;
 		while (Cur->Str) {
 			if (Yes == Cur->Enum) {
-				vpr_printf(TIO_MESSAGE_ERROR, "Option '%s' is not allowed when timing placement is not used.\n", Cur->Str);
-				exit(1);
+				vpr_throw(VPR_ERROR_OTHER, __FILE__, __LINE__, 
+						"Option '%s' is not allowed when timing placement is not used.\n", Cur->Str);
 			}
 			++Cur;
 		}
@@ -191,12 +197,12 @@ void CheckOptions(INP t_options Options, INP boolean TimingEnabled) {
 		Yes = OT_CRITICALITY_EXP;
 	}
 	/* Make sure if timing router is off none of those options were given */
-	if ((FALSE == TimingRouter) && (Yes < OT_BASE_UNKNOWN)) {
+	if ((false == TimingRouter) && (Yes < OT_BASE_UNKNOWN)) {
 		Cur = OptionBaseTokenList;
 		while (Cur->Str) {
 			if (Yes == Cur->Enum) {
-				vpr_printf(TIO_MESSAGE_ERROR, "Option '%s' is not allowed when timing router is not used.\n", Cur->Str);
-				exit(1);
+				vpr_throw(VPR_ERROR_OTHER, __FILE__, __LINE__, 
+						"Option '%s' is not allowed when timing router is not used.\n", Cur->Str);
 			}
 			++Cur;
 		}
