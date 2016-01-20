@@ -4,3 +4,11 @@
 *.route
 *.net
 *.a
+*.sln
+*.vcproj
+*.vcxproj
+*.log
+*.dot
+*.out
+vpr/vpr
+abc_with_bb_support/abc
