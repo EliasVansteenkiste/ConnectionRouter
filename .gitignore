@@ -1,2 +1,6 @@
 *.d
 *.o
+*.place
+*.route
+*.net
+*.a
