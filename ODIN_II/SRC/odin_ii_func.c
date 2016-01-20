@@ -50,6 +50,8 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "adders.h"
 #include "subtractions.h"
 #include "odin_ii_func.h"
+#include "ast_elaborate.h"
+#include "netlist_cleanup.h"
 /*---------------------------------------------------------------------------
  * (function: set_default_options)
  *-------------------------------------------------------------------------*/
@@ -59,7 +61,7 @@ void set_default_options()
 	global_args.config_file = NULL;
 	global_args.verilog_file = NULL;
 	global_args.blif_file = NULL;
-	global_args.output_file = "./default_out.blif";
+	global_args.output_file = strdup("./default_out.blif");
 	global_args.arch_file = NULL;
 	global_args.activation_blif_file = NULL;
 	global_args.activation_netlist_file = NULL;
@@ -79,12 +81,12 @@ void set_default_options()
 	/* Set up the global configuration. */
 	configuration.list_of_file_names = NULL;
 	configuration.num_list_of_file_names = 0;
-	configuration.output_type = "blif";
+	configuration.output_type = strdup("blif");
 	configuration.output_ast_graphs = 0;
 	configuration.output_netlist_graphs = 0;
 	configuration.print_parse_tokens = 0;
 	configuration.output_preproc_source = 0;
-	configuration.debug_output_path = ".";
+	configuration.debug_output_path = strdup(".");
 	configuration.arch_file = NULL;
 
 	configuration.fixed_hard_multiplier = 0;
@@ -126,11 +128,14 @@ void do_high_level_synthesis()
 	/* Note that the entry point for ast optimzations is done per module with the
 	 * function void next_parsed_verilog_file(ast_node_t *file_items_list) */
 
-	/* after the ast is made potentiatlly do tagging for downstream links to verilog */
+	/* after the ast is made potentially do tagging for downstream links to verilog */
 	if (global_args.high_level_block != NULL)
 	{
 		add_tag_data();
 	}
+
+	/* Simplify the AST by reducing complex statements - for loops */
+	simplify_ast();
 
 	/* Now that we have a parse tree (abstract syntax tree [ast]) of
 	 * the Verilog we want to make into a netlist. */
@@ -151,9 +156,14 @@ void do_high_level_synthesis()
 		graphVizOutputNetlist(configuration.debug_output_path, "optimized", 1, verilog_netlist);
 	}
 
+	//*******
+
 	/* point where we convert netlist to FPGA or other hardware target compatible format */
 	printf("Performing Partial Map to target device\n");
 	partial_map_top(verilog_netlist);
+
+	/* Find any unused logic in the netlist and remove it */
+	remove_unused_logic(verilog_netlist);
 
 	#ifdef VPR5
 	/* check for problems in the partial mapped netlist */

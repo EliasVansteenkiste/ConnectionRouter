@@ -1,0 +1,21 @@
+arch	circuit	vpr_revision	vpr_status	min_chan_width	critical_path_delay	pack_time	place_time	min_chan_width_route_time	crit_path_route_time	max_odin_mem	max_abc_mem	max_vpr_mem	num_pre_packed_nets	num_pre_packed_blocks	num_post_packed_nets	num_clb	num_io	num_outputs	num_memories	num_mult	error	
+k6_frac_N10_40nm.xml	alu4.pre-vpr.blif	4614M	success	50	4.82533	1.74271	0.540951	1.46479	0.184046	-1	-1	-1	926	934	465	75	14	8	-1	-1		
+k6_frac_N10_40nm.xml	apex2.pre-vpr.blif	4614M	success	64	5.47894	1.72074	0.827892	2.76841	0.300778	-1	-1	-1	1113	1116	641	91	38	3	-1	-1		
+k6_frac_N10_40nm.xml	apex4.pre-vpr.blif	4614M	success	72	4.77468	1.45555	0.616236	2.3414	0.234507	-1	-1	-1	897	916	544	76	9	19	-1	-1		
+k6_frac_N10_40nm.xml	bigkey.pre-vpr.blif	4614M	success	36	3.15533	2.24899	1.14615	2.08215	0.193117	-1	-1	-1	1364	1561	552	70	229	197	-1	-1		
+k6_frac_N10_40nm.xml	clma.pre-vpr.blif	4614M	success	88	8.1318	5.31742	5.06561	17.72	1.19192	-1	-1	-1	3672	3754	2309	287	62	82	-1	-1		
+k6_frac_N10_40nm.xml	des.pre-vpr.blif	4614M	success	36	3.96447	0.386399	1.26043	1.98713	0.193426	-1	-1	-1	954	1199	589	46	256	245	-1	-1		
+k6_frac_N10_40nm.xml	diffeq.pre-vpr.blif	4614M	success	50	5.15929	0.825608	0.54668	0.600231	0.090622	-1	-1	-1	1371	1410	559	61	64	39	-1	-1		
+k6_frac_N10_40nm.xml	dsip.pre-vpr.blif	4614M	success	38	3.1054	2.22773	1.13383	2.58099	0.157001	-1	-1	-1	1362	1559	572	69	229	197	-1	-1		
+k6_frac_N10_40nm.xml	elliptic.pre-vpr.blif	4614M	success	66	7.15295	4.85681	2.00914	5.12286	0.449673	-1	-1	-1	3421	3535	1258	161	131	114	-1	-1		
+k6_frac_N10_40nm.xml	ex1010.pre-vpr.blif	4614M	success	92	6.6247	5.29303	2.78514	27.8537	1.26969	-1	-1	-1	2659	2669	1404	244	10	10	-1	-1		
+k6_frac_N10_40nm.xml	ex5p.pre-vpr.blif	4614M	success	62	4.12708	1.01198	0.494616	1.3188	0.147306	-1	-1	-1	761	824	419	58	8	63	-1	-1		
+k6_frac_N10_40nm.xml	frisc.pre-vpr.blif	4614M	success	76	8.87057	3.72682	2.24874	6.88621	0.502288	-1	-1	-1	3175	3291	1256	165	20	116	-1	-1		
+k6_frac_N10_40nm.xml	misex3.pre-vpr.blif	4614M	success	50	4.58184	1.32112	0.511202	1.51581	0.165846	-1	-1	-1	828	842	452	67	14	14	-1	-1		
+k6_frac_N10_40nm.xml	pdc.pre-vpr.blif	4614M	success	86	6.79521	5.67732	2.82318	25.4855	1.21615	-1	-1	-1	2839	2879	1455	240	16	40	-1	-1		
+k6_frac_N10_40nm.xml	s298.pre-vpr.blif	4614M	success	50	6.45171	1.25677	0.409483	0.87429	0.116683	-1	-1	-1	726	732	358	59	4	6	-1	-1		
+k6_frac_N10_40nm.xml	s38417.pre-vpr.blif	4614M	success	56	5.38192	4.04538	3.41293	5.58115	0.444695	-1	-1	-1	4782	4888	2011	236	29	106	-1	-1		
+k6_frac_N10_40nm.xml	s38584.1.pre-vpr.blif	4614M	success	62	4.88945	3.14791	3.49205	3.25887	0.433676	-1	-1	-1	4422	4726	2033	222	38	304	-1	-1		
+k6_frac_N10_40nm.xml	seq.pre-vpr.blif	4614M	success	66	4.9825	1.5074	0.748661	2.64286	0.227546	-1	-1	-1	1006	1041	568	80	41	35	-1	-1		
+k6_frac_N10_40nm.xml	spla.pre-vpr.blif	4614M	success	74	6.21716	4.54456	1.96777	13.5183	0.803531	-1	-1	-1	2232	2278	1133	189	16	46	-1	-1		
+k6_frac_N10_40nm.xml	tseng.pre-vpr.blif	4614M	success	48	4.97552	0.869572	0.570525	0.726723	0.084003	-1	-1	-1	1461	1583	498	60	52	122	-1	-1		

@@ -26,6 +26,9 @@
 #ifndef PHYSICAL_TYPES_H
 #define PHYSICAL_TYPES_H
 
+#include <functional>
+#include <vector>
+#include <string>
 #include "logic_types.h"
 #include "util.h"
 
@@ -109,6 +112,15 @@ enum e_power_estimation_method_ {
 typedef enum e_power_estimation_method_ e_power_estimation_method;
 typedef enum e_power_estimation_method_ t_power_estimation_method;
 
+/* Specifies what part of the FPGA a custom switchblock should be built in (i.e. perimeter, core, everywhere) */
+enum e_sb_location{
+	E_PERIMETER = 0,
+	E_CORNER,
+	E_FRINGE,		/* perimeter minus corners */
+	E_CORE,
+	E_EVERYWHERE
+};
+
 /*************************************************************************************************/
 /* FPGA grid layout data types                                                                   */
 /*************************************************************************************************/
@@ -135,7 +147,7 @@ typedef struct s_grid_loc_def {
 /* Data type definitions */
 /*   Grid info */
 struct s_clb_grid {
-	boolean IsAuto;
+	bool IsAuto;
 	float Aspect;
 	int W;
 	int H;
@@ -151,7 +163,7 @@ struct s_clock_arch {
 
 /* Architecture information for a single clock */
 struct s_clock_network {
-	boolean autosize_buffer; /* autosize clock buffers */
+	bool autosize_buffer; /* autosize clock buffers */
 	float buffer_size; /* if not autosized, the clock buffer size */
 	float C_wire; /* Wire capacitance (per meter) */
 
@@ -201,10 +213,11 @@ typedef struct s_class t_class;
  * T_ipin_cblock: Delay through an input pin connection box (from a         *
  *                   routing track to a logic block input pin).             */
 typedef struct s_timing_inf {
-	boolean timing_analysis_enabled;
+	bool timing_analysis_enabled;
 	float C_ipin_cblock;
 	float T_ipin_cblock;
-	char * SDCFile; /* only here for convenience of passing to path_delay.c */
+	char * SDCFile; 
+    char slack_definition;
 } t_timing_inf;
 
 struct s_pb_type;
@@ -220,16 +233,16 @@ struct s_pb_type;
  * port_class: port belongs to recognized set of ports in class library
  * index: port index by index in array of parent pb_type
  * port_index_by_type index of port by type (index by input, output, or clock)
- * equivalence: 
+ * equivalence: Applies to logic block I/Os and to primitive inputs only
  */
 struct s_port {
 	char* name;
 	t_model_ports *model_port;
 	enum PORTS type;
-	boolean is_clock;
-	boolean is_non_clock_global;
+	bool is_clock;
+	bool is_non_clock_global;
 	int num_pins;
-	boolean equivalent;
+	bool equivalent;
 	struct s_pb_type *parent_pb_type;
 	char * port_class;
 
@@ -289,7 +302,7 @@ struct s_interconnect {
 
 	t_pin_to_pin_annotation *annotations; /* [0..num_annotations-1] */
 	int num_annotations;
-	boolean infer_annotations;
+	bool infer_annotations;
 
 	int line_num; /* Interconnect is processed later, need to know what line number it messed up on to give proper error message */
 
@@ -309,7 +322,7 @@ struct s_interconnect_power {
 	/* These are not necessarily power-related; however, at the moment
 	 * only power estimation uses them
 	 */
-	boolean port_info_initialized;
+	bool port_info_initialized;
 	int num_input_ports;
 	int num_output_ports;
 	int num_pins_per_port;
@@ -382,7 +395,7 @@ struct s_pb_graph_pin {
 	int scratch_pad; /* temporary data structure useful to store traversal info */
 
 	/* timing information */
-	enum e_pb_graph_pin_type type; /* Is a sequential logic element (TRUE), inpad/outpad (TRUE), or neither (FALSE) */
+	enum e_pb_graph_pin_type type; /* Is a sequential logic element (true), inpad/outpad (true), or neither (false) */
 	float tsu_tco; /* For sequential logic elements, this is the setup time (if input) or clock-to-q time (if output) */
 	struct s_pb_graph_pin** pin_timing; /* primitive ipin to opin timing */
 	float *pin_timing_del_max; /* primitive ipin to opin timing */
@@ -397,7 +410,7 @@ struct s_pb_graph_pin {
 	struct s_pb_graph_pin ***list_of_connectable_input_pin_ptrs; /* [0..depth-1][0..num_connectable_primtive_input_pins-1] what input pins this output can connect to without exiting cluster at given depth */
 	int *num_connectable_primtive_input_pins; /* [0..depth-1] number of input pins that this output pin can reach without exiting cluster at given depth */
 
-	boolean is_forced_connection; /* This output pin connects to one and only one input pin */
+	bool is_forced_connection; /* This output pin connects to one and only one input pin */
 
 	t_pb_graph_pin_power * pin_power;
 };
@@ -444,11 +457,11 @@ struct s_port_power {
 	float buffer_size;
 
 	/* Pin-Toggle Power Properties */
-	boolean pin_toggle_initialized;
+	bool pin_toggle_initialized;
 	float energy_per_toggle;
 	t_port * scaled_by_port;
 	int scaled_by_port_pin_idx;
-	boolean reverse_scaled;  /* Scale by (1-prob) */
+	bool reverse_scaled; /* Scale by (1-prob) */
 };
 
 struct s_pb_graph_node;
@@ -456,8 +469,8 @@ struct s_pb_graph_node;
 /** Describes a pb graph edge, this is a "fat" edge which means it supports bused based connections
  * input_pins: array of pb_type graph input pins ptrs entering this edge
  * num_input_pins: Number of input pins entering this edge
- * output_pins: array of pb_type graph output pins ptrs entering this edge
- * num_output_pins: Number of output pins entering this edge
+ * output_pins: array of pb_type graph output pins ptrs exiting this edge
+ * num_output_pins: Number of output pins exiting this edge
  */
 struct s_pb_graph_edge {
 	t_pb_graph_pin **input_pins;
@@ -479,7 +492,7 @@ struct s_pb_graph_edge {
 	char **pack_pattern_names; /*[0..num_pack_patterns(of_edge)-1]*/
 	int *pack_pattern_indices; /*[0..num_pack_patterns(of_edge)-1]*/
 	int num_pack_patterns;
-	boolean infer_pattern; /*If TRUE, infer pattern based on patterns connected to it*/
+	bool infer_pattern; /*If true, infer pattern based on patterns connected to it*/
 
 };
 typedef struct s_pb_graph_edge t_pb_graph_edge;
@@ -596,14 +609,15 @@ struct s_pb_type_power {
  num_pins: Number of pins for the block
  capacity: Number of blocks of this type that can occupy one grid tile.
  This is primarily used for IO pads.
+ width: Width of large block in grid tiles
  height: Height of large block in grid tiles
  pinloc: Is set to 1 if a given pin exists on a certain position of a block.
  num_class: Number of logically-equivalent pin classes
  class_inf: Information of each logically-equivalent class
  pin_class: The class a pin belongs to
  is_global_pin: Whether or not a pin is global (hence not routed)
- is_Fc_frac: True if Fc fractional, else Fc absolute
- is_Fc_out_full_flex: True means opins will connect to all available segments
+ is_Fc_frac: true if Fc fractional, else Fc absolute
+ is_Fc_out_full_flex: true means opins will connect to all available segments
  pb_type: Internal subblocks and routing information for this physical block
  pb_graph_head: Head of DAG of pb_types_nodes and their edges
 
@@ -619,23 +633,25 @@ struct s_type_descriptor /* TODO rename this.  maybe physical type descriptor or
 	int num_pins;
 	int capacity;
 
+	int width;
 	int height;
 
-	int ***pinloc; /* [0..height-1][0..3][0..num_pins-1] */
+	int ****pinloc; /* [0..width-1][0..height-1][0..3][0..num_pins-1] */
+	int *pin_width; /* [0..num_pins-1] */
 	int *pin_height; /* [0..num_pins-1] */
-	int **num_pin_loc_assignments; /* [0..height-1][0..3] */
-	char ****pin_loc_assignments; /* [0..height-1][0..3][0..num_tokens-1][0..string_name] */
+	int ***num_pin_loc_assignments; /* [0..width-1][0..height-1][0..3] */
+	char *****pin_loc_assignments; /* [0..width-1][0..height-1][0..3][0..num_tokens-1][0..string_name] */
 	enum e_pin_location_distr pin_location_distribution;
 
 	int num_class;
 	struct s_class *class_inf; /* [0..num_class-1] */
 	int *pin_class; /* [0..num_pins-1] */
 
-	boolean *is_global_pin; /* [0..num_pins-1] */
+	bool *is_global_pin; /* [0..num_pins-1] */
 
-	boolean *is_Fc_frac; /* [0..num_pins-1] */
-	boolean *is_Fc_full_flex; /* [0..num_pins-1] */
-	float *Fc; /* [0..num_pins-1] */
+	bool *is_Fc_frac; /* [0..num_pins-1] */
+	bool *is_Fc_full_flex; /* [0..num_pins-1] */
+	float **Fc; /* [0..num_pins-1][0..num_segments-1] where num_segments is specified in s_arch or s_det_routing_arch */
 
 	/* Clustering info */
 	struct s_pb_type *pb_type;
@@ -687,7 +703,7 @@ enum e_directionality {
 	UNI_DIRECTIONAL, BI_DIRECTIONAL
 };
 enum e_switch_block_type {
-	SUBSET, WILTON, UNIVERSAL, FULL
+	SUBSET, WILTON, UNIVERSAL, FULL, CUSTOM
 };
 typedef enum e_switch_block_type t_switch_block_type;
 enum e_Fc_type {
@@ -696,41 +712,92 @@ enum e_Fc_type {
 
 /* Lists all the important information about a certain segment type.  Only   *
  * used if the route_type is DETAILED.  [0 .. det_routing_arch.num_segment]  *
- * frequency:  ratio of tracks which are of this segment type.            *
+ * name: the name of this segment                                            *
+ * frequency:  ratio of tracks which are of this segment type.               *
  * length:     Length (in clbs) of the segment.                              *
- * wire_switch:  Index of the switch type that connects other wires *to*     *
- *               this segment.                                               *
- * opin_switch:  Index of the switch type that connects output pins (OPINs)  *
- *               *to* this segment.                                          *
+ * arch_wire_switch: Index of the switch type that connects other wires      *
+ *                   *to* this segment. Note that this index is in relation  *
+ *                   to the switches from the architecture file, not the     *
+ *                   expanded list of switches that is built at the end of   *
+ *                   build_rr_graph.                                         *
+ * arch_opin_switch: Index of the switch type that connects output pins      *
+ *                   (OPINs) *to* this segment. Note that this index is in   *
+ *                   relation to the switches from the architecture file,    *
+ *                   not the expanded list of switches that is built         *
+ *                   at the end of build_rr_graph                            *
  * frac_cb:  The fraction of logic blocks along its length to which this     *
  *           segment can connect.  (i.e. internal population).               *
  * frac_sb:  The fraction of the length + 1 switch blocks along the segment  *
  *           to which the segment can connect.  Segments that aren't long    *
  *           lines must connect to at least two switch boxes.                *
  * Cmetal: Capacitance of a routing track, per unit logic block length.      *
- * Rmetal: Resistance of a routing track, per unit logic block length.       
+ * Rmetal: Resistance of a routing track, per unit logic block length.       *
  * (UDSD by AY) drivers: How do signals driving a routing track connect to   *
  *                       the track?                                          */
 typedef struct s_segment_inf {
+	char *name;
 	int frequency;
 	int length;
-	short wire_switch;
-	short opin_switch;
+	short arch_wire_switch;
+	short arch_opin_switch;
 	float frac_cb;
 	float frac_sb;
-	boolean longline;
+	bool longline;
 	float Rmetal;
 	float Cmetal;
 	enum e_directionality directionality;
-	boolean *cb;
+	bool *cb;
 	int cb_len;
-	boolean *sb;
+	bool *sb;
 	int sb_len;
 	//float Cmetal_per_m; /* Wire capacitance (per meter) */
 } t_segment_inf;
 
-/* Lists all the important information about a switch type.                  *
- * [0 .. Arch.num_switch]                                        *
+/* Lists all the important information about a switch type read from the     *
+ * architecture file.                                                        *
+ * [0 .. Arch.num_switch]                                                    *
+ * buffered:  Does this switch include a buffer?                             *
+ * R:  Equivalent resistance of the buffer/switch.                           *
+ * Cin:  Input capacitance.                                                  *
+ * Cout:  Output capacitance.                                                *
+ * Tdel_map: A map where the key is the number of inputs and the entry       *
+ *           is the corresponding delay. If there is only one entry at key   *
+ *           UNDEFINED, then delay is a constant (doesn't vary with fan-in). *
+ *	     A map saves us the trouble of sorting, and has lower access     *
+ *           time for interpolation/extrapolation purposes                   *
+ * mux_trans_size:  The area of each transistor in the segment's driving mux *
+ *                  measured in minimum width transistor units               *
+ * buf_size:  The area of the buffer. If set to zero, area should be         *
+ *            calculated from R                                              */
+typedef struct s_arch_switch_inf {
+	bool buffered;
+	float R;
+	float Cin;
+	float Cout;
+	std::map< int, double > Tdel_map;
+	float mux_trans_size;
+	float buf_size;
+	char *name;
+	e_power_buffer_type power_buffer_type;
+	float power_buffer_size;
+
+	s_arch_switch_inf(){
+		buffered = false;
+		R = 0;
+		Cin = 0;
+		Cout = 0;
+		mux_trans_size = 0;
+		buf_size = 0;
+		name = NULL;
+		power_buffer_type = POWER_BUFFER_TYPE_UNDEFINED;
+		power_buffer_size = 0;
+	}
+} t_arch_switch_inf;
+
+/* Lists all the important information about an rr switch type.              *
+ * The s_rr_switch_inf describes a switch derived from a switch described    *
+ * by s_arch_switch_inf. This indirection allows us to vary properties of a  *
+ * given switch, such as varying delay with switch fan-in.                   * 
  * buffered:  Does this switch include a buffer?                             *
  * R:  Equivalent resistance of the buffer/switch.                           *
  * Cin:  Input capacitance.                                                  *
@@ -741,8 +808,8 @@ typedef struct s_segment_inf {
  *                  measured in minimum width transistor units               *
  * buf_size:  The area of the buffer. If set to zero, area should be         *
  *            calculated from R                                              */
-typedef struct s_switch_inf {
-	boolean buffered;
+typedef struct s_rr_switch_inf {
+	bool buffered;
 	float R;
 	float Cin;
 	float Cout;
@@ -752,6 +819,19 @@ typedef struct s_switch_inf {
 	char *name;
 	e_power_buffer_type power_buffer_type;
 	float power_buffer_size;
+
+	s_rr_switch_inf(){
+		buffered = false;
+		R = 0;
+		Cin = 0;
+		Cout = 0;
+		Tdel = 0;
+		mux_trans_size = 0;
+		buf_size = 0;
+		name = NULL;
+		power_buffer_type = POWER_BUFFER_TYPE_UNDEFINED;
+		power_buffer_size = 0;
+	}
 } t_switch_inf;
 
 /* Lists all the important information about a direct chain connection.     *
@@ -763,6 +843,9 @@ typedef struct s_switch_inf {
  In the format of <block_name>.<pin_name>                        *
  * x_offset:  The x offset from the source to the sink of this connection   *
  * y_offset:  The y offset from the source to the sink of this connection   *
+ * z_offset:  The z offset from the source to the sink of this connection   *
+ * switch_type: The index into the switch list for the switch used by this  *
+ *              direct                                                      *
  * line: The line number in the .arch file that specifies this              *
  *       particular placement macro.                                        *
  */
@@ -773,25 +856,87 @@ typedef struct s_direct_inf {
 	int x_offset;
 	int y_offset;
 	int z_offset;
+	int switch_type;
 	int line;
 } t_direct_inf;
+
+
+/* Used to list information about a set of track segments that should connect through a switchblock */
+typedef struct s_wireconn_inf{
+	std::vector<std::string> from_type;		/* connect from these wire types */
+	std::vector<std::string> to_type;		/* to these wire types */
+	std::vector<int> from_point;			/* indices of wire points belonging to from_type */
+	std::vector<int> to_point;			/* indices of wire points belong to to_type (each 'from_point' connects to every 'to_point' */
+} t_wireconn_inf;
+
+/* represents a connection between two sides of a switchblock */
+class SB_Side_Connection{
+public:
+	/* specify the two SB sides that form a connection */
+	enum e_side from_side;
+	enum e_side to_side;
+
+	void set_sides( enum e_side from, enum e_side to ){
+		from_side = from;
+		to_side = to;
+	}
+
+	SB_Side_Connection(){
+		/* do nothing */
+	}
+
+	SB_Side_Connection(enum e_side from, enum e_side to){
+		from_side = from;
+		to_side = to;
+	}
+
+	/* overload < operator which will be used by std::map */	
+	bool operator < (const SB_Side_Connection &obj) const{
+		bool result;
+
+		if (from_side < obj.from_side){
+			result = true;
+		} else {
+			if (from_side == obj.from_side){
+				result = (to_side < obj.to_side) ? true : false;
+			} else {
+				result = false;
+			}
+		}
+
+		return result;
+	}
+};
+
+/* Use a map to index into the string permutation functions used to connect from one side to another */
+typedef std::map< SB_Side_Connection, std::vector<std::string> > t_permutation_map;
+
+/* Lists all information about a particular switch block specified in the architecture file */
+typedef struct s_switchblock_inf{
+	std::string name;			/* the name of this switchblock */
+	e_sb_location location;			/* where on the FPGA this switchblock should be built (i.e. perimeter, core, everywhere) */
+	e_directionality directionality;	/* the directionality of this switchblock (unidir/bidir) */
+
+	t_permutation_map permutation_map;	/* map holding the permutation functions attributed to this switchblock */
+
+	std::vector<t_wireconn_inf> wireconns;	/* list of wire types/groups this SB will connect */
+} t_switchblock_inf;
+
 
 /*   Detailed routing architecture */
 typedef struct s_arch t_arch;
 struct s_arch {
 	t_chan_width_dist Chans;
 	enum e_switch_block_type SBType;
+	std::vector<t_switchblock_inf> switchblocks;
 	float R_minW_nmos;
 	float R_minW_pmos;
 	int Fs;
-	float C_ipin_cblock;
-	float T_ipin_cblock;
 	float grid_logic_tile_area;
-	float ipin_mux_trans_size;
 	struct s_clb_grid clb_grid;
 	t_segment_inf * Segments;
 	int num_segments;
-	struct s_switch_inf *Switches;
+	struct s_arch_switch_inf *Switches;
 	int num_switches;
 	t_direct_inf *Directs;
 	int num_directs;
@@ -799,6 +944,18 @@ struct s_arch {
 	t_model *model_library;
 	t_power_arch * power;
 	t_clock_arch * clocks;
+	
+	/* Ipin cblock parameters may be set through a switch or through the timing/sizing nodes under <device>.
+	   The former sets the ipin_cblock_switch_name. The latter sets the other 3 fields. */
+	char *ipin_cblock_switch_name;
+	float C_ipin_cblock;
+	float T_ipin_cblock;
+	float ipin_mux_trans_size;
+
+	#ifdef INTERPOSER_BASED_ARCHITECTURE
+	// this is used to make sure a cutline does not go through a physical block
+	int lcm_of_block_heights;
+	#endif
 };
 
 #endif

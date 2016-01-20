@@ -1,0 +1,84 @@
+Node: 311050  TN_FF_CLOCK Block #1585 (n70743)
+Pin: ff.Q[0] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242)
+T_arr: 4.243e-11  T_req: -5.11764e-09  Tdel: 6.032e-11
+Internal Net: #17208 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242).  Pins on net: 4.
+
+Node: 311049  TN_FF_SINK Block #1585 (n70743)
+Pin: ff.Q[0] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242)
+T_arr: 1.0275e-10  T_req: -5.05732e-09  Tdel: 3.211e-11
+Internal Net: #17208 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242).  Pins on net: 4.
+
+Node: 311033  TN_INTERMEDIATE_NODE Block #1585 (n70743)
+Pin: ble6.out_routing[0] pb (n67795)
+T_arr: 1.3486e-10  T_req: -5.02521e-09  Tdel: 0
+Internal Net: #17208 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242).  Pins on net: 4.
+
+Node: 311020  TN_CB_OPIN Block #1585 (n70743)
+Pin: clb.O[0] pb (n70743)
+T_arr: 1.3486e-10  T_req: -5.02521e-09  Tdel: 6.8991e-10
+External-to-Block Net: #1356 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242).  Pins on net: 2.
+
+Node: 6684  TN_CB_IPIN Block #13 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+Pin: mult_36.a[31] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+T_arr: 8.2477e-10  T_req: -4.33531e-09  Tdel: 1.34e-10
+Internal Net: #17208 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242).  Pins on net: 4.
+
+Node: 6988  TN_INTERMEDIATE_NODE Block #13 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+Pin: divisible_mult_18x18.a[13] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+T_arr: 9.5877e-10  T_req: -4.20131e-09  Tdel: 0
+Internal Net: #17208 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242).  Pins on net: 4.
+
+Node: 7108  TN_INTERMEDIATE_NODE Block #13 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+Pin: mult_9x9_slice.A_cfg[4] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+T_arr: 9.5877e-10  T_req: -4.20131e-09  Tdel: 0
+Internal Net: #17208 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242).  Pins on net: 4.
+
+Node: 7140  TN_PRIMITIVE_IPIN Block #13 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+Pin: mult_9x9.a[4] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+T_arr: 9.5877e-10  T_req: -4.20131e-09  Tdel: 1.523e-09
+Internal Net: #17208 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.sh_reg+inst_sh_reg_4^FF_NODE~5242).  Pins on net: 4.
+
+Node: 7166  TN_FF_IPIN Block #13 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+Pin: mult_9x9.out[14] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+T_arr: 2.48177e-09  T_req: -2.67831e-09  Tdel: 0
+Internal Net: #21598 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[14]).  Pins on net: 2.
+
+Node: 7134  TN_INTERMEDIATE_NODE Block #13 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+Pin: mult_9x9_slice.OUT_cfg[14] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+T_arr: 2.48177e-09  T_req: -2.67831e-09  Tdel: 0
+Internal Net: #21598 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[14]).  Pins on net: 2.
+
+Node: 7038  TN_INTERMEDIATE_NODE Block #13 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+Pin: divisible_mult_18x18.out[32] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+T_arr: 2.48177e-09  T_req: -2.67831e-09  Tdel: 1.09e-09
+Internal Net: #21598 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[14]).  Pins on net: 2.
+
+Node: 6782  TN_CB_OPIN Block #13 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+Pin: mult_36.out[68] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[0])
+T_arr: 3.57177e-09  T_req: -1.58831e-09  Tdel: 1.53131e-09
+External-to-Block Net: #1422 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[14]).  Pins on net: 2.
+
+Node: 321267  TN_CB_IPIN Block #1678 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^FF_NODE~5866)
+Pin: clb.I2[2] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^FF_NODE~5866)
+T_arr: 5.10308e-09  T_req: -5.69955e-11  Tdel: 6.47802e-11
+Internal Net: #21598 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[14]).  Pins on net: 2.
+
+Node: 321330  TN_INTERMEDIATE_NODE Block #1678 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^FF_NODE~5866)
+Pin: ble6.in_C[0] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^FF_NODE~5866)
+T_arr: 5.16786e-09  T_req: 7.7845e-12  Tdel: 1.57354e-11
+Internal Net: #21598 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[14]).  Pins on net: 2.
+
+Node: 321333  TN_FF_OPIN Block #1678 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^FF_NODE~5866)
+Pin: ff.D[0] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^FF_NODE~5866)
+T_arr: 5.1836e-09  T_req: 2.352e-11  Tdel: 1.89102e-11
+Internal Net: #21598 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[14]).  Pins on net: 2.
+
+Node: 321334  TN_FF_SOURCE Block #1678 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^FF_NODE~5866)
+Pin: ff.D[0] pb (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^FF_NODE~5866)
+T_arr: 5.20251e-09  T_req: 4.243e-11  
+Internal Net: #21598 (top.wrapper_norm_corr_20+wrapper_norm_corr_20_inst_n.wrapper_corr_20+corr_20_inst.corr+inst_corr_4^MULTIPLY~5831[14]).  Pins on net: 2.
+
+
+Tnodes on critical path: 16  Non-global nets on critical path: 2.
+Global nets on critical path: 0.
+Total logic delay: 2.93886e-09 (s)  Total net delay: 2.22122e-09 (s)

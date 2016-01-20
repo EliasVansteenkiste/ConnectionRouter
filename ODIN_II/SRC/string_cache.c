@@ -8,7 +8,7 @@
 
 unsigned long
 string_hash(STRING_CACHE * sc,
-	    char *string)
+	    const char *string)
 {
     long a, i, mod, mul;
 
@@ -65,10 +65,14 @@ sc_new_string_cache(void)
 
 long
 sc_lookup_string(STRING_CACHE * sc,
-	      char *string)
+	      const char *string)
 {
     long i, hash;
 
+    if(sc == NULL) {
+        return -1;
+    }
+    else {
     hash = string_hash(sc, string) % sc->string_hash_size;
     i = sc->string_hash[hash];
     while(i >= 0)
@@ -78,11 +82,12 @@ sc_lookup_string(STRING_CACHE * sc,
 	    i = sc->next_string[i];
 	}
     return -1;
+    }
 }
 
 long
 sc_add_string(STRING_CACHE * sc,
-	   char *string)
+	   const char *string)
 {
     long i;
     long hash;
@@ -152,13 +157,11 @@ sc_do_alloc(long a,
     return r;
 }
 
-void
-sc_free_string_cache(STRING_CACHE * sc)
+STRING_CACHE * sc_free_string_cache(STRING_CACHE * sc)
 {
     long i;
 
-    if(sc == NULL)
-	return;
+    if(sc == NULL) return NULL;
     for(i = 0; i < sc->free; i++)
 	if (sc->string != NULL)
 	    free(sc->string[i]);
@@ -180,4 +183,6 @@ sc_free_string_cache(STRING_CACHE * sc)
 	    sc->next_string = NULL;
 	}
     free(sc);
+    sc = NULL;
+    return sc;
 }

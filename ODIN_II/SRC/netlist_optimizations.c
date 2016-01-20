@@ -42,6 +42,7 @@ void netlist_optimizations_top(netlist_t *netlist)
 {
 	#ifdef VPR6
 	/* Perform a splitting of the multipliers for hard block mults */
+    	reduce_operations(netlist, MULTIPLY);
 	iterate_multipliers(netlist);
 	clean_multipliers();
 
@@ -50,10 +51,12 @@ void netlist_optimizations_top(netlist_t *netlist)
 	free_memory_lists();
 
 	/* Perform a splitting of the adders for hard block add */
+	reduce_operations(netlist, ADD);
 	iterate_adders(netlist);
 	clean_adders();
 
 	/* Perform a splitting of the adders for hard block sub */
+	reduce_operations(netlist, MINUS);
 	iterate_adders_for_sub(netlist);
 	clean_adders_for_sub();
 	#endif

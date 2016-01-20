@@ -160,7 +160,7 @@ void partial_map_node(nnode_t *node, short traverse_number, netlist_t *netlist)
 		case BITWISE_NOR:
 		case BITWISE_XNOR:
 		case BITWISE_XOR:
-			if (node->num_input_port_sizes == 2)
+			if (node->num_input_port_sizes >= 2)
 			{
 				instantiate_bitwise_logic(node, node->type, traverse_number, netlist);
 			}
@@ -192,8 +192,8 @@ void partial_map_node(nnode_t *node, short traverse_number, netlist_t *netlist)
 			#ifdef VPR6
 			if (hard_adders != NULL)
 			{
-				int max_num = (node->input_port_sizes[0] >= node->input_port_sizes[1])? node->input_port_sizes[0] : node->input_port_sizes[1];
-				if (max_num >= min_add && max_num >= min_threshold_adder)
+				// Check if the size of this adder is greater than the hard vs soft logic threshold
+				if (node->bit_width >= min_threshold_adder)
 					instantiate_hard_adder(node, traverse_number, netlist);
 				else
 					instantiate_add_w_carry(node, traverse_number, netlist);
@@ -424,7 +424,7 @@ void instantiate_buffer(nnode_t *node, short mark, netlist_t *netlist)
 	int width = node->num_input_pins;
 	int i;
 
-	/* for now we just pass the signals dierectly through */
+	/* for now we just pass the signals directly through */
 	for (i = 0; i < width; i++)
 	{
 		int idx_2_buffer = node->input_pins[i]->pin_net_idx;
@@ -543,7 +543,7 @@ void instantiate_bitwise_reduction(nnode_t *node, operation_list op, short mark,
 			cell_op = LOGICAL_XOR;
 			break;
 		default:
-			cell_op = 0;
+			cell_op = NO_OP;
 			oassert(FALSE);
 			break;
 	}
@@ -575,20 +575,22 @@ void instantiate_bitwise_reduction(nnode_t *node, operation_list op, short mark,
 void instantiate_bitwise_logic(nnode_t *node, operation_list op, short mark, netlist_t *netlist)
 {
 	int width;
-	int i;
+	int i, j, k;
 	int port_B_offset;
-	int width_a;
-	int width_b;
+        int lenght_is_larger_others;
+	int *port_width;
 	nnode_t **new_logic_cells;
 	operation_list cell_op;
 
 	oassert(node->num_input_pins > 0);
-	oassert(node->num_input_port_sizes == 2);
+	oassert(node->num_input_port_sizes >= 2);
+	port_width = (int *)calloc(node->num_input_port_sizes,sizeof(int));
 	/* setup the calculations for padding and indexing */
 	width = node->output_port_sizes[0];
-	width_a = node->input_port_sizes[0];
-	width_b = node->input_port_sizes[1];
-	port_B_offset = width_a;
+	for(i = 0; i < node->num_input_port_sizes; i++){   
+		port_width[i] = node->input_port_sizes[i];  
+	}
+	port_B_offset = port_width[0];
 
 	switch (op)
 	{
@@ -611,7 +613,7 @@ void instantiate_bitwise_logic(nnode_t *node, operation_list op, short mark, net
 			cell_op = LOGICAL_XOR;
 			break;
 		default:
-			cell_op = 0;
+			cell_op = NO_OP;
 			oassert(FALSE);
 			break;
 	}
@@ -619,41 +621,32 @@ void instantiate_bitwise_logic(nnode_t *node, operation_list op, short mark, net
 	for (i = 0; i < width; i++)
 	{
 		/* instantiate the cells */
-		new_logic_cells[i] = make_2port_gate(cell_op, 1, 1, 1, node, mark);
+		new_logic_cells[i] = make_nport_gate(cell_op, node->num_input_port_sizes, 1, 1, node, mark);
 	}
 
 	/* connect inputs.  In the case that a signal is smaller than the other then zero pad */
 	for(i = 0; i < width; i++)
 	{
 		/* Joining the inputs to the input 1 of that gate */
-		if (i < width_a)
-		{
-			if (i < width_b)
-			{
-				/* IF - this current input will also have a corresponding b_port input then join it to the gate */
-				remap_pin_to_new_node(node->input_pins[i], new_logic_cells[i], 0);
-			}
-			else
-			{
-				/* ELSE - the B input does not exist, so this answer goes right through */
-				add_input_pin_to_node(new_logic_cells[i], get_zero_pin(netlist), 0);
-			}
+		for(j = 0; j < node->num_input_port_sizes; j++){
+			if(i < port_width[j]){
+			lenght_is_larger_others = 0;
+			for(k = 0; k < node->num_input_port_sizes && lenght_is_larger_others == 0; k++){
+			if(k == j){
+				if(i >= port_width[k]) { 
+				lenght_is_larger_others = 1;
+				}
+	                   }
 		}
-
-		if (i < width_b)
-		{
-			if (i < width_a)
-			{
-				/* IF - this current input will also have a corresponding a_port input then join it to the gate */
-				/* Joining the inputs to the input 2 of that gate */
-				remap_pin_to_new_node(node->input_pins[i+port_B_offset], new_logic_cells[i], 1);
-			}
-			else
-			{
-				/* ELSE - the A input does not exist, so this answer goes right through */
-				add_input_pin_to_node(new_logic_cells[i], get_zero_pin(netlist), 1);
-			}
-		}
+		if(lenght_is_larger_others == 0){ 
+		/* IF - this current input will also have a corresponding other input ports then join it to the gate */
+			remap_pin_to_new_node(node->input_pins[i+port_B_offset*j], new_logic_cells[i], j);             }
+		else {
+		/* ELSE - the input does not exist, so this answer goes right through */
+			add_input_pin_to_node(new_logic_cells[i], get_zero_pin(netlist), j); 
+                }
+            }      
+        }       
 
 		remap_pin_to_new_node(node->output_pins[i], new_logic_cells[i], 0);
 	}
@@ -856,9 +849,49 @@ void instantiate_sub_w_carry(nnode_t *node, short mark, netlist_t *netlist)
 		}
 
 		/* now hookup not to adder parts */
-		connect_nodes(new_not_cells[i], 0, new_add_cells[i], 2);
+		/* If the input pin of not gate connects to gnd, replacing the input pin and the not gate with vcc;
+		 * if the input pin of not gate connects to vcc, replacing the input pin and the not gate with gnd.*/
+		if(new_not_cells[i]->input_pins[0]->net->driver_pin->node->type == GND_NODE)
+		{
+			connect_nodes(netlist->vcc_node, 0, new_add_cells[i], 2);
+			if(i == width - 1)
+			{
+				remove_fanout_pins_from_net(new_not_cells[i]->input_pins[0]->net, new_not_cells[i]->input_pins[0], new_not_cells[i]->input_pins[0]->pin_net_idx);
+				free_nnode(new_not_cells[i]);
+			}
+
+		}
+		else if(new_not_cells[i]->input_pins[0]->net->driver_pin->node->type == VCC_NODE)
+		{
+			connect_nodes(netlist->gnd_node, 0, new_add_cells[i], 2);
+			if(i == width - 1)
+			{
+				remove_fanout_pins_from_net(new_not_cells[i]->input_pins[0]->net, new_not_cells[i]->input_pins[0], new_not_cells[i]->input_pins[0]->pin_net_idx);
+				free_nnode(new_not_cells[i]);
+			}
+		}
+		else
+			connect_nodes(new_not_cells[i], 0, new_add_cells[i], 2);
+
 		if (i < width - 1)
-			connect_nodes(new_not_cells[i], 0, new_carry_cells[i], 2);
+		{
+			/* If the input pin of not gate connects to gnd, replacing the input pin and the not gate with vcc;
+			 * if the input pin of not gate connects to vcc, replacing the input pin and the not gate with gnd.*/
+			if(new_not_cells[i]->input_pins[0]->net->driver_pin->node->type == GND_NODE)
+			{
+				connect_nodes(netlist->vcc_node, 0, new_carry_cells[i], 2);
+				remove_fanout_pins_from_net(new_not_cells[i]->input_pins[0]->net, new_not_cells[i]->input_pins[0], new_not_cells[i]->input_pins[0]->pin_net_idx);
+				free_nnode(new_not_cells[i]);
+			}
+			else if(new_not_cells[i]->input_pins[0]->net->driver_pin->node->type == VCC_NODE)
+			{
+				connect_nodes(netlist->gnd_node, 0, new_carry_cells[i], 2);
+				remove_fanout_pins_from_net(new_not_cells[i]->input_pins[0]->net, new_not_cells[i]->input_pins[0], new_not_cells[i]->input_pins[0]->pin_net_idx);
+				free_nnode(new_not_cells[i]);
+			}
+			else
+				connect_nodes(new_not_cells[i], 0, new_carry_cells[i], 2);
+		}
 
 		/* join that gate to the output */
 		remap_pin_to_new_node(node->output_pins[i], new_add_cells[i], 0);
@@ -920,9 +953,50 @@ void instantiate_unary_sub(nnode_t *node, short mark, netlist_t *netlist)
 	{
 		/* join the A port up to adder */
 		remap_pin_to_new_node(node->input_pins[i], new_not_cells[i], 0);
-		connect_nodes(new_not_cells[i], 0, new_add_cells[i], 1);
+		/* If the input pin of not gate connects to gnd, replacing the input pin and the not gate with vcc;
+		 * if the input pin of not gate connects to vcc, replacing the input pin and the not gate with gnd.*/
+		if(new_not_cells[i]->input_pins[0]->net->driver_pin->node->type == GND_NODE)
+		{
+			connect_nodes(netlist->vcc_node, 0, new_add_cells[i], 1);
+			if(i == width - 1)
+			{
+				remove_fanout_pins_from_net(new_not_cells[i]->input_pins[0]->net, new_not_cells[i]->input_pins[0], new_not_cells[i]->input_pins[0]->pin_net_idx);
+				free_nnode(new_not_cells[i]);
+			}
+
+		}
+		else if(new_not_cells[i]->input_pins[0]->net->driver_pin->node->type == VCC_NODE)
+		{
+			connect_nodes(netlist->gnd_node, 0, new_add_cells[i], 1);
+			if(i == width - 1)
+			{
+				remove_fanout_pins_from_net(new_not_cells[i]->input_pins[0]->net, new_not_cells[i]->input_pins[0], new_not_cells[i]->input_pins[0]->pin_net_idx);
+				free_nnode(new_not_cells[i]);
+			}
+		}
+		else
+			connect_nodes(new_not_cells[i], 0, new_add_cells[i], 1);
+
+
 		if (i < width - 1)
-			connect_nodes(new_not_cells[i], 0, new_carry_cells[i], 1);
+		{
+			/* If the input pin of not gate connects to gnd, replacing the input pin and the not gate with vcc;
+			 * if the input pin of not gate connects to vcc, replacing the input pin and the not gate with gnd.*/
+			if(new_not_cells[i]->input_pins[0]->net->driver_pin->node->type == GND_NODE)
+			{
+				connect_nodes(netlist->vcc_node, 0, new_carry_cells[i], 1);
+				remove_fanout_pins_from_net(new_not_cells[i]->input_pins[0]->net, new_not_cells[i]->input_pins[0], new_not_cells[i]->input_pins[0]->pin_net_idx);
+				free_nnode(new_not_cells[i]);
+			}
+			else if(new_not_cells[i]->input_pins[0]->net->driver_pin->node->type == VCC_NODE)
+			{
+				connect_nodes(netlist->gnd_node, 0, new_carry_cells[i], 1);
+				remove_fanout_pins_from_net(new_not_cells[i]->input_pins[0]->net, new_not_cells[i]->input_pins[0], new_not_cells[i]->input_pins[0]->pin_net_idx);
+				free_nnode(new_not_cells[i]);
+			}
+			else
+				connect_nodes(new_not_cells[i], 0, new_carry_cells[i], 1);
+		}
 
 		add_input_pin_to_node(new_add_cells[i], get_zero_pin(netlist), 2);
 		if (i < width - 1)

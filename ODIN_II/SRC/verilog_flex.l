@@ -36,6 +36,8 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 %s COMMENT
 
+%option noyywrap
+
 %%
 
 	/*     Keywords */
@@ -55,19 +57,19 @@ OTHER DEALINGS IN THE SOFTWARE.
 <INITIAL>"else"			{ MP; return vELSE;}
 <INITIAL>"end"			{ MP; return vEND;}
 <INITIAL>"endcase"		{ MP; return vENDCASE;}
-<INITIAL>"endfunction"		{ MP; return vNOT_SUPPORT;}
+<INITIAL>"endfunction"		{ MP; return vENDFUNCTION;}
 <INITIAL>"endmodule"		{ MP; return vENDMODULE;}
-<INITIAL>"endspecify"		{ MP; return vNOT_SUPPORT;}
+<INITIAL>"endspecify"		{ MP; return vENDSPECIFY;}
 <INITIAL>"endtask"		{ MP; return vNOT_SUPPORT;}
 <INITIAL>"for"			{ MP; return vFOR;}
-<INITIAL>"function"		{ MP; return vNOT_SUPPORT;}
 <INITIAL>"if"			{ MP; return vIF;}
-<INITIAL>"initial"		{ MP; return vNOT_SUPPORT;}
+<INITIAL>"initial"		{ MP; return vINITIAL;}
 <INITIAL>"inout"		{ MP; return vINOUT;}
 <INITIAL>"input"		{ MP; return vINPUT;}
 <INITIAL>"integer"		{ MP; return vINTEGER;}
 <INITIAL>"macromodule"		{ MP; return vNOT_SUPPORT;}
 <INITIAL>"module"		{ MP; return vMODULE;}
+<INITIAL>"function"		{ MP; return vFUNCTION;} 
 <INITIAL>"nand"			{ MP; return vNAND;}
 <INITIAL>"negedge"		{ MP; return vNEGEDGE;}
 <INITIAL>"nor"			{ MP; return vNOR;}
@@ -79,7 +81,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 <INITIAL>"posedge"		{ MP; return vPOSEDGE;}
 <INITIAL>"reg"			{ MP; return vREG;}
 <INITIAL>"scalared"		{ MP; return vNOT_SUPPORT;}
-<INITIAL>"specify"		{ MP; return vNOT_SUPPORT;}
+<INITIAL>"specify"		{ MP; return vSPECIFY;}
 <INITIAL>"specparam"		{ MP; return vNOT_SUPPORT;}
 <INITIAL>"supply0"		{ MP; return vNOT_SUPPORT;}
 <INITIAL>"supply1"		{ MP; return vNOT_SUPPORT;}
@@ -95,6 +97,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 <INITIAL>"&&"			{ MP; return voANDAND;}
 <INITIAL>"||"			{ MP; return voOROR;}
 <INITIAL>"<="			{ MP; return voLTE;}
+<INITIAL>"=>"			{ MP; return voPAL;} 
 <INITIAL>">="			{ MP; return voGTE;}
 <INITIAL>"<<"			{ MP; return voSLEFT;}
 <INITIAL>">>"			{ MP; return voSRIGHT;}
@@ -107,9 +110,9 @@ OTHER DEALINGS IN THE SOFTWARE.
 <INITIAL>"~&"			{ MP; return voNAND;}
 <INITIAL>"~|"			{ MP; return voNOR;}
 
-<INITIAL>[a-zA-Z][a-zA-Z0-9_]*				{ MP; yylval.id_name = strdup(yytext); return vSYMBOL_ID; }
-<INITIAL>`[a-zA-Z][a-zA-Z0-9_]*				{ MP; yylval.id_name = strdup(yytext); return vSYMBOL_ID; }
-<INITIAL>[0-9]+'[bhod][a-zA-Z0-9]*			{ MP; yylval.num_value = strdup(yytext); return vNUMBER_ID; }
+<INITIAL>[a-zA-Z_][a-zA-Z0-9_]*				{ MP; yylval.id_name = strdup(yytext); return vSYMBOL_ID; }
+<INITIAL>`[a-zA-Z_][a-zA-Z0-9_]*				{ MP; yylval.id_name = strdup(yytext); return vSYMBOL_ID; }
+<INITIAL>[0-9]*'[bhod][a-zA-Z0-9]*			{ MP; yylval.num_value = strdup(yytext); return vNUMBER_ID; }
 <INITIAL>[0-9]+						{ MP; yylval.num_value = strdup(yytext); return vNUMBER_ID; }
 <INITIAL>#[0-9]+					{ MP; yylval.num_value = strdup(yytext+1); return vDELAY_ID; }
 
@@ -117,14 +120,15 @@ OTHER DEALINGS IN THE SOFTWARE.
 <INITIAL>[}{;:\[\],()#=.@&!?<>%|^~+*/-]		{ MP; return yytext[0]; }
 
 	/* general stuff */
-<INITIAL>[\f\r\t\b ]+           		{ /* ignore spaces */ continue; }
+<INITIAL>[\f\r\t\b ]+				{ /* ignore spaces */ continue; }
 <INITIAL,COMMENT>"\n"				{/* catch lines */ yylineno++; continue; }
+
+<INITIAL>`timescale.*$                         { MP; continue;}
 
 	/* Get the comments */
 <INITIAL>"/*"					{ /* catch comments */ MP; BEGIN COMMENT; continue; /* means to go into a state where we eat everything for comments*/ }
-<COMMENT>.					{ continue; }
+<COMMENT>.						{ continue; }
 <COMMENT>"*/"					{ BEGIN 0; continue; }
 <INITIAL>"//"[^\n]*				{ MP; continue; }  
-
-<*>.|\n     					{ printf("Missing verilog.l rule: Default rule invoked in state %d: \"%s\"\n", YY_START, yytext); }
+<*>.|\n							{ printf("Missing verilog.l rule: Default rule invoked in state %d: \"%s\"\n", YY_START, yytext);printf("Line %d: %s\n", yylineno, yytext); }
 %%    

@@ -128,7 +128,7 @@ void print_nodes(Vec_Ptr_t * nodes) {
 	fflush(0);
 }
 
-int ace_calc_activity(Abc_Ntk_t * ntk, int num_vectors) {
+int ace_calc_activity(Abc_Ntk_t * ntk, int num_vectors, char * clk_name) {
 	int error = 0;
 	Vec_Ptr_t * nodes_all;
 	Vec_Ptr_t * nodes_logic;
@@ -155,11 +155,13 @@ int ace_calc_activity(Abc_Ntk_t * ntk, int num_vectors) {
 	Abc_NtkForEachPi(ntk, obj, i)
 	{
 		info = Ace_ObjInfo(obj);
-		assert(info->static_prob >= 0 && info->static_prob <= 1.0);
-		assert(info->switch_prob >= 0 && info->switch_prob <= 1.0);
-		assert(info->switch_act >= 0 && info->switch_act <= 1.0);
-		assert(info->switch_prob <= 2.0 * (1.0 - info->static_prob));
-		assert(info->switch_prob <= 2.0 * info->static_prob);
+		if (strcmp(Abc_ObjName(obj), clk_name) != 0) {
+			assert(info->static_prob >= 0 && info->static_prob <= 1.0);
+			assert(info->switch_prob >= 0 && info->switch_prob <= 1.0);
+			assert(info->switch_act >= 0 && info->switch_act <= 1.0);
+			assert(info->switch_prob <= 2.0 * (1.0 - info->static_prob));
+			assert(info->switch_prob <= 2.0 * info->static_prob);
+		}
 		info->status = ACE_DEF;
 	}
 
@@ -237,6 +239,15 @@ int ace_calc_activity(Abc_Ntk_t * ntk, int num_vectors) {
 
 		switch (Abc_ObjType(obj)) {
 		case ABC_OBJ_PI:
+			if (strcmp(Abc_ObjName(obj), clk_name) == 0) {
+				info->switch_act = 2;
+				info->switch_prob = 1;
+				info->static_prob = 0.5;
+			} else {
+				info->switch_act = info->switch_prob;
+			}
+			break;
+
 		case ABC_OBJ_BO:
 		case ABC_OBJ_LATCH:
 			info->switch_act = info->switch_prob;
@@ -277,7 +288,7 @@ int ace_calc_activity(Abc_Ntk_t * ntk, int num_vectors) {
 	return error;
 }
 
-inline Ace_Obj_Info_t * Ace_ObjInfo(Abc_Obj_t * obj) {
+Ace_Obj_Info_t * Ace_ObjInfo(Abc_Obj_t * obj) {
 	Ace_Obj_Info_t * info;
 
 	if (st_lookup(ace_info_hash_table, (char *) obj, (char **) &info)) {
@@ -304,13 +315,12 @@ int main(int argc, char * argv[]) {
 	double p, d;
 	int i;
 	int depth;
-	char clk_name[ACE_CHAR_BUFFER_SIZE];
 	int error = 0;
 	Abc_Frame_t * pAbc;
 	Abc_Ntk_t * ntk;
 	Abc_Obj_t * obj;
+	int seed = 0;
 
-	srand(0);
 
 	p = ACE_PI_STATIC_PROB;
 	d = ACE_PI_SWITCH_PROB;
@@ -318,22 +328,9 @@ int main(int argc, char * argv[]) {
 	char blif_file_name[BLIF_FILE_NAME_LEN];
 	char new_blif_file_name[BLIF_FILE_NAME_LEN];
 	ace_io_parse_argv(argc, argv, &BLIF, &IN_ACT, &OUT_ACT, blif_file_name,
-			new_blif_file_name, &pi_format, &p, &d);
+			new_blif_file_name, &pi_format, &p, &d, &seed);
 
-	// Check # of clocks
-#if 0
-	int num_clks;
-	blif_clock_info(blif_file_name, &num_clks, clk_name);
-	if (num_clks > 1)
-	{
-		printf("Multiple clocks detected in blif file.  This is not supported.\n");
-		exit(0);
-	}
-	else if (num_clks == 1)
-	{
-		printf("Clock Detected: %s\n", clk_name);
-	}
-#endif
+	srand(seed);
 
 	pAbc = Abc_FrameGetGlobalFrame();
 
@@ -384,7 +381,7 @@ int main(int argc, char * argv[]) {
 	switch (pi_format) {
 	case ACE_CODED:
 		printf("Input activities will be assumed (%f, %f, %f)...\n",
-				ACE_PI_STATIC_PROB, ACE_PI_SWITCH_PROB, ACE_PI_SWITCH_ACT);
+		ACE_PI_STATIC_PROB, ACE_PI_SWITCH_PROB, ACE_PI_SWITCH_ACT);
 		break;
 	case ACE_PD:
 		printf("Input activities will be (%f, %f, %f)...\n", p, d, d);
@@ -415,13 +412,46 @@ int main(int argc, char * argv[]) {
 	 }
 	 */
 
+	// Get clock info
+	char * clk_name = NULL;
+	if (!error) {
+		Abc_NtkForEachLatch(ntk, obj, i)
+		{
+			Abc_LatchInfo_t * latch_info = obj->pData;
+
+			if (!clk_name) {
+				clk_name = latch_info->pClkName;
+			}
+			if (strcmp(clk_name, latch_info->pClkName) == 0) {
+				// Clock names match - do nothing
+			} else {
+				// Multiple clocks - error
+				printf(
+						"Multiple clocks detected in blif file.  This is not supported.\n");
+				error = ACE_ERROR;
+				break;
+			}
+		}
+	}
+
+	if (!error) {
+		if (clk_name == NULL) {
+			// No clocks
+			printf(
+					"No clocks detected in blif file.  This is not supported.\n");
+			error = ACE_ERROR;
+		} else {
+			printf("Clock detected: %s\n", clk_name);
+		}
+	}
+
 	// Read Activities
 	if (!error) {
 		error = ace_io_read_activity(ntk, IN_ACT, pi_format, p, d, clk_name);
 	}
 
 	if (!error) {
-		error = ace_calc_activity(ntk, ACE_NUM_VECTORS);
+		error = ace_calc_activity(ntk, ACE_NUM_VECTORS, clk_name);
 	}
 
 	//Abc_NtkToSop(ntk, 0);
@@ -432,9 +462,11 @@ int main(int argc, char * argv[]) {
 		ace_io_print_activity(ntk, OUT_ACT);
 	}
 
-	Io_WriteHie(ntk, blif_file_name, new_blif_file_name);
+	if (!error) {
+		Io_WriteHie(ntk, blif_file_name, new_blif_file_name);
+		printf("Done\n");
+	}
 
-	printf("Done\n");
 	fflush(0);
 	return 0;
 }

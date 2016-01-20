@@ -1,4 +1,5 @@
 import subprocess
+
 def ppr_blif_6(ciruit):
 	ppr("vtr_flow/benchmarks/blif/6/"+ciruit)
 
@@ -178,7 +179,7 @@ ppr_blif_6("table5")
 ppr_blif_6("bbrtas")
 ppr_blif_6("apex5")
 ppr_blif_6("dalu")
-ppr_blif_6("s9234")
+ppr_blif_6("s9234.1")
 ppr_blif_6("sbc")
 ppr_blif_6("mm30a")
 ppr_blif_6("pair")
@@ -211,5 +212,5 @@ ppr_blif_6("spla")
 ppr_blif_6("frisc")
 ppr_blif_6("s38417")
 ppr_blif_6("pdc")
-ppr_blif_6("s38584")
+ppr_blif_6("s38584.1")
 ppr_blif_6("clma")

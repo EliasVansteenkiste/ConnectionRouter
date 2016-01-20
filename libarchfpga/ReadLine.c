@@ -51,7 +51,7 @@ ReadLineTokens(INOUTP FILE * InFile, INOUTP int *LineNum) {
 	int TokenCount;
 	int Len;
 	int CurToken;
-	boolean InToken;
+	bool InToken;
 
 	do {
 		/* Read the string */
@@ -60,8 +60,8 @@ ReadLineTokens(INOUTP FILE * InFile, INOUTP int *LineNum) {
 			if (feof(InFile)) {
 				return NULL; /* Return NULL on EOF */
 			} else {
-				vpr_printf(TIO_MESSAGE_ERROR, "Unexpected error reading file\n");
-				exit(1);
+				vpr_throw(VPR_ERROR_UNKNOWN, __FILE__, __LINE__,
+					"Unexpected error reading file\n");
 			}
 		}
 		++(*LineNum);
@@ -86,9 +86,8 @@ ReadLineTokens(INOUTP FILE * InFile, INOUTP int *LineNum) {
 				if (feof(InFile)) {
 					return NULL; /* Return NULL on EOF */
 				} else {
-					vpr_printf(TIO_MESSAGE_ERROR,
-					"Unexpected error reading file\n");
-					exit(1);
+					vpr_throw(VPR_ERROR_UNKNOWN, __FILE__, __LINE__,
+						"Unexpected error reading file\n");
 				}
 			}
 			++(*LineNum);
@@ -118,11 +117,11 @@ ReadLineTokens(INOUTP FILE * InFile, INOUTP int *LineNum) {
 		Len = 0;
 		TokenCount = 0;
 		Cur = Buffer;
-		InToken = FALSE;
+		InToken = false;
 		while (Cur < Last) {
 			if (InToken) {
 				if ((' ' == *Cur) || ('\t' == *Cur)) {
-					InToken = FALSE;
+					InToken = false;
 				} else {
 					++Len;
 				}
@@ -130,7 +129,7 @@ ReadLineTokens(INOUTP FILE * InFile, INOUTP int *LineNum) {
 				if ((' ' != *Cur) && ('\t' != *Cur)) {
 					++TokenCount;
 					++Len;
-					InToken = TRUE;
+					InToken = true;
 				}
 			}
 			++Cur; /* Advance pointer */
@@ -150,12 +149,12 @@ ReadLineTokens(INOUTP FILE * InFile, INOUTP int *LineNum) {
 	/* Copy tokens to result */
 	Cur = Buffer;
 	Dst = *Tokens;
-	InToken = FALSE;
+	InToken = false;
 	CurToken = 0;
 	while (Cur < Last) {
 		if (InToken) {
 			if ((' ' == *Cur) || ('\t' == *Cur)) {
-				InToken = FALSE;
+				InToken = false;
 				*Dst = '\0'; /* Null term token */
 				++Dst;
 				++CurToken;
@@ -168,7 +167,7 @@ ReadLineTokens(INOUTP FILE * InFile, INOUTP int *LineNum) {
 				Tokens[CurToken] = Dst; /* Set token start pointer */
 				*Dst = *Cur; /* Copy char */
 				++Dst;
-				InToken = TRUE;
+				InToken = true;
 			}
 		}
 		++Cur; /* Advance pointer */

@@ -1,0 +1,43 @@
+#
+############################################
+# Configuration file for running experiments
+##############################################
+
+# Path to directory of circuits to use
+circuits_dir=benchmarks/vtr_benchmarks_blif 
+
+# Path to directory of architectures to use
+archs_dir=arch/timing/
+
+# Add circuits to list to sweep
+circuit_list_add=bgm.blif
+circuit_list_add=blob_merge.blif
+circuit_list_add=boundtop.blif
+circuit_list_add=ch_intrinsics.blif
+circuit_list_add=diffeq1.blif
+circuit_list_add=diffeq2.blif
+circuit_list_add=LU8PEEng.blif
+circuit_list_add=LU32PEEng.blif
+circuit_list_add=mcml.blif
+circuit_list_add=mkDelayWorker32B.blif
+circuit_list_add=mkPktMerge.blif
+circuit_list_add=mkSMAdapter4B.blif
+circuit_list_add=or1200.blif
+circuit_list_add=raygentop.blif
+circuit_list_add=sha.blif
+circuit_list_add=stereovision0.blif
+circuit_list_add=stereovision1.blif
+circuit_list_add=stereovision2.blif
+circuit_list_add=stereovision3.blif
+
+# Add architectures to list to sweep
+arch_list_add=k6_N8_unbalanced_ripple_chain_gate_boost_0.2V_22nm.xml
+
+# Parse info and how to parse
+parse_file=vpr_elias.txt
+
+
+# Pass requirements
+pass_requirements_file=pass_requirements_chain.txt
+
+script_params=-lut_size 6 -starting_stage vpr -vpr_route_chan_width 200 

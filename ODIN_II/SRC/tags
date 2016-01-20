@@ -1,0 +1,454 @@
+Modin_ii	odin_ii.c	/^int main(int argc, char **argv)$/
+STRING_CACHE	string_cache.h	/^} STRING_CACHE;$/
+___hashtable_add	hashtable.c	/^void  ___hashtable_add(hashtable_t *h, void *key, /
+___hashtable_compare_keys	hashtable.c	/^int ___hashtable_compare_keys(void *key, size_t ke/
+___hashtable_destroy	hashtable.c	/^void ___hashtable_destroy(hashtable_t *h)$/
+___hashtable_destroy_free_items	hashtable.c	/^void ___hashtable_destroy_free_items(hashtable_t */
+___hashtable_get	hashtable.c	/^void* ___hashtable_get(hashtable_t *h, void *key, /
+___hashtable_get_all	hashtable.c	/^void** ___hashtable_get_all(hashtable_t *h) {		$/
+___hashtable_hash	hashtable.c	/^unsigned int ___hashtable_hash(void *key, size_t k/
+___hashtable_is_empty	hashtable.c	/^int ___hashtable_is_empty (hashtable_t *h)$/
+___hashtable_remove	hashtable.c	/^void* ___hashtable_remove(hashtable_t *h, void *ke/
+___queue_add	queue.c	/^void ___queue_add(queue_t *q, void *item)$/
+___queue_destroy	queue.c	/^void ___queue_destroy(queue_t *q)$/
+___queue_is_empty	queue.c	/^int ___queue_is_empty (queue_t *q)$/
+___queue_remove	queue.c	/^void* ___queue_remove(queue_t *q)$/
+___queue_remove_all	queue.c	/^void **___queue_remove_all(queue_t *q)$/
+activity_estimation	activity_estimation.c	/^void activity_estimation(char *input_filename, cha/
+add_block	read_netlist.c	/^add_block (char *node_name, char **pin_tokens, t_t/
+add_child_at_the_beginning_of_the_node	ast_util.c	/^void add_child_at_the_beginning_of_the_node(ast_no/
+add_child_to_node	ast_util.c	/^void add_child_to_node(ast_node_t* node, ast_node_/
+add_driver_pin_to_net	netlist_utils.c	/^void add_driver_pin_to_net(nnet_t *net, npin_t *pi/
+add_dummy_input_port_to_implicit_memory	implicit_memory.c	/^void add_dummy_input_port_to_implicit_memory(impli/
+add_dummy_output_port_to_implicit_memory	implicit_memory.c	/^void add_dummy_output_port_to_implicit_memory(impl/
+add_fanout_pin_to_net	netlist_utils.c	/^void add_fanout_pin_to_net(nnet_t *net, npin_t *pi/
+add_input_pin_to_node	netlist_utils.c	/^void add_input_pin_to_node(nnode_t *node, npin_t */
+add_input_port_information	netlist_utils.c	/^void add_input_port_information(nnode_t *node, int/
+add_input_port_to_implicit_memory	implicit_memory.c	/^void add_input_port_to_implicit_memory(implicit_me/
+add_io_node_and_driver	read_netlist.c	/^add_io_node_and_driver ($/
+add_node_to_netlist	netlist_utils.c	/^void add_node_to_netlist(netlist_t *netlist, nnode/
+add_output_pin_to_node	netlist_utils.c	/^void add_output_pin_to_node(nnode_t *node, npin_t /
+add_output_port_information	netlist_utils.c	/^void add_output_port_information(nnode_t *node, in/
+add_output_port_to_implicit_memory	implicit_memory.c	/^void add_output_port_to_implicit_memory(implicit_m/
+add_pin_to_signal_list	netlist_utils.c	/^void add_pin_to_signal_list(signal_list_t *list, n/
+add_subblock_to_node	read_netlist.c	/^add_subblock_to_node(nnode_t *current_block, char /
+add_the_blackbox_for_adds	adders.c	/^void add_the_blackbox_for_adds(FILE *out)$/
+add_the_blackbox_for_mults	multipliers.c	/^void add_the_blackbox_for_mults(FILE *out)$/
+add_to_distribution	netlist_stats.c	/^void add_to_distribution(int **distrib_ptr, int *d/
+adder_signals	adders.h	/^} adder_signals;$/
+adjoin_constant	ast_elaborate.c	/^void adjoin_constant(int *build)$/
+allocate_chain_info	netlist_utils.c	/^chain_information_t* allocate_chain_info()$/
+allocate_children_to_node	ast_util.c	/^void allocate_children_to_node(ast_node_t* node, i/
+allocate_more_input_pins	netlist_utils.c	/^void allocate_more_input_pins(nnode_t *node, int w/
+allocate_more_output_pins	netlist_utils.c	/^void allocate_more_output_pins(nnode_t *node, int /
+allocate_netlist	netlist_utils.c	/^netlist_t* allocate_netlist()$/
+allocate_nnet	netlist_utils.c	/^nnet_t* allocate_nnet()$/
+allocate_nnode	netlist_utils.c	/^nnode_t* allocate_nnode() {$/
+allocate_npin	netlist_utils.c	/^npin_t* allocate_npin() {$/
+ard_block_port_direction	hard_blocks.c	/^hard_block_port_direction(t_model *hb, char *pname/
+ast_node_t	types.h	/^typedef struct ast_node_t_t ast_node_t;$/
+backward_traversal_net_graph_display	netlist_visualizer.c	/^void backward_traversal_net_graph_display(FILE *fp/
+boolean_difference	activity_estimation.c	/^short *boolean_difference(nnode_t *node, int varia/
+cache_hard_block_names	hard_blocks.c	/^void cache_hard_block_names()$/
+calc_density	activity_estimation.c	/^double calc_density(nnode_t *node, int variable_sp/
+calc_probabilities_and_init_act_data	activity_estimation.c	/^void calc_probabilities_and_init_act_data(netlist_/
+calc_transition_density	activity_estimation.c	/^void calc_transition_density(netlist_t *netlist)$/
+calculate	ast_util.c	/^long calculate(long operand0, long operand1, short/
+calculate_addsub_statistics	netlist_cleanup.c	/^void calculate_addsub_statistics(node_list_t *adds/
+calculate_avg_fanin	netlist_stats.c	/^void calculate_avg_fanin(netlist_t *netlist)$/
+calculate_avg_fanout	netlist_stats.c	/^void calculate_avg_fanout(netlist_t *netlist)$/
+calculate_combinational_shapes	netlist_stats.c	/^void calculate_combinational_shapes(netlist_t *net/
+calculation	ast_elaborate.c	/^int calculation(char *post_exp[])$/
+chain_information_t	types.h	/^typedef struct chain_information_t_t chain_informa/
+change_ast_node	ast_elaborate.c	/^void change_ast_node(ast_node_t *node, int value)$/
+change_exp_list	ast_elaborate.c	/^void change_exp_list(enode *begin, enode *end, eno/
+change_para_node	ast_elaborate.c	/^void change_para_node(ast_node_t *node, char *name/
+change_to_number_node	ast_elaborate.c	/^void change_to_number_node(ast_node_t *node, char /
+char_list_t	types.h	/^typedef struct char_list_t_t char_list_t;$/
+char_list_t_t	types.h	/^struct char_list_t_t $/
+check_and_replace	ast_elaborate.c	/^void check_and_replace(ast_node_t *node, char *p[]/
+check_binary_operation	ast_elaborate.c	/^void check_binary_operation(ast_node_t *node, int /
+check_exp_list	ast_elaborate.c	/^int check_exp_list(enode *tail)$/
+check_mult_bracket	ast_elaborate.c	/^int check_mult_bracket(int list[], int num_bracket/
+check_netlist	netlist_check.c	/^void check_netlist(netlist_t *netlist)$/
+check_operation	ast_elaborate.c	/^void check_operation(enode *begin, enode *end)$/
+check_tree_operation	ast_elaborate.c	/^void check_tree_operation(ast_node_t *node, int *m/
+clean_adders	adders.c	/^void clean_adders()$/
+clean_multipliers	multipliers.c	/^void clean_multipliers()$/
+cleanup_activation	activity_estimation.c	/^void cleanup_activation(netlist_t *netlist)$/
+cleanup_hard_blocks	parse_making_ast.c	/^void cleanup_hard_blocks()$/
+collapse_implicit_memory_to_single_port_ram	implicit_memory.c	/^void collapse_implicit_memory_to_single_port_ram(i/
+combine_constant	ast_elaborate.c	/^void combine_constant(int *build)$/
+combine_lists	netlist_utils.c	/^signal_list_t *combine_lists(signal_list_t **signa/
+combine_lists_without_freeing_originals	netlist_utils.c	/^signal_list_t *combine_lists_without_freeing_origi/
+combine_nets	netlist_utils.c	/^void combine_nets(nnet_t *output_net, nnet_t* inpu/
+compare_npin_t_names	netlist_utils.c	/^static int compare_npin_t_names(const void *p1, co/
+complete_node	ast_elaborate.c	/^void complete_node(ast_node_t *node, ast_node_t *n/
+compute_and_store_value	simulate_blif.c	/^void compute_and_store_value(nnode_t *node, int cy/
+config_t	types.h	/^typedef struct config_t_t config_t;$/
+connect_nodes	netlist_utils.c	/^void connect_nodes(nnode_t *out_node, int out_idx,/
+constantFold	ast_optimizations.c	/^info_ast_visit_t *constantFold(ast_node_t *node)$/
+construct_new_tree	ast_elaborate.c	/^void construct_new_tree(enode *tail, ast_node_t *n/
+convert_binary_string_of_size_to_bit_string	odin_util.c	/^char *convert_binary_string_of_size_to_bit_string(/
+convert_dec_string_of_size_to_long_long	odin_util.c	/^long long convert_dec_string_of_size_to_long_long(/
+convert_hex_string_of_size_to_bit_string	odin_util.c	/^char *convert_hex_string_of_size_to_bit_string(sho/
+convert_long_long_to_bit_string	odin_util.c	/^char *convert_long_long_to_bit_string(long long or/
+convert_oct_string_of_size_to_bit_string	odin_util.c	/^char *convert_oct_string_of_size_to_bit_string(cha/
+convert_string_of_radix_to_bit_string	odin_util.c	/^char *convert_string_of_radix_to_bit_string(char */
+convert_string_of_radix_to_long_long	odin_util.c	/^long long convert_string_of_radix_to_long_long(cha/
+copy_enode	ast_elaborate.c	/^void copy_enode(enode *node, enode *new_node)$/
+copy_enode_list	ast_elaborate.c	/^enode *copy_enode_list(enode *new_head, enode *beg/
+copy_input_npin	netlist_utils.c	/^npin_t* copy_input_npin(npin_t* copy_pin)$/
+copy_input_signals	netlist_utils.c	/^signal_list_t *copy_input_signals(signal_list_t *s/
+copy_output_npin	netlist_utils.c	/^npin_t* copy_output_npin(npin_t* copy_pin)$/
+copy_output_signals	netlist_utils.c	/^signal_list_t *copy_output_signals(signal_list_t */
+copy_tree	ast_elaborate.c	/^void copy_tree(ast_node_t *node, ast_node_t *new_n/
+count_nodes_in_netlist	netlist_utils.c	/^int count_nodes_in_netlist(netlist_t *netlist)$/
+create_ast_node	ast_elaborate.c	/^void create_ast_node(enode *temp, ast_node_t *node/
+create_enode	ast_elaborate.c	/^void create_enode(ast_node_t *node)$/
+create_hard_block_nodes	read_blif.c	/^void create_hard_block_nodes(hard_block_models *mo/
+create_hashtable	hashtable.c	/^hashtable_t* create_hashtable(int store_size)$/
+create_implicit_memory_block	implicit_memory.c	/^implicit_memory *create_implicit_memory_block(int /
+create_netlist	netlist_create_from_ast.c	/^void create_netlist()$/
+create_node_w_type	ast_util.c	/^ast_node_t* create_node_w_type(ids id, int line_nu/
+create_op_node	ast_elaborate.c	/^void create_op_node(ast_node_t *node, enode *temp,/
+create_param_table_for_module	netlist_create_from_ast.c	/^void create_param_table_for_module(ast_node_t* par/
+create_queue	queue.c	/^queue_t* create_queue()$/
+create_tree_node_id	ast_util.c	/^ast_node_t* create_tree_node_id(char* string, int /
+create_tree_node_long_long_number	ast_util.c	/^ast_node_t *create_tree_node_long_long_number(long/
+create_tree_node_number	ast_util.c	/^ast_node_t *create_tree_node_number(char* number, /
+deal_with_bracket	ast_elaborate.c	/^int deal_with_bracket(ast_node_t *node)$/
+declare_hard_adder	adders.c	/^void declare_hard_adder(nnode_t *node)$/
+declare_hard_adder_for_sub	subtractions.c	/^void declare_hard_adder_for_sub(nnode_t *node)$/
+declare_hard_multiplier	multipliers.c	/^void declare_hard_multiplier(nnode_t *node)$/
+define_add_function	adders.c	/^void define_add_function(nnode_t *node, short type/
+define_decoded_mux	output_blif.c	/^void define_decoded_mux(nnode_t *node, FILE *out)$/
+define_ff	output_blif.c	/^void define_ff(nnode_t *node, FILE *out)$/
+define_hard_block	hard_blocks.c	/^void define_hard_block(nnode_t *node, short type, /
+define_logical_function	output_blif.c	/^void define_logical_function(nnode_t *node, short /
+define_mult_function	multipliers.c	/^void define_mult_function(nnode_t *node, short typ/
+define_set_input_logical_function	output_blif.c	/^void define_set_input_logical_function(nnode_t *no/
+delete_bracket	ast_elaborate.c	/^void delete_bracket(int begin, int end)$/
+delete_bracket_body	ast_elaborate.c	/^void delete_bracket_body(enode *begin, enode *end)/
+delete_bracket_head	ast_elaborate.c	/^void delete_bracket_head(enode *begin, enode *end)/
+delete_bracket_tail	ast_elaborate.c	/^void delete_bracket_tail(enode *begin, enode *end)/
+delete_continuous_multiply	ast_elaborate.c	/^void delete_continuous_multiply(int *build)$/
+depth_first_traversal_check_if_forward_leveled	netlist_check.c	/^void depth_first_traversal_check_if_forward_levele/
+depth_first_traversal_graph_display	netlist_visualizer.c	/^void depth_first_traversal_graph_display(FILE *out/
+depth_first_traversal_graphcrunch_display	output_graphcrunch_format.c	/^void depth_first_traversal_graphcrunch_display(nno/
+depth_first_traversal_graphcrunch_stats	netlist_stats.c	/^void depth_first_traversal_graphcrunch_stats(nnode/
+depth_first_traversal_to_output	output_blif.c	/^void depth_first_traversal_to_output(short marker_/
+depth_first_traversal_to_partial_map	partial_map.c	/^void depth_first_traversal_to_partial_map(short ma/
+depth_first_traverse_check_if_forward_leveled	netlist_check.c	/^void depth_first_traverse_check_if_forward_leveled/
+depth_first_traverse_graphcrunch	output_graphcrunch_format.c	/^void depth_first_traverse_graphcrunch(FILE *out, s/
+depth_first_traverse_parital_map	partial_map.c	/^void depth_first_traverse_parital_map(nnode_t *nod/
+depth_first_traverse_stats	netlist_stats.c	/^void depth_first_traverse_stats(FILE *out, short m/
+depth_first_traverse_until_next_ff_or_output	netlist_check.c	/^void depth_first_traverse_until_next_ff_or_output(/
+depth_first_traverse_visualize	netlist_visualizer.c	/^void depth_first_traverse_visualize(nnode_t *node,/
+depth_traverse_count	netlist_utils.c	/^void depth_traverse_count(nnode_t *node, int *coun/
+depth_traverse_output_blif	output_blif.c	/^void depth_traverse_output_blif(nnode_t *node, int/
+deregister_hard_blocks	hard_blocks.c	/^void deregister_hard_blocks()$/
+display_node_stats	netlist_stats.c	/^void display_node_stats(FILE *fp, nnode_t* node)$/
+display_per_node_stats	netlist_stats.c	/^void display_per_node_stats(FILE *fp, netlist_t *n/
+do_activation_estimation	odin_ii_func.c	/^void do_activation_estimation($/
+do_high_level_synthesis	odin_ii_func.c	/^void do_high_level_synthesis()$/
+do_simulation_of_netlist	odin_ii_func.c	/^void do_simulation_of_netlist()$/
+dp_ram_signals	memories.h	/^} dp_ram_signals;$/
+enode	ast_elaborate.h	/^}enode;$/
+error_message	errors.c	/^void error_message(short error_type, int line_numb/
+finalize_implicit_memory	implicit_memory.c	/^void finalize_implicit_memory(implicit_memory *mem/
+find_assign_node	ast_elaborate.c	/^void find_assign_node(ast_node_t *node, ast_node_t/
+find_hard_adders	adders.c	/^void find_hard_adders()$/
+find_hard_block	hard_blocks.c	/^t_model* find_hard_block(const char *name)$/
+find_hard_multipliers	multipliers.c	/^void find_hard_multipliers()$/
+find_leaf_node	ast_elaborate.c	/^void find_leaf_node(ast_node_t *node, int list_bra/
+find_most_unique_count	ast_elaborate.c	/^void find_most_unique_count()$/
+find_node_at_top_of_combo_loop	netlist_check.c	/^nnode_t *find_node_at_top_of_combo_loop(nnode_t *s/
+find_parameter	ast_elaborate.c	/^void find_parameter(ast_node_t *top, ast_node_t *p/
+find_tail	ast_elaborate.c	/^enode *find_tail(enode *node)$/
+forward_traversal_net_graph_display	netlist_visualizer.c	/^void forward_traversal_net_graph_display(FILE *fp,/
+free_ast_node	ast_util.c	/^void free_ast_node(ast_node_t *child)$/
+free_ast_node_only	ast_util.c	/^void free_ast_node_only(ast_node_t *child)$/
+free_child_in_tree	ast_util.c	/^void free_child_in_tree(ast_node_t *from, int idx_/
+free_exp_list	ast_elaborate.c	/^void free_exp_list()$/
+free_implicit_memory_index_and_finalize_memories	implicit_memory.c	/^void free_implicit_memory_index_and_finalize_memor/
+free_netlist	netlist_utils.c	/^void free_netlist(netlist_t *to_free)$/
+free_nnet	netlist_utils.c	/^void free_nnet(nnet_t *to_free)$/
+free_nnode	netlist_utils.c	/^void free_nnode(nnode_t *to_free) $/
+free_npin	netlist_utils.c	/^void free_npin(npin_t *to_free)$/
+free_op_nodes	adders.c	/^void free_op_nodes(nnode_t *node)$/
+free_signal_list	netlist_utils.c	/^void free_signal_list(signal_list_t *list)$/
+free_single_node	ast_elaborate.c	/^void free_single_node(ast_node_t *node)$/
+free_whole_tree	ast_elaborate.c	/^void free_whole_tree(ast_node_t *node)$/
+function_to_print_node_and_its_pin	print_netlist.c	/^void function_to_print_node_and_its_pin(npin_t * t/
+generate_sc_hash	string_cache.c	/^generate_sc_hash(STRING_CACHE * sc)$/
+get_children_of_nodepin	simulate_blif.c	/^nnode_t **get_children_of_nodepin(nnode_t *node, i/
+get_children_pinnumber_of	simulate_blif.c	/^int *get_children_pinnumber_of(nnode_t *node, int /
+get_input_pin_index_from_mapping	netlist_utils.c	/^int get_input_pin_index_from_mapping(nnode_t *node/
+get_input_port_index_from_mapping	netlist_utils.c	/^int get_input_port_index_from_mapping(nnode_t *nod/
+get_model_port	hard_blocks.c	/^t_model_ports *get_model_port(t_model_ports *ports/
+get_name_of_pins	ast_util.c	/^char_list_t *get_name_of_pins(ast_node_t *var_node/
+get_name_of_pins_number	ast_util.c	/^char **get_name_of_pins_number(ast_node_t *var_nod/
+get_name_of_pins_with_prefix	ast_util.c	/^char_list_t *get_name_of_pins_with_prefix(ast_node/
+get_one_pin	node_creation_library.c	/^npin_t *get_one_pin(netlist_t *netlist)$/
+get_options	odin_ii.c	/^void get_options(int argc, char **argv)$/
+get_output_pin_index_from_mapping	netlist_utils.c	/^int get_output_pin_index_from_mapping(nnode_t *nod/
+get_output_port_index_from_mapping	netlist_utils.c	/^int get_output_port_index_from_mapping(nnode_t *no/
+get_pad_pin	node_creation_library.c	/^npin_t *get_pad_pin(netlist_t *netlist)$/
+get_pin_cycle	simulate_blif.c	/^int get_pin_cycle(npin_t *pin)$/
+get_pin_name	odin_util.c	/^char *get_pin_name(char *name)$/
+get_pin_number	odin_util.c	/^int get_pin_number(char *name)$/
+get_pin_value	simulate_blif.c	/^signed char get_pin_value(npin_t *pin, int cycle)$/
+get_port_name	odin_util.c	/^char *get_port_name(char *name)$/
+get_range	ast_util.c	/^int get_range(ast_node_t* first_node) $/
+get_type_by_name	read_netlist.c	/^get_type_by_name ($/
+get_values_offset	simulate_blif.c	/^int get_values_offset(int cycle)$/
+get_zero_pin	node_creation_library.c	/^npin_t *get_zero_pin(netlist_t *netlist)$/
+global_args_read_blif_t	types.h	/^typedef struct global_args_read_blif_t_t global_ar/
+global_args_t	types.h	/^typedef struct global_args_t_t global_args_t;$/
+graphVizOutputCombinationalNet	netlist_visualizer.c	/^void graphVizOutputCombinationalNet(char* path, co/
+graphVizOutputNetlist	netlist_visualizer.c	/^void graphVizOutputNetlist(char* path, const char*/
+graphVizOutputPreproc	parse_making_ast.c	/^void graphVizOutputPreproc(FILE *yyin, char* path,/
+graphcrunch_output	output_graphcrunch_format.c	/^void graphcrunch_output(char* path, char* name, sh/
+hard_block_model	read_blif.c	/^} hard_block_model;$/
+hard_block_models	read_blif.c	/^} hard_block_models;$/
+hard_block_pins	read_blif.c	/^} hard_block_pins;$/
+hard_block_port_size	hard_blocks.c	/^hard_block_port_size(t_model *hb, char *pname)$/
+hard_block_ports	read_blif.c	/^} hard_block_ports;$/
+hard_node_name	node_creation_library.c	/^char *hard_node_name(nnode_t *node, char *instance/
+hookup_hb_input_pins_from_signal_list	netlist_utils.c	/^void hookup_hb_input_pins_from_signal_list(nnode_t/
+hookup_input_pins_from_signal_list	netlist_utils.c	/^void hookup_input_pins_from_signal_list(nnode_t *n/
+hookup_output_pins_from_signal_list	netlist_utils.c	/^void hookup_output_pins_from_signal_list(nnode_t */
+identify_unused_nodes	netlist_cleanup.c	/^void identify_unused_nodes(netlist_t *netlist){$/
+implicit_memory	implicit_memory.h	/^} implicit_memory;$/
+info_ast_visit_t	types.h	/^typedef struct info_ast_visit_t_t info_ast_visit_t/
+init_add_distribution	adders.c	/^void init_add_distribution()$/
+init_cascade_adder	multipliers.c	/^void init_cascade_adder(nnode_t *node, nnode_t *a,/
+init_implicit_memory_index	implicit_memory.c	/^void init_implicit_memory_index()$/
+init_mult_distribution	multipliers.c	/^void init_mult_distribution()$/
+init_parser	parse_making_ast.c	/^void init_parser()$/
+init_signal_list	netlist_utils.c	/^signal_list_t *init_signal_list()$/
+init_split_adder	adders.c	/^void init_split_adder(nnode_t *node, nnode_t *ptr,/
+init_split_adder_for_sub	subtractions.c	/^void init_split_adder_for_sub(nnode_t *node, nnode/
+init_split_multiplier	multipliers.c	/^void init_split_multiplier(nnode_t *node, nnode_t /
+initial_node	ast_elaborate.c	/^void initial_node(ast_node_t *new_node, ids id, in/
+initialize_pin	simulate_blif.c	/^void initialize_pin(npin_t *pin)$/
+initialize_probabilities	activity_estimation.c	/^void initialize_probabilities(char *input_file, ne/
+insert_node_list	netlist_cleanup.c	/^node_list_t* insert_node_list(node_list_t* node_li/
+instantiate_EQUAL	partial_map.c	/^void instantiate_EQUAL(nnode_t *node, short type, /
+instantiate_GE	partial_map.c	/^void instantiate_GE(nnode_t *node, short type, sho/
+instantiate_GT	partial_map.c	/^void instantiate_GT(nnode_t *node, short type, sho/
+instantiate_add_w_carry	partial_map.c	/^void instantiate_add_w_carry(nnode_t *node, short /
+instantiate_bitwise_logic	partial_map.c	/^void instantiate_bitwise_logic(nnode_t *node, oper/
+instantiate_bitwise_reduction	partial_map.c	/^void instantiate_bitwise_reduction(nnode_t *node, /
+instantiate_buffer	partial_map.c	/^void instantiate_buffer(nnode_t *node, short mark,/
+instantiate_hard_adder	adders.c	/^void instantiate_hard_adder(nnode_t *node, short m/
+instantiate_hard_adder_subtraction	subtractions.c	/^void instantiate_hard_adder_subtraction(nnode_t *n/
+instantiate_hard_block	hard_blocks.c	/^instantiate_hard_block(nnode_t *node, short mark, /
+instantiate_hard_multiplier	multipliers.c	/^void instantiate_hard_multiplier(nnode_t *node, sh/
+instantiate_logical_logic	partial_map.c	/^void instantiate_logical_logic(nnode_t *node, oper/
+instantiate_multi_port_mux	partial_map.c	/^void instantiate_multi_port_mux(nnode_t *node, sho/
+instantiate_not_logic	partial_map.c	/^void instantiate_not_logic(nnode_t *node, short ma/
+instantiate_shift_left_or_right	partial_map.c	/^void instantiate_shift_left_or_right(nnode_t *node/
+instantiate_simple_soft_multiplier	multipliers.c	/^void instantiate_simple_soft_multiplier(nnode_t *n/
+instantiate_soft_logic_ram	partial_map.c	/^void instantiate_soft_logic_ram(nnode_t *node, sho/
+instantiate_sub_w_carry	partial_map.c	/^void instantiate_sub_w_carry(nnode_t *node, short /
+instantiate_unary_sub	partial_map.c	/^void instantiate_unary_sub(nnode_t *node, short ma/
+is_binary_string	odin_util.c	/^int is_binary_string(char *string)$/
+is_decimal_string	odin_util.c	/^int is_decimal_string(char *string)$/
+is_dont_care_string	odin_util.c	/^int is_dont_care_string(char *string)$/
+is_even_cycle	simulate_blif.c	/^int is_even_cycle(int cycle)$/
+is_hex_string	odin_util.c	/^int is_hex_string(char *string)$/
+is_octal_string	odin_util.c	/^int is_octal_string(char *string)$/
+is_string_of_radix	odin_util.c	/^int is_string_of_radix(char *string, int radix)$/
+is_valid_implicit_memory_reference_ast	implicit_memory.c	/^char is_valid_implicit_memory_reference_ast(char */
+iterate_adders	adders.c	/^void iterate_adders(netlist_t *netlist)$/
+iterate_multipliers	multipliers.c	/^void iterate_multipliers(netlist_t *netlist)$/
+join_nets	netlist_utils.c	/^void join_nets(nnet_t *join_to_net, nnet_t* other_/
+levelize_and_check_for_combinational_loop_and_liveness	netlist_check.c	/^void levelize_and_check_for_combinational_loop_and/
+levelize_backwards	netlist_check.c	/^void levelize_backwards(netlist_t *netlist)$/
+levelize_backwards_clean_checking_for_liveness	netlist_check.c	/^void levelize_backwards_clean_checking_for_livenes/
+levelize_forwards	netlist_check.c	/^void levelize_forwards(netlist_t *netlist)$/
+levelize_forwards_clean_checking_for_combo_loop_and_liveness	netlist_check.c	/^void levelize_forwards_clean_checking_for_combo_lo/
+library	types.h	/^\/\/ bitvector library (PETER_LIB) defines it, so /
+line_t	simulate_blif.h	/^} line_t;$/
+lines_t	simulate_blif.h	/^} lines_t;$/
+lookup_implicit_memory	implicit_memory.c	/^implicit_memory *lookup_implicit_memory(char *inst/
+lookup_implicit_memory_input	implicit_memory.c	/^implicit_memory *lookup_implicit_memory_input(char/
+lookup_implicit_memory_reference_ast	implicit_memory.c	/^implicit_memory *lookup_implicit_memory_reference_/
+make_1port_gate	node_creation_library.c	/^nnode_t *make_1port_gate(operation_list type, int /
+make_1port_logic_gate	node_creation_library.c	/^nnode_t *make_1port_logic_gate(operation_list type/
+make_1port_logic_gate_with_inputs	node_creation_library.c	/^nnode_t *make_1port_logic_gate_with_inputs(operati/
+make_2port_gate	node_creation_library.c	/^nnode_t *make_2port_gate(operation_list type, int /
+make_3port_gate	node_creation_library.c	/^nnode_t *make_3port_gate(operation_list type, int /
+make_full_ref_name	odin_util.c	/^char *make_full_ref_name(const char *previous, cha/
+make_module_param_name	ast_util.c	/^char *make_module_param_name(ast_node_t *module_pa/
+make_mult_block	node_creation_library.c	/^nnode_t *make_mult_block(nnode_t *node, short mark/
+make_not_gate	node_creation_library.c	/^nnode_t *make_not_gate(nnode_t *node, short mark)$/
+make_not_gate_with_input	node_creation_library.c	/^nnode_t *make_not_gate_with_input(npin_t *input_pi/
+make_nport_gate	node_creation_library.c	/^nnode_t *make_nport_gate(operation_list type, int /
+make_output_pins_for_existing_node	netlist_utils.c	/^signal_list_t *make_output_pins_for_existing_node(/
+make_signal_name	odin_util.c	/^char *make_signal_name(char *signal_name, int bit)/
+make_simple_name	odin_util.c	/^char *make_simple_name(char *input, const char *fl/
+make_string_based_on_id	odin_util.c	/^char *make_string_based_on_id(nnode_t *node)$/
+markAndProcessSymbolListWith	parse_making_ast.c	/^ast_node_t *markAndProcessSymbolListWith(ids top_t/
+mark_clock_node	netlist_utils.c	/^mark_clock_node ($/
+mark_node_read	ast_elaborate.c	/^void mark_node_read(ast_node_t *node, char list[10/
+mark_node_write	ast_elaborate.c	/^void mark_node_write(ast_node_t *node, char list[1/
+mark_output_dependencies	netlist_cleanup.c	/^void mark_output_dependencies(netlist_t *netlist){/
+match_node	adders.c	/^void match_node(struct s_linked_vptr *place, opera/
+match_pins	adders.c	/^int match_pins(nnode_t *node, nnode_t *next_node)$/
+match_ports	adders.c	/^int match_ports(nnode_t *node, nnode_t *next_node,/
+max	simulate_blif.c	/^#define max(a,b) (((a) > (b))? (a) : (b))$/
+merge_nodes	adders.c	/^void merge_nodes(nnode_t *node, nnode_t *next_node/
+min	simulate_blif.c	/^#define min(a,b) ((a) > (b)? (b) : (a))$/
+modify_expression	ast_elaborate.c	/^void modify_expression(char *exp[], char *infix_ex/
+move_ast_node	ast_util.c	/^void move_ast_node(ast_node_t *src, ast_node_t *de/
+move_input_pin	netlist_utils.c	/^void move_input_pin(nnode_t *node, int old_idx, in/
+move_output_pin	netlist_utils.c	/^void move_output_pin(nnode_t *node, int old_idx, i/
+my_malloc_struct	odin_util.c	/^void *my_malloc_struct(size_t bytes_to_alloc)$/
+my_power	odin_util.c	/^long long int my_power(long long int x, long long /
+netlist_optimizations_top	netlist_optimizations.c	/^void netlist_optimizations_top(netlist_t *netlist)/
+netlist_stats	netlist_stats.c	/^void netlist_stats(netlist_t *netlist, char *path,/
+netlist_stats_t	types.h	/^typedef struct netlist_stats_t_t netlist_stats_t;$/
+netlist_t	types.h	/^typedef struct netlist_t_t netlist_t;$/
+newAlways	parse_making_ast.c	/^ast_node_t *newAlways(ast_node_t *delay_control, a/
+newArrayRef	parse_making_ast.c	/^ast_node_t *newArrayRef(char *id, ast_node_t *expr/
+newBinaryOperation	parse_making_ast.c	/^ast_node_t *newBinaryOperation(operation_list op_i/
+newBlocking	parse_making_ast.c	/^ast_node_t *newBlocking(ast_node_t *expression1, a/
+newCase	parse_making_ast.c	/^ast_node_t *newCase(ast_node_t *compare_expression/
+newCaseItem	parse_making_ast.c	/^ast_node_t *newCaseItem(ast_node_t *expression, as/
+newDefaultCase	parse_making_ast.c	/^ast_node_t *newDefaultCase(ast_node_t *statement, /
+newFor	parse_making_ast.c	/^ast_node_t *newFor(ast_node_t *initial, ast_node_t/
+newFunctionAssigning	parse_making_ast.c	/^ast_node_t *newFunctionAssigning(ast_node_t *expre/
+newFunctionNamedInstance	parse_making_ast.c	/^ast_node_t *newFunctionNamedInstance(ast_node_t *m/
+newHardBlockInstance	parse_making_ast.c	/^ast_node_t *newHardBlockInstance(char* module_ref_/
+newIf	parse_making_ast.c	/^ast_node_t *newIf(ast_node_t *compare_expression, /
+newIfQuestion	parse_making_ast.c	/^ast_node_t *newIfQuestion(ast_node_t *compare_expr/
+newInitial	parse_making_ast.c	/^ast_node_t *newInitial(ast_node_t *expression1, in/
+newListReplicate	parse_making_ast.c	/^ast_node_t *newListReplicate(ast_node_t *exp, ast_/
+newModuleConnection	parse_making_ast.c	/^ast_node_t *newModuleConnection(char* id, ast_node/
+newModuleInstance	parse_making_ast.c	/^ast_node_t *newModuleInstance(char* module_ref_nam/
+newModuleNamedInstance	parse_making_ast.c	/^ast_node_t *newModuleNamedInstance(char* unique_na/
+newModuleParameter	parse_making_ast.c	/^ast_node_t *newModuleParameter(char* id, ast_node_/
+newNegedgeSymbol	parse_making_ast.c	/^ast_node_t *newNegedgeSymbol(char *symbol, int lin/
+newNonBlocking	parse_making_ast.c	/^ast_node_t *newNonBlocking(ast_node_t *expression1/
+newParallelConnection	parse_making_ast.c	/^ast_node_t *newParallelConnection(ast_node_t *expr/
+newPosedgeSymbol	parse_making_ast.c	/^ast_node_t *newPosedgeSymbol(char *symbol, int lin/
+newRangeRef	parse_making_ast.c	/^ast_node_t *newRangeRef(char *id, ast_node_t *expr/
+newUnaryOperation	parse_making_ast.c	/^ast_node_t *newUnaryOperation(operation_list op_id/
+newWhile	parse_making_ast.c	/^ast_node_t *newWhile(ast_node_t *compare_expressio/
+nnet_t	types.h	/^typedef struct nnet_t_t nnet_t;$/
+nnode_t	types.h	/^typedef struct nnode_t_t nnode_t;$/
+node_list_t	netlist_cleanup.c	/^} node_list_t;$/
+node_name	node_creation_library.c	/^char *node_name(nnode_t *node, char *instance_name/
+node_name_based_on_op	node_creation_library.c	/^const char *node_name_based_on_op(nnode_t *node)$/
+npin_t	types.h	/^typedef struct npin_t_t npin_t;$/
+num_fanouts_on_output_pin	netlist_stats.c	/^int num_fanouts_on_output_pin(nnode_t *node, int o/
+oassert	types.h	/^\/\/#define oassert(x) {if(!(x)){exit(-1);}} \/\/ /
+operation	types.h	/^	int bit_width; \/\/ Size of the operation (e.g. f/
+optimizations_on_AST	ast_optimizations.c	/^void optimizations_on_AST(ast_node_t *top)$/
+optimize_for_tree	ast_elaborate.c	/^void optimize_for_tree()$/
+output_activation_file_ace_and_function_file	activity_estimation.c	/^void output_activation_file_ace_and_function_file(/
+output_blif	output_blif.c	/^void output_blif(char *file_name, netlist_t *netli/
+output_blif_pin_connect	output_blif.c	/^void output_blif_pin_connect(nnode_t *node, FILE */
+output_hard_blocks	hard_blocks.c	/^void output_hard_blocks(FILE *out)$/
+output_node	output_blif.c	/^void output_node(nnode_t *node, short traverse_num/
+output_top	outputs.c	/^void output_top(netlist_t *netlist)$/
+pad_multiplier	multipliers.c	/^void pad_multiplier(nnode_t *node, netlist_t *netl/
+parse_to_ast	parse_making_ast.c	/^void parse_to_ast()$/
+partial_map_node	partial_map.c	/^void partial_map_node(nnode_t *node, short travers/
+partial_map_top	partial_map.c	/^void partial_map_top(netlist_t *netlist)$/
+pass	read_netlist.c	/^enum pass { DRIVERS = 0, DRIVEN, STOP };$/
+pin_names	simulate_blif.h	/^} pin_names;$/
+print_netlist_for_checking	print_netlist.c	/^void print_netlist_for_checking (netlist_t *netlis/
+print_usage	odin_ii.c	/^void print_usage()$/
+read_blif	read_blif.c	/^void read_blif(char * blif_file)$/
+read_config_file	read_xml_config_file.c	/^void read_config_file(char *file_name)$/
+read_debug_switches	read_xml_config_file.c	/^void read_debug_switches(ezxml_t a_node, config_t /
+read_netlist	read_netlist.c	/^read_netlist ($/
+read_optimizations	read_xml_config_file.c	/^void read_optimizations(ezxml_t a_node, config_t */
+read_outputs	read_xml_config_file.c	/^void read_outputs(ezxml_t a_node, config_t *config/
+read_verilog_files	read_xml_config_file.c	/^void read_verilog_files(ezxml_t a_node, config_t */
+reallocate_node	ast_elaborate.c	/^void reallocate_node(ast_node_t *node, int idx)$/
+reallocate_pins	adders.c	/^void reallocate_pins(nnode_t *node, nnode_t *next_/
+record_add_distribution	adders.c	/^void record_add_distribution(nnode_t *node)$/
+record_expression	ast_elaborate.c	/^void record_expression(ast_node_t *node, char *arr/
+record_mult_distribution	multipliers.c	/^void record_mult_distribution(nnode_t *node)$/
+record_tree_info	ast_elaborate.c	/^void record_tree_info(ast_node_t *node)$/
+recursive_tree	ast_elaborate.c	/^void recursive_tree(ast_node_t *node, int list_bra/
+reduceAST_traverse_node	ast_optimizations.c	/^info_ast_visit_t *reduceAST_traverse_node(ast_node/
+reduce_assignment_expression	ast_elaborate.c	/^void reduce_assignment_expression()$/
+reduce_enode_list	ast_elaborate.c	/^void reduce_enode_list()$/
+reduce_operations	adders.c	/^void reduce_operations(netlist_t *netlist, operati/
+reduce_parameter	ast_elaborate.c	/^void reduce_parameter()$/
+register_hard_blocks	hard_blocks.c	/^void register_hard_blocks()$/
+register_implicit_memory_input	implicit_memory.c	/^void register_implicit_memory_input(char *name, im/
+remap_pin_to_new_net	netlist_utils.c	/^void remap_pin_to_new_net(npin_t *pin, nnet_t *new/
+remap_pin_to_new_node	netlist_utils.c	/^void remap_pin_to_new_node(npin_t *pin, nnode_t *n/
+remove_fanout_pins	adders.c	/^void remove_fanout_pins(nnode_t *node)$/
+remove_fanout_pins_from_net	netlist_utils.c	/^void remove_fanout_pins_from_net(nnet_t *net, npin/
+remove_intermediate_variable	ast_elaborate.c	/^void remove_intermediate_variable(ast_node_t *node/
+remove_list_node	adders.c	/^void remove_list_node(struct s_linked_vptr *pre, s/
+remove_para_node	ast_elaborate.c	/^void remove_para_node(ast_node_t *top, ast_node_t /
+remove_unused_logic	netlist_cleanup.c	/^void remove_unused_logic(netlist_t *netlist){$/
+remove_unused_nodes	netlist_cleanup.c	/^void remove_unused_nodes(node_list_t *remove){$/
+replace_enode	ast_elaborate.c	/^enode *replace_enode(int data, enode *t, int mark)/
+report_add_distribution	adders.c	/^void report_add_distribution()$/
+report_mult_distribution	multipliers.c	/^void report_mult_distribution()$/
+report_sub_distribution	subtractions.c	/^void report_sub_distribution()$/
+resolve_node	ast_util.c	/^ast_node_t *resolve_node(char *module_name, ast_no/
+sc_add_string	string_cache.c	/^sc_add_string(STRING_CACHE * sc,$/
+sc_do_alloc	string_cache.c	/^sc_do_alloc(long a,$/
+sc_free_string_cache	string_cache.c	/^STRING_CACHE * sc_free_string_cache(STRING_CACHE */
+sc_lookup_string	string_cache.c	/^sc_lookup_string(STRING_CACHE * sc,$/
+sc_new_string_cache	string_cache.c	/^sc_new_string_cache(void)$/
+sc_valid_id	string_cache.c	/^sc_valid_id(STRING_CACHE * sc,$/
+search_certain_operation	ast_elaborate.c	/^void search_certain_operation(ast_node_t *node, in/
+search_clock_name	read_blif.c	/^char* search_clock_name(FILE* file)$/
+search_for_node	ast_elaborate.c	/^void search_for_node(ast_node_t *root, ast_node_t /
+search_marked_node	ast_elaborate.c	/^void search_marked_node(ast_node_t *node, int is, /
+sequential_levelized_dfs	netlist_check.c	/^void sequential_levelized_dfs(short marker_value, /
+set_default_optimization_settings	read_xml_config_file.c	/^void set_default_optimization_settings(config_t *c/
+set_default_options	odin_ii_func.c	/^void set_default_options()$/
+set_pin_cycle	simulate_blif.c	/^void set_pin_cycle(npin_t *pin, int cycle)$/
+shift_operation	ast_elaborate.c	/^void shift_operation()$/
+signal_list_t	types.h	/^typedef struct signal_list_t_t signal_list_t;$/
+signal_list_t_t	types.h	/^struct signal_list_t_t $/
+sim_state_t	types.h	/^typedef struct sim_state_t_t sim_state_t;$/
+simplify_ast	ast_elaborate.c	/^int simplify_ast()$/
+simplify_expression	ast_elaborate.c	/^void simplify_expression(int *build)$/
+simulate_cycle	simulate_blif.c	/^void simulate_cycle(int cycle, stages *s)$/
+simulate_first_cycle	simulate_blif.c	/^stages *simulate_first_cycle(netlist_t *netlist, i/
+simulate_netlist	simulate_blif.c	/^void simulate_netlist(netlist_t *netlist)$/
+sort_signal_list_alphabetically	netlist_utils.c	/^void sort_signal_list_alphabetically(signal_list_t/
+sp_ram_signals	memories.h	/^} sp_ram_signals;$/
+special_blk	read_netlist.c	/^enum special_blk { NORMAL = 0, INPAD, OUTPAD };$/
+split_adder	adders.c	/^void split_adder(nnode_t *nodeo, int a, int b, int/
+split_adder_for_sub	subtractions.c	/^void split_adder_for_sub(nnode_t *nodeo, int a, in/
+split_multiplier	multipliers.c	/^void split_multiplier(nnode_t *node, int a0, int b/
+split_multiplier_a	multipliers.c	/^void split_multiplier_a(nnode_t *node, int a0, int/
+split_multiplier_b	multipliers.c	/^void split_multiplier_b(nnode_t *node, int a, int /
+stages	simulate_blif.h	/^} stages;$/
+store_exp_list	ast_elaborate.c	/^void store_exp_list(ast_node_t *node)$/
+string_hash	string_cache.c	/^string_hash(STRING_CACHE * sc,$/
+t_adder	adders.h	/^} t_adder;$/
+t_memory	memories.h	/^} t_memory;$/
+t_memory_port_sizes	memories.h	/^} t_memory_port_sizes;$/
+t_multiplier	multipliers.h	/^} t_multiplier;$/
+test_vector	simulate_blif.h	/^} test_vector;$/
+translate_expression	ast_elaborate.c	/^void translate_expression(char *exp[], char *post_/
+traverse_backward	netlist_cleanup.c	/^void traverse_backward(nnode_t *node){$/
+traverse_forward	netlist_cleanup.c	/^void traverse_forward(nnode_t *node, int toplevel,/
+traverse_list	adders.c	/^void traverse_list(operation_list oper, struct s_l/
+traverse_operation_node	adders.c	/^void traverse_operation_node(ast_node_t *node, cha/
+twos_complement	odin_util.c	/^char *twos_complement(char *str)$/
+typ	types.h	/^typedef struct typ_t typ;$/
+update_pin_value	simulate_blif.c	/^void update_pin_value(npin_t *pin, signed char val/
+update_undriven_input_pins	simulate_blif.c	/^void update_undriven_input_pins(nnode_t *node, int/
+veri_define	verilog_preprocessor.h	/^} veri_define;$/
+veri_flag_node	verilog_preprocessor.h	/^} veri_flag_node;$/
+veri_flag_stack	verilog_preprocessor.h	/^} veri_flag_stack;$/
+veri_include	verilog_preprocessor.h	/^} veri_include;$/
+verify_output_vectors	simulate_blif.c	/^int verify_output_vectors(char* output_vector_file/
+warning_message	errors.c	/^void warning_message(short error_type, int line_nu/

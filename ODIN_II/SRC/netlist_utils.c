@@ -33,7 +33,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "util.h"
 
 
-global_args_t global_args;
+extern global_args_t global_args;
 /*---------------------------------------------------------------------------------------------
  * (function: allocate_nnode)
  *-------------------------------------------------------------------------------------------*/
@@ -44,6 +44,7 @@ nnode_t* allocate_nnode() {
 	
 	new_node->name = NULL;
 	new_node->type = NO_OP;
+	new_node->bit_width = 0;
 	new_node->related_ast_node = NULL;
 	new_node->traverse_visited = -1;
 
@@ -1023,7 +1024,7 @@ mark_clock_node (
  * Gets the index of the first output pin with the given mapping
  * on the given node.
  */
-int get_output_pin_index_from_mapping(nnode_t *node, char *name)
+int get_output_pin_index_from_mapping(nnode_t *node, const char *name)
 {
 	int i;
 	for (i = 0; i < node->num_output_pins; i++)
@@ -1040,7 +1041,7 @@ int get_output_pin_index_from_mapping(nnode_t *node, char *name)
  * Gets the index of the first output port containing a pin with the given
  * mapping.
  */
-int get_output_port_index_from_mapping(nnode_t *node, char *name)
+int get_output_port_index_from_mapping(nnode_t *node, const char *name)
 {
 	int i;
 	int pin_number = 0;
@@ -1060,7 +1061,7 @@ int get_output_port_index_from_mapping(nnode_t *node, char *name)
 /*
  * Gets the index of the first pin with the given mapping.
  */
-int get_input_pin_index_from_mapping(nnode_t *node, char *name)
+int get_input_pin_index_from_mapping(nnode_t *node, const char *name)
 {
 	int i;
 	for (i = 0; i < node->num_input_pins; i++)
@@ -1077,7 +1078,7 @@ int get_input_pin_index_from_mapping(nnode_t *node, char *name)
  * Gets the port index of the first port containing a pin with
  * the given mapping.
  */
-int get_input_port_index_from_mapping(nnode_t *node, char *name)
+int get_input_port_index_from_mapping(nnode_t *node, const char *name)
 {
 	int i;
 	int pin_number = 0;
@@ -1104,4 +1105,18 @@ chain_information_t* allocate_chain_info()
 	new_node->count = 0;
 
 	return new_node;
+}
+
+void remove_fanout_pins_from_net(nnet_t *net, npin_t *pin, int id)
+{
+
+	int i;
+	for (i = id; i < net->num_fanout_pins - 1; i++)
+	{
+		net->fanout_pins[i] = net->fanout_pins[i+1];
+		if(net->fanout_pins[i] != NULL)
+			net->fanout_pins[i]->pin_net_idx = i;
+	}
+	net->fanout_pins[i] = NULL;
+	net->num_fanout_pins--;
 }

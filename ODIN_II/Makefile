@@ -1,9 +1,9 @@
-CC = gcc
+CC = /usr/local/bin/g++-4.8
 
 PARSER1 = flex 
 PARSER2 = bison
 
-WARN_FLAGS = -Wall -Wno-unused-function
+WARN_FLAGS = -Wall -Wno-unused-function 
 
 SRC_DIR = SRC
 OBJ_DIR = OBJ
@@ -16,7 +16,7 @@ DEBUG_FLAGS = -g -DYYERROR_VERBOSE
 # Use this value of OPT_FLAGS to simulate in parallel (requires GCC >= 4.2)
 #OPT_FLAGS = -O2 -fopenmp 
 
-INC_FLAGS =  -I../libarchfpga/include -I../printhandler/SRC/TIO_InputOutputHandlers
+INC_FLAGS =  -I../libarchfpga/include -I../libcommon_c++/SRC/TIO_InputOutputHandlers
 LIB = -L../libarchfpga -larchfpga -lm -ldl
 C_DIRECTIVE = -DVPR6 -DUSING_BISON
 
@@ -67,6 +67,8 @@ SRCO = $(addprefix $(SRC_DIR)/,$(strip \
 	verilog_preprocessor.c \
 	odin_ii_func.c \
 	odin_ii.c \
+	ast_elaborate.c \
+	netlist_cleanup.c \
 ))
 
 SRCV = SRC/read_blif.c \
@@ -81,7 +83,7 @@ DEP = $(OBJ:.o=.d)
 all: CTAGS $(EXEO)
 
 $(EXEO): $(OBJ)
-	g++ $(C_FLAGS) $(FLAGS) $(OBJ) -o $(EXEO) $(LIB)
+	$(CC) $(C_FLAGS) $(FLAGS) $(OBJ) -o $(EXEO) $(LIB)
 
 CTAGS :
 	@ cd SRC && ctags *.[ch]

@@ -70,6 +70,12 @@ int main(int argc, char **argv)
 {
 	int num_types;
 
+	/* Some initialization */
+	one_string = strdup("ONE_VCC_CNS");
+	zero_string = strdup("ZERO_GND_ZERO");
+	pad_string = strdup("ZERO_PAD_ZERO");
+
+
 	printf("--------------------------------------------------------------------\n");
 	printf("Welcome to ODIN II version 0.1 - the better High level synthesis tools++ targetting FPGAs (mainly VPR)\n");
 	printf("Email: jamieson.peter@gmail.com and ken@unb.ca for support issues\n\n");
@@ -91,10 +97,10 @@ int main(int argc, char **argv)
 		#ifdef VPR5
 		t_clocks ClockDetails = { 0 };
 		t_power PowerDetails = { 0 };
-		XmlReadArch(global_args.arch_file, (boolean)FALSE, &Arch, &type_descriptors, &num_types, &ClockDetails, &PowerDetails);
+		XmlReadArch(global_args.arch_file, false, &Arch, &type_descriptors, &num_types, &ClockDetails, &PowerDetails);
 		#endif
 		#ifdef VPR6
-		XmlReadArch(global_args.arch_file, (boolean)FALSE, &Arch, &type_descriptors, &num_types);
+		XmlReadArch(global_args.arch_file, false, &Arch, &type_descriptors, &num_types);
 		#endif
 	}
 
@@ -164,7 +170,7 @@ void print_usage()
 			"         cycle 0, and high for all subsequent cycles.>\n"
 			"     -3 Generate three valued logic. (Default is binary.)\n"
 			"  -t <input vector file>: Supply a predefined input vector file\n"
-			"  -U Initialize output pins with -1 instead of 0\n"
+			"  -U Default initial register value. Set to -U0, -U1 or -UX (unknown). Default: X\n"
 
 			" Other Simulation Options: \n"
 			"  -T <output vector file>: Supply an output vector file to check output\n"
@@ -196,7 +202,7 @@ void get_options(int argc, char **argv)
 	
 
 	/* Parse the command line options.  */
-	const char *optString = "hc:V:WREh:o:a:B:b:N:f:s:S:p:g:t:T:L:H:GA3U";
+	const char *optString = "hc:V:WREh:o:a:B:b:N:f:s:S:p:g:t:T:L:H:GA3U::";
 	int opt = getopt(argc, argv, optString);
 	while(opt != -1) 
 	{
@@ -260,6 +266,10 @@ void get_options(int argc, char **argv)
 			break;
 			case 'U':
 				global_args.sim_initial_value = -1;
+				if(optarg != NULL){
+					if(*optarg == '0') global_args.sim_initial_value = 0;
+					else if(*optarg == '1') global_args.sim_initial_value = 1;
+				}
 			break;
 			case 'p':
 				global_args.sim_additional_pins = optarg;

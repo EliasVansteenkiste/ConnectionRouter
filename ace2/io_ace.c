@@ -96,7 +96,7 @@ void ace_io_print_activity(Abc_Ntk_t * ntk, FILE * fp) {
 
 int ace_io_parse_argv(int argc, char ** argv, FILE ** BLIF, FILE ** IN_ACT,
 		FILE ** OUT_ACT, char * blif_file_name, char * new_blif_file_name,
-		ace_pi_format_t * pi_format, double *p, double * d) {
+		ace_pi_format_t * pi_format, double *p, double * d, int * seed) {
 	int i;
 	char option;
 
@@ -139,6 +139,9 @@ int ace_io_parse_argv(int argc, char ** argv, FILE ** BLIF, FILE ** IN_ACT,
 			case 'd':
 				*pi_format = ACE_PD;
 				*d = atof(argv[i]);
+				break;
+			case 's':
+				*seed = atoi(argv[i]);
 				break;
 			default:
 				ace_io_print_usage();
@@ -227,9 +230,16 @@ int ace_io_read_activity(Abc_Ntk_t * ntk, FILE * in_file_desc,
 			Abc_NtkForEachPi(ntk, obj_ptr, i)
 			{
 				info = Ace_ObjInfo(obj_ptr);
-				info->static_prob = p;
-				info->switch_prob = d;
-				info->switch_act = d;
+
+				if (strcmp(Abc_ObjName(obj_ptr), clk_name) == 0) {
+					info->static_prob = 0.5;
+					info->switch_prob = 1;
+					info->switch_act = 2;
+				} else {
+					info->static_prob = p;
+					info->switch_prob = d;
+					info->switch_act = d;
+				}
 			}
 		}
 	} else {

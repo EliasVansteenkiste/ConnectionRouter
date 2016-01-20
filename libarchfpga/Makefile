@@ -10,18 +10,18 @@
 
 #############################################################################################
 
-CC = g++
+CC = /usr/local/bin/g++-4.8
 AR = ar
 
 WARN_FLAGS = -Wall -Wpointer-arith -Wcast-qual -D__USE_FIXED_PROTOTYPES__ -pedantic -Wshadow -Wcast-align -D_POSIX_SOURCE -Wno-write-strings
 DEBUG_FLAGS = -g
 OPT_FLAGS = -O3
-INC_FLAGS = -Iinclude -I../printhandler/SRC/TIO_InputOutputHandlers
+INC_FLAGS = -Iinclude -I../liblog/src
 LIB_FLAGS = rcs
 
 EXE = read_arch
 
-FLAGS = $(INC_FLAGS) $(WARN_FLAGS) -MD -MP
+FLAGS = $(INC_FLAGS) $(WARN_FLAGS) -MD -MP -std=c++0x
 
 ifneq (,$(findstring release, $(BUILD_TYPE)))
   FLAGS := $(FLAGS) $(OPT_FLAGS)
@@ -29,7 +29,7 @@ else                              # DEBUG build
   FLAGS := $(FLAGS) $(DEBUG_FLAGS)
 endif
 
-SRC = read_xml_arch_file.c read_xml_util.c ezxml.c ReadLine.c util.c
+SRC = read_xml_arch_file.c read_xml_util.c ezxml.c ReadLine.c util.c parse_switchblocks.c
 OBJS = $(SRC:.c=.o)
 
 DEPS = $(OBJS:.o=.d) main.d
@@ -39,15 +39,12 @@ $(EXE): main.o libarchfpga.a
 	$(CC) main.o -o $(EXE) $(INC_FLAGS) -L. -lm -larchfpga
  
 
-libarchfpga.a: $(OBJS) ../pcre/libpcre.a ../printhandler/libprinthandler.a
-	 cp ../printhandler/libprinthandler.a $@
+libarchfpga.a: $(OBJS) ../liblog/liblog.a
+	 cp ../liblog/liblog.a $@
 	 ar rcs $@ $(OBJS)
 
-../pcre/libpcre.a:
-	@ cd ../pcre && make
-
-../printhandler/libprinthandler.a:
-	@ cd ../printhandler && make
+../liblog/liblog.a:
+	@ cd ../liblog && make
 
 %.o: %.c
 	$(CC) $(FLAGS) -c $< -o $@ 

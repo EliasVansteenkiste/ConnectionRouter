@@ -30,16 +30,12 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "types.h"
 #include "globals.h"
 #include "hard_blocks.h"
-
-t_model *single_port_rams = NULL;
-t_model *dual_port_rams = NULL;
-
 #include "memories.h"
 
 STRING_CACHE *hard_block_names = NULL;
 
 
-t_model_ports *get_model_port(t_model_ports *ports, char *name)
+t_model_ports *get_model_port(t_model_ports *ports, const char *name)
 {
 	while (ports && strcmp(ports->name, name))
 		ports = ports->next;
@@ -117,7 +113,7 @@ void deregister_hard_blocks()
 	return;
 }
 
-t_model* find_hard_block(char *name)
+t_model* find_hard_block(const char *name)
 {
 	t_model *hard_blocks;
 
@@ -154,6 +150,13 @@ void define_hard_block(nnode_t *node, short type, FILE *out)
 	port = index = 0;
 	for (i = 0;  i < node->num_input_pins; i++)
 	{
+		/* Check that the input pin is driven */
+		if (node->input_pins[i]->net->driver_pin == NULL)
+		{
+			printf("Signal %s is not driven. Odin will terminate.\n", node->input_pins[i]->name);
+			exit(1);
+		}
+
 		if (node->input_port_sizes[port] == 1)
 			j = sprintf(buffer, " %s=%s", node->input_pins[i]->mapping, node->input_pins[i]->net->driver_pin->node->name);
 		else
